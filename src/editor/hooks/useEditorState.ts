@@ -997,13 +997,14 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
 
     return "Left paints river edges, right erases river edges, middle drag pans.";
   }, [activeFactionId, activeFeatureKind, activeMode, activeType, canEdit, selectedFaction, view.level]);
+  const featureVisibilityMode: "gm" | "player" = role === "player" ? "player" : "gm";
 
   const canvasProps = useMemo(
     () => ({
       center: view.center,
       canEdit,
       editMode: activeMode,
-      featureVisibilityMode: role === "player" ? "player" : "gm",
+      featureVisibilityMode,
       fogEditingActive: role === "gm" && activeMode === "fog",
       interactionLabel,
       level: view.level,
@@ -1024,6 +1025,7 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
     [
       activeMode,
       canEdit,
+      featureVisibilityMode,
       applyActiveGestureCells,
       applyActiveRiverGestureEdges,
       changeVisualZoom,

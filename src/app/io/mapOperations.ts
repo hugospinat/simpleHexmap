@@ -140,7 +140,7 @@ export function applyMapOperation(snapshot: SavedMap, operation: MapOperation): 
       };
     }
     case "set_feature_hidden": {
-      const visibility = operation.hidden ? "hidden" : "visible";
+      const visibility: "hidden" | "visible" = operation.hidden ? "hidden" : "visible";
       let changed = false;
       const features = snapshot.features.map((feature) => {
         if (feature.id !== operation.featureId || feature.visibility === visibility) {
