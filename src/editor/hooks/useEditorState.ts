@@ -44,10 +44,16 @@ import { useCamera } from "./useCamera";
 import { useUndoRedo } from "./useUndoRedo";
 import type { Axial } from "@/domain/geometry/hex";
 
-export function useEditorState() {
+type UseEditorStateOptions = {
+  initialWorld?: World;
+  onWorldCommitted?: (world: World) => void;
+};
+
+export function useEditorState(options: UseEditorStateOptions = {}) {
+  const { initialWorld, onWorldCommitted } = options;
   const maxLevels = editorConfig.maxLevels;
   const appRef = useRef<HTMLElement | null>(null);
-  const { history, record, redo, undo } = useUndoRedo<World>(() => createInitialWorld(maxLevels));
+  const { history, record, redo, reset, undo } = useUndoRedo<World>(() => initialWorld ?? createInitialWorld(maxLevels));
   const { changeVisualZoom, setCenter, view, visualZoom } = useCamera();
   const [draftWorld, setDraftWorld] = useState<World | null>(null);
   const [activeMode, setActiveMode] = useState<EditorMode>("terrain");
@@ -62,6 +68,10 @@ export function useEditorState() {
   const featureIdRef = useRef(0);
 
   const world = draftWorld ?? history.present;
+  const commitWorld = useCallback((nextWorld: World) => {
+    record(nextWorld);
+    onWorldCommitted?.(nextWorld);
+  }, [onWorldCommitted, record]);
   const selectedFeature = useMemo(
     () => selectedFeatureId ? getFeatureById(world, view.level, selectedFeatureId) : null,
     [selectedFeatureId, view.level, world]
@@ -151,7 +161,7 @@ export function useEditorState() {
         setSelectedFeatureId(result.selectedFeatureId);
 
         if (result.world !== history.present) {
-          record(result.world);
+          commitWorld(result.world);
         }
 
         return;
@@ -230,7 +240,7 @@ export function useEditorState() {
       const finishedWorld = getFinishedGestureWorld(terrainGesture);
 
       if (finishedWorld) {
-        record(finishedWorld);
+        commitWorld(finishedWorld);
       }
     }
 
@@ -238,7 +248,7 @@ export function useEditorState() {
       const finishedWorld = getFinishedRiverGestureWorld(riverGesture);
 
       if (finishedWorld) {
-        record(finishedWorld);
+        commitWorld(finishedWorld);
       }
     }
 
@@ -246,10 +256,10 @@ export function useEditorState() {
       const finishedWorld = getFinishedRoadGestureWorld(roadGesture);
 
       if (finishedWorld) {
-        record(finishedWorld);
+        commitWorld(finishedWorld);
       }
     }
-  }, [record]);
+  }, [commitWorld]);
 
   const chooseFeatureKind = useCallback((type: FeatureKind) => {
     setActiveFeatureKind(type);
@@ -281,10 +291,10 @@ export function useEditorState() {
       const nextWorld = updateFeature(history.present, view.level, selectedFeatureId, updates);
 
       if (nextWorld !== history.present) {
-        record(nextWorld);
+        commitWorld(nextWorld);
       }
     },
-    [history.present, record, selectedFeatureId, view.level]
+    [commitWorld, history.present, selectedFeatureId, view.level]
   );
 
   const deleteSelectedFeature = useCallback(() => {
@@ -300,11 +310,24 @@ export function useEditorState() {
     ).world;
 
     if (nextWorld !== history.present) {
-      record(nextWorld);
+      commitWorld(nextWorld);
     }
 
     setSelectedFeatureId(null);
-  }, [history.present, record, selectedFeature, selectedFeatureId, view.level]);
+  }, [commitWorld, history.present, selectedFeature, selectedFeatureId, view.level]);
+
+  useEffect(() => {
+    if (!initialWorld) {
+      return;
+    }
+
+    editGestureRef.current = null;
+    riverGestureRef.current = null;
+    roadGestureRef.current = null;
+    setDraftWorld(null);
+    setSelectedFeatureId(null);
+    reset(initialWorld);
+  }, [initialWorld, reset]);
 
   useEffect(() => {
     if (selectedFeatureId && !selectedFeature) {

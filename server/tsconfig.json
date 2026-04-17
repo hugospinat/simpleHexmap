@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "baseUrl": "..",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+    "types": ["node"],
+    "outDir": "dist"
+  },
+  "include": [
+    "./**/*.ts",
+    "../src/domain/geometry/hex.ts",
+    "../src/domain/world/**/*.ts",
+    "../src/shared/**/*.ts"
+  ]
+}

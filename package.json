@@ -5,21 +5,30 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "server:dev": "tsx server/index.ts",
+    "build:server": "tsc -p server/tsconfig.json",
+    "typecheck:server": "tsc -p server/tsconfig.json --noEmit",
     "build": "tsc && vite build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && npm run typecheck:server",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
+    "express": "^5.1.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.0.0",
     "@vitejs/plugin-react": "^5.0.0",
-    "vite": "^7.0.0",
-    "typescript": "^5.8.0",
-    "vitest": "^3.2.0",
     "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0"
+    "@types/react-dom": "^19.0.0",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.8.0",
+    "vite": "^7.0.0",
+    "vitest": "^3.2.0"
   }
 }

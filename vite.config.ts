@@ -8,6 +8,15 @@ export default defineConfig({
       "@": "/src"
     }
   },
+  server: {
+    proxy: {
+      "/maps": "http://localhost:3001",
+      "/ws": {
+        target: "ws://localhost:3001",
+        ws: true
+      }
+    }
+  },
   test: {
     environment: "node"
   }
