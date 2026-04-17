@@ -12,7 +12,14 @@ import type { LevelMap, RiverLevelMap, RoadLevelMap, TerrainType, World } from "
 const sourceLevel = 3;
 
 export function createEmptyWorld(): World {
-  return { levels: {}, featuresByLevel: {}, riversByLevel: {}, roadsByLevel: {} };
+  return {
+    levels: {},
+    featuresByLevel: {},
+    factions: new Map(),
+    factionAssignmentsByLevel: {},
+    riversByLevel: {},
+    roadsByLevel: {}
+  };
 }
 
 export function createInitialWorld(maxLevels: number): World {

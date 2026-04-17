@@ -1,4 +1,5 @@
 import { getAncestorAtLevel, hexKey, parseHexKey, type Axial } from "@/domain/geometry/hex";
+import { canFeatureOverrideTerrain } from "@/assets/featureAssets";
 import type { World } from "./worldTypes";
 
 const sourceLevel = 3;
@@ -74,6 +75,10 @@ export const featureKindLabels: Record<FeatureKind, string> = {
   label: "Label"
 };
 
+function getDefaultOverrideTerrainTile(kind: FeatureKind): boolean {
+  return canFeatureOverrideTerrain(kind);
+}
+
 function optionalTrim(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
@@ -102,7 +107,7 @@ export function normalizeFeature(feature: Feature | LegacyFeatureRecord, fallbac
     id: feature.id,
     kind,
     hexId,
-    overrideTerrainTile: feature.overrideTerrainTile ?? false,
+    overrideTerrainTile: feature.overrideTerrainTile ?? getDefaultOverrideTerrainTile(kind),
     hidden: feature.hidden ?? false,
     gmLabel: optionalTrim(feature.gmLabel ?? legacyLabel),
     playerLabel: optionalTrim(feature.playerLabel),
@@ -175,7 +180,7 @@ export function createFeature(id: string, kind: FeatureKind, hexId: string): Fea
     id,
     kind,
     hexId,
-    overrideTerrainTile: false,
+    overrideTerrainTile: getDefaultOverrideTerrainTile(kind),
     hidden: false,
     labelRevealed: false
   });

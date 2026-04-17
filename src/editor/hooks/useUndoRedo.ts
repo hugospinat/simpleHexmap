@@ -16,9 +16,14 @@ export function useUndoRedo<T>(initialState: () => T) {
     setHistory(redo);
   }, []);
 
+  const reset = useCallback((nextState: T) => {
+    setHistory(createHistory(nextState));
+  }, []);
+
   return {
     history,
     record,
+    reset,
     redo: redoHistory,
     undo: undoHistory
   };

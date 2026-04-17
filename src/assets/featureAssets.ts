@@ -7,6 +7,11 @@ import ruin from "./features/ruin.svg";
 import tower from "./features/tower.svg";
 import village from "./features/village.svg";
 import overRideVillage from "./features/village.png";
+import overRideTower from "./features/tower.png";
+import overRideCapital from "./features/capital.png";
+import overRideFort from "./features/fort.png";
+import overRideRuin from "./features/ruin.png";
+import overRideDungeon from "./features/dungeon.png";
 import overRideCity from "./features/city.png";
 
 import type { FeatureKind } from "@/domain/world/features";
@@ -30,13 +35,12 @@ export const featureAssets: MapImageAssetRegistry<FeatureKind> = {
 };
 
 const featureTerrainOverrideAssets: MapImageAssetRegistry<FeatureKind> = {
-  capital: defineMapImageAsset(capital),
+  capital: defineMapImageAsset(overRideCapital),
   city: defineMapImageAsset(overRideCity),
-  dungeon: defineMapImageAsset(dungeon),
-  fort: defineMapImageAsset(fort),
-  marker: defineMapImageAsset(marker),
-  ruin: defineMapImageAsset(ruin),
-  tower: defineMapImageAsset(tower),
+  dungeon: defineMapImageAsset(overRideDungeon),
+  fort: defineMapImageAsset(overRideFort),
+  ruin: defineMapImageAsset(overRideRuin),
+  tower: defineMapImageAsset(overRideTower),
   village: defineMapImageAsset(overRideVillage)
 };
 
@@ -49,5 +53,9 @@ export function getFeatureTerrainOverrideAsset(type: FeatureKind): MapImageAsset
 }
 
 export function canFeatureOverrideTerrain(type: FeatureKind): boolean {
+  if (type === "label" || type === "marker") {
+    return false;
+  }
+
   return Boolean(getFeatureTerrainOverrideAsset(type));
 }

@@ -8,6 +8,7 @@ type KeyboardNavigationOptions = {
   panPixelsPerSecond: number;
   visualZoom: number;
   onCenterChange: (center: Axial) => void;
+  onLevelStep: (delta: -1 | 1) => void;
   onRedo: () => void;
   onToggleCoordinates: () => void;
   onUndo: () => void;
@@ -45,6 +46,7 @@ export function useKeyboardNavigation({
   panPixelsPerSecond,
   visualZoom,
   onCenterChange,
+  onLevelStep,
   onRedo,
   onToggleCoordinates,
   onUndo,
@@ -54,6 +56,7 @@ export function useKeyboardNavigation({
   const levelRef = useRef(level);
   const visualZoomRef = useRef(visualZoom);
   const onCenterChangeRef = useRef(onCenterChange);
+  const onLevelStepRef = useRef(onLevelStep);
   const onRedoRef = useRef(onRedo);
   const onToggleCoordinatesRef = useRef(onToggleCoordinates);
   const onUndoRef = useRef(onUndo);
@@ -73,6 +76,10 @@ export function useKeyboardNavigation({
   useEffect(() => {
     onCenterChangeRef.current = onCenterChange;
   }, [onCenterChange]);
+
+  useEffect(() => {
+    onLevelStepRef.current = onLevelStep;
+  }, [onLevelStep]);
 
   useEffect(() => {
     onRedoRef.current = onRedo;
@@ -170,6 +177,18 @@ export function useKeyboardNavigation({
       if (!isModifierShortcut && key === "w") {
         event.preventDefault();
         onToggleCoordinatesRef.current();
+        return;
+      }
+
+      if (!isModifierShortcut && key === "a") {
+        event.preventDefault();
+        onLevelStepRef.current(-1);
+        return;
+      }
+
+      if (!isModifierShortcut && key === "e") {
+        event.preventDefault();
+        onLevelStepRef.current(1);
         return;
       }
 

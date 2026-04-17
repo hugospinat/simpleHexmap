@@ -39,7 +39,7 @@ export function placeOrSelectFeature(
   const feature = createFeature(createId(), kind, hexKey(axial));
 
   return {
-    selectedFeatureId: feature.id,
+    selectedFeatureId: null,
     world: addFeature(world, level, feature)
   };
 }

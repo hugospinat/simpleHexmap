@@ -10,6 +10,7 @@ export type VisibleCell = {
 export type RenderStats = {
   featureHexes: number;
   features: number;
+  factions: number;
   boundaries: number;
   labels: number;
   roads: number;

@@ -7,7 +7,7 @@ import {
 } from "./featureActions";
 
 describe("feature actions", () => {
-  it("places a feature on an empty hex and selects it", () => {
+  it("places a feature on an empty hex without opening selection", () => {
     let nextId = 0;
     const result = placeOrSelectFeature(
       createEmptyWorld(),
@@ -17,12 +17,12 @@ describe("feature actions", () => {
       () => `f${(nextId += 1)}`
     );
 
-    expect(result.selectedFeatureId).toBe("f1");
+    expect(result.selectedFeatureId).toBeNull();
     expect(getFeatureAt(result.world, 3, { q: 0, r: 0 })).toEqual({
       id: "f1",
       kind: "village",
       hexId: "0,0",
-      overrideTerrainTile: false,
+      overrideTerrainTile: true,
       hidden: false,
       labelRevealed: false
     });

@@ -512,14 +512,17 @@ export function drawFeaturePreview(
   context.fill();
   context.restore();
 
-  const asset = getFeatureAsset(type);
+  const overrideAsset = canFeatureOverrideTerrain(type)
+    ? getFeatureTerrainOverrideAsset(type)
+    : undefined;
+  const asset = overrideAsset ?? getFeatureAsset(type);
   const image = asset ? getLoadedImage(asset.src) : null;
 
   if (image) {
     context.save();
     tracePolygon(context, points);
     context.clip();
-    drawImageContainedInBounds(context, image, bounds, featureImagePadding);
+    drawImageContainedInBounds(context, image, bounds, overrideAsset ? 0 : featureImagePadding);
     context.restore();
   } else {
     context.save();

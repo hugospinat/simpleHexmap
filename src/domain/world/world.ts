@@ -22,6 +22,11 @@ export type {
   FeatureLevelMap,
   FeatureVisibilityMode
 } from "@/domain/world/features";
+export type {
+  Faction,
+  FactionLevelMap,
+  FactionMap
+} from "@/domain/world/factions";
 export {
   addFeature,
   axialToFeatureHexId,
@@ -38,6 +43,17 @@ export {
   removeFeatureAt,
   updateFeature
 } from "@/domain/world/features";
+export {
+  addFaction,
+  assignFactionAt,
+  clearFactionAt,
+  getFactionById,
+  getFactionLevelMap,
+  getFactionOverlayColorMap,
+  getFactions,
+  removeFaction,
+  updateFaction
+} from "@/domain/world/factions";
 export {
   addRoadConnection,
   getRoadLevelMap,

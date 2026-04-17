@@ -28,7 +28,7 @@ describe("features", () => {
       id: "f1",
       kind: "city",
       hexId: "2,-1",
-      overrideTerrainTile: false,
+      overrideTerrainTile: true,
       hidden: false,
       gmLabel: "Blackford"
     });
@@ -56,7 +56,7 @@ describe("features", () => {
       id: "f1",
       kind: "ruin",
       hexId: "0,0",
-      overrideTerrainTile: false,
+      overrideTerrainTile: true,
       hidden: false
     });
   });
@@ -106,7 +106,7 @@ describe("features", () => {
       id: "legacy-1",
       kind: "village",
       hexId: "1,2",
-      overrideTerrainTile: false,
+      overrideTerrainTile: true,
       hidden: false,
       gmLabel: "Old label",
       playerLabel: undefined,

@@ -26,6 +26,12 @@ import {
   type RoadGesture
 } from "@/editor/tools/roadGesture";
 import {
+  applyFactionGestureCells,
+  createFactionGesture,
+  getFinishedFactionGestureWorld,
+  type FactionGesture
+} from "@/editor/tools/factionGesture";
+import {
   featureHexIdToAxial,
   getFeatureById,
   updateFeature,
@@ -34,34 +40,58 @@ import {
   type FeatureKind
 } from "@/domain/world/features";
 import {
+  addFaction,
   createInitialWorld,
+  getFactionById,
+  getFactions,
+  removeFaction,
+  updateFaction,
+  type Faction,
   type RiverEdgeRef,
   type TerrainType,
   type World
 } from "@/domain/world/world";
 import { tileLabels } from "@/domain/rendering/tileVisuals";
+import { loadMap, saveMap } from "@/app/io/mapPersistence";
 import { useCamera } from "./useCamera";
 import { useUndoRedo } from "./useUndoRedo";
 import type { Axial } from "@/domain/geometry/hex";
 
+const defaultFactionColors = [
+  "#d94f3d",
+  "#3668d8",
+  "#2f9d5a",
+  "#b76ad8",
+  "#d89f2f",
+  "#1fa9a3"
+];
+
 export function useEditorState() {
   const maxLevels = editorConfig.maxLevels;
   const appRef = useRef<HTMLElement | null>(null);
-  const { history, record, redo, undo } = useUndoRedo<World>(() => createInitialWorld(maxLevels));
-  const { changeVisualZoom, setCenter, view, visualZoom } = useCamera();
+  const { history, record, redo, reset, undo } = useUndoRedo<World>(() => createInitialWorld(maxLevels));
+  const { changeLevelByDelta, changeVisualZoom, setCenter, view, visualZoom } = useCamera();
   const [draftWorld, setDraftWorld] = useState<World | null>(null);
   const [activeMode, setActiveMode] = useState<EditorMode>("terrain");
   const [activeType, setActiveType] = useState<TerrainType>("plain");
   const [activeFeatureKind, setActiveFeatureKind] = useState<FeatureKind>("city");
+  const [activeFactionId, setActiveFactionId] = useState<string | null>(null);
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
   const [showCoordinates, setShowCoordinates] = useState(false);
   const [hoveredHex, setHoveredHex] = useState<Axial | null>(null);
   const editGestureRef = useRef<EditGesture | null>(null);
+  const factionGestureRef = useRef<FactionGesture | null>(null);
   const riverGestureRef = useRef<RiverGesture | null>(null);
   const roadGestureRef = useRef<RoadGesture | null>(null);
   const featureIdRef = useRef(0);
+  const factionIdRef = useRef(0);
 
   const world = draftWorld ?? history.present;
+  const factions = useMemo(() => getFactions(world), [world]);
+  const selectedFaction = useMemo(
+    () => activeFactionId ? getFactionById(world, activeFactionId) : null,
+    [activeFactionId, world]
+  );
   const selectedFeature = useMemo(
     () => selectedFeatureId ? getFeatureById(world, view.level, selectedFeatureId) : null,
     [selectedFeatureId, view.level, world]
@@ -70,6 +100,11 @@ export function useEditorState() {
   const createFeatureId = useCallback(() => {
     featureIdRef.current += 1;
     return `feature-${Date.now()}-${featureIdRef.current}`;
+  }, []);
+
+  const createFactionId = useCallback(() => {
+    factionIdRef.current += 1;
+    return `faction-${Date.now()}-${factionIdRef.current}`;
   }, []);
 
   const applyTerrainGestureCells = useCallback(
@@ -94,6 +129,17 @@ export function useEditorState() {
     (axials: Axial[]) => {
       if (editGestureRef.current) {
         applyTerrainGestureCells(axials);
+      }
+
+      const factionGesture = factionGestureRef.current;
+
+      if (factionGesture) {
+        const beforeWorld = factionGesture.world;
+        const nextWorld = applyFactionGestureCells(factionGesture, axials);
+
+        if (nextWorld !== beforeWorld) {
+          setDraftWorld(nextWorld);
+        }
       }
 
       const roadGesture = roadGestureRef.current;
@@ -133,6 +179,7 @@ export function useEditorState() {
   const startEditGesture = useCallback(
     (action: EditGestureAction, axials: Axial[]) => {
       editGestureRef.current = null;
+      factionGestureRef.current = null;
       riverGestureRef.current = null;
       roadGestureRef.current = null;
 
@@ -175,6 +222,17 @@ export function useEditorState() {
         return;
       }
 
+      if (activeMode === "faction") {
+        factionGestureRef.current = createFactionGesture(
+          action === "paint" ? "assign" : "clear",
+          history.present,
+          view.level,
+          activeFactionId
+        );
+        applyActiveGestureCells(axials);
+        return;
+      }
+
       editGestureRef.current = createEditGesture(
         action,
         history.present,
@@ -186,6 +244,7 @@ export function useEditorState() {
     },
     [
       activeFeatureKind,
+      activeFactionId,
       activeMode,
       activeType,
       applyActiveGestureCells,
@@ -201,6 +260,7 @@ export function useEditorState() {
   const startRiverGesture = useCallback(
     (action: EditGestureAction, edges: RiverEdgeRef[]) => {
       editGestureRef.current = null;
+      factionGestureRef.current = null;
       roadGestureRef.current = null;
 
       if (view.level !== 3) {
@@ -219,15 +279,25 @@ export function useEditorState() {
 
   const finishEditGesture = useCallback(() => {
     const terrainGesture = editGestureRef.current;
+    const factionGesture = factionGestureRef.current;
     const riverGesture = riverGestureRef.current;
     const roadGesture = roadGestureRef.current;
     editGestureRef.current = null;
+    factionGestureRef.current = null;
     riverGestureRef.current = null;
     roadGestureRef.current = null;
     setDraftWorld(null);
 
     if (terrainGesture) {
       const finishedWorld = getFinishedGestureWorld(terrainGesture);
+
+      if (finishedWorld) {
+        record(finishedWorld);
+      }
+    }
+
+    if (factionGesture) {
+      const finishedWorld = getFinishedFactionGestureWorld(factionGesture);
 
       if (finishedWorld) {
         record(finishedWorld);
@@ -312,9 +382,87 @@ export function useEditorState() {
     }
   }, [selectedFeature, selectedFeatureId]);
 
+  useEffect(() => {
+    if (activeFactionId && !selectedFaction) {
+      setActiveFactionId(null);
+    }
+  }, [activeFactionId, selectedFaction]);
+
   const toggleCoordinates = useCallback(() => {
     setShowCoordinates((previous) => !previous);
   }, []);
+
+  const saveCurrentMap = useCallback(() => {
+    saveMap(world);
+  }, [world]);
+
+  const createNewFaction = useCallback(() => {
+    const factionNumber = factions.length + 1;
+    const nextFaction: Faction = {
+      id: createFactionId(),
+      name: `Faction ${factionNumber}`,
+      color: defaultFactionColors[(factionNumber - 1) % defaultFactionColors.length]
+    };
+    const nextWorld = addFaction(history.present, nextFaction);
+
+    if (nextWorld !== history.present) {
+      record(nextWorld);
+      setActiveFactionId(nextFaction.id);
+      setActiveMode("faction");
+    }
+  }, [createFactionId, factions.length, history.present, record]);
+
+  const renameFaction = useCallback((factionId: string, name: string) => {
+    const trimmed = name.trim();
+
+    if (!trimmed) {
+      return;
+    }
+
+    const nextWorld = updateFaction(history.present, factionId, { name: trimmed });
+
+    if (nextWorld !== history.present) {
+      record(nextWorld);
+    }
+  }, [history.present, record]);
+
+  const recolorFaction = useCallback((factionId: string, color: string) => {
+    const nextWorld = updateFaction(history.present, factionId, { color });
+
+    if (nextWorld !== history.present) {
+      record(nextWorld);
+    }
+  }, [history.present, record]);
+
+  const deleteFactionById = useCallback((factionId: string) => {
+    const nextWorld = removeFaction(history.present, factionId);
+
+    if (nextWorld !== history.present) {
+      record(nextWorld);
+    }
+
+    if (activeFactionId === factionId) {
+      setActiveFactionId(null);
+    }
+  }, [activeFactionId, history.present, record]);
+
+  const loadMapFromFile = useCallback(async (file: File) => {
+    try {
+      const nextWorld = await loadMap(file);
+      editGestureRef.current = null;
+      factionGestureRef.current = null;
+      riverGestureRef.current = null;
+      roadGestureRef.current = null;
+      setDraftWorld(null);
+      setSelectedFeatureId(null);
+      setActiveFactionId(null);
+      reset(nextWorld);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load map file.";
+      console.error(error);
+      window.alert(message);
+    }
+  }, [reset]);
 
   useKeyboardNavigation({
     center: view.center,
@@ -323,6 +471,7 @@ export function useEditorState() {
     rootRef: appRef,
     visualZoom,
     onCenterChange: setCenter,
+    onLevelStep: changeLevelByDelta,
     onRedo: redo,
     onToggleCoordinates: toggleCoordinates,
     onUndo: undo
@@ -341,20 +490,29 @@ export function useEditorState() {
       return `Left places ${featureKindLabels[activeFeatureKind]} or selects an existing feature, right removes a feature, middle drag pans.`;
     }
 
+    if (activeMode === "faction") {
+      if (!activeFactionId) {
+        return "Select a faction first. Left assigns hexes, right clears faction marks, middle drag pans.";
+      }
+
+      const name = selectedFaction?.name ?? "selected faction";
+      return `Left assigns ${name}, right clears faction marks, middle drag pans.`;
+    }
+
     if (activeMode === "road") {
       if (view.level !== 3) {
-        return "Roads are derived here. Zoom to level 3 to edit road edges.";
+        return "Roads are derived here. Use A/E to switch to level 3 and edit road edges.";
       }
 
       return "Left click and drag to draw roads, right click a road to remove it, middle drag pans.";
     }
 
     if (view.level !== 3) {
-      return "Rivers are derived here. Zoom to level 3 to edit river edges.";
+      return "Rivers are derived here. Use A/E to switch to level 3 and edit river edges.";
     }
 
     return "Left paints river edges, right erases river edges, middle drag pans.";
-  }, [activeFeatureKind, activeMode, activeType, view.level]);
+  }, [activeFactionId, activeFeatureKind, activeMode, activeType, selectedFaction, view.level]);
 
   const canvasProps = useMemo(
     () => ({
@@ -397,8 +555,10 @@ export function useEditorState() {
 
   return {
     activeFeatureKind,
+    activeFactionId,
     activeMode,
     activeType,
+    factions,
     hoveredHex,
     selectedFeature,
     appRef,
@@ -406,8 +566,15 @@ export function useEditorState() {
     chooseFeatureKind,
     clearSelectedFeature,
     deleteSelectedFeature,
+    deleteFaction: deleteFactionById,
     maxLevels,
     selectedFeatureId,
+    createFaction: createNewFaction,
+    renameFaction,
+    recolorFaction,
+    selectFaction: setActiveFactionId,
+    onLoadMap: loadMapFromFile,
+    onSaveMap: saveCurrentMap,
     setActiveMode: changeMode,
     setActiveType,
     updateSelectedFeature,

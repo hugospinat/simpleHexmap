@@ -4,7 +4,6 @@ import {
   convertAxialBetweenLevels,
   type Axial
 } from "@/domain/geometry/hex";
-import { getLevelFromZoom } from "@/editor/tools/levelAutoSwitch";
 
 type LevelView = {
   level: number;
@@ -21,23 +20,26 @@ export function useCamera() {
 
   const changeVisualZoom = useCallback((nextZoom: number) => {
     setVisualZoom(nextZoom);
+  }, []);
 
+  const changeLevelByDelta = useCallback((delta: -1 | 1) => {
     setView((previous) => {
-      const targetLevel = getLevelFromZoom(nextZoom, editorConfig.levelZoomThresholds);
+      const nextLevel = Math.min(editorConfig.maxLevels, Math.max(1, previous.level + delta));
 
-      if (targetLevel === previous.level) {
+      if (nextLevel === previous.level) {
         return previous;
       }
 
       return {
         ...previous,
-        center: convertAxialBetweenLevels(previous.center, previous.level, targetLevel),
-        level: targetLevel
+        center: convertAxialBetweenLevels(previous.center, previous.level, nextLevel),
+        level: nextLevel
       };
     });
   }, []);
 
   return {
+    changeLevelByDelta,
     changeVisualZoom,
     setCenter,
     view,

@@ -11,11 +11,20 @@ export default function App() {
   return (
     <AppShell appRef={editor.appRef} inspectorOpen={Boolean(editor.selectedFeature)}>
       <Sidebar
+        activeFactionId={editor.activeFactionId}
         activeFeatureKind={editor.activeFeatureKind}
         activeMode={editor.activeMode}
         activeType={editor.activeType}
+        factions={editor.factions}
+        onCreateFaction={editor.createFaction}
+        onDeleteFaction={editor.deleteFaction}
         onFeatureKindChange={editor.chooseFeatureKind}
+        onLoadMap={editor.onLoadMap}
         onModeChange={editor.setActiveMode}
+        onRecolorFaction={editor.recolorFaction}
+        onRenameFaction={editor.renameFaction}
+        onSaveMap={editor.onSaveMap}
+        onSelectFaction={editor.selectFaction}
         onTileTypeChange={editor.setActiveType}
       />
       <MapPane {...editor.canvasProps} />

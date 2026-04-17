@@ -1,5 +1,6 @@
 import { getFeaturesForLevel } from "@/domain/world/features";
 import {
+  getFactionOverlayColorMap,
   getLevelMap,
   getRoadLevelMap,
   getRiverLevelMap,
@@ -10,6 +11,7 @@ import { renderFeaturesForLevelWithStats } from "@/domain/rendering/featureVisua
 import type { Axial } from "@/domain/geometry/hex";
 import type { FeatureVisibilityMode } from "@/domain/world/features";
 import { drawBoundaryOverlays } from "./boundaryRenderer";
+import { drawFactionOverlays } from "./factionRenderer";
 import { createMapRenderTransform } from "./mapTransform";
 import { drawRoadOverlays } from "./roadRenderer";
 import { drawHoveredRiverEdge, drawRiverOverlays } from "./riverRenderer";
@@ -59,6 +61,7 @@ export function renderMapFrame({
   context.fillRect(0, 0, viewport.width, viewport.height);
 
   const levelMap = getLevelMap(world, level);
+  const factionOverlayColorMap = getFactionOverlayColorMap(world, level);
   const featuresByHex = getFeaturesForLevel(world, level);
   const riverLevelMap = getRiverLevelMap(world, level);
   const transform = createMapRenderTransform(center, level, visualZoom, viewport);
@@ -87,6 +90,12 @@ export function renderMapFrame({
     transform,
     showCoordinates
   );
+  const factionCount = drawFactionOverlays(
+    context,
+    visible.cells,
+    factionOverlayColorMap,
+    transform
+  );
   const roadCount = drawRoadOverlays(
     context,
     getRoadLevelMap(world, level),
@@ -109,6 +118,7 @@ export function renderMapFrame({
   return {
     featureHexes: featureStats.hexes,
     features: featureStats.features,
+    factions: factionCount,
     boundaries: boundaryCount,
     labels: cellStats.labels,
     roads: roadCount,
