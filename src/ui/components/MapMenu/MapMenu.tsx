@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
 import type { MapSummary } from "@/app/io/mapApi";
 
 type MapMenuProps = {
@@ -10,6 +10,7 @@ type MapMenuProps = {
   onExportMap: (mapId: string) => Promise<void>;
   onImportMap: (file: File) => Promise<void>;
   onOpenMap: (mapId: string) => Promise<void>;
+  onRenameMap: (mapId: string, name: string) => Promise<void>;
   onRefresh: () => Promise<void>;
   onSelectMap: (mapId: string) => void;
 };
@@ -33,10 +34,13 @@ export function MapMenu({
   onExportMap,
   onImportMap,
   onOpenMap,
+  onRenameMap,
   onRefresh,
   onSelectMap
 }: MapMenuProps) {
   const [newMapName, setNewMapName] = useState("");
+  const [editingMapId, setEditingMapId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const submitCreate = async (event: FormEvent<HTMLFormElement>) => {
@@ -56,6 +60,42 @@ export function MapMenu({
 
     await onImportMap(file);
     event.currentTarget.value = "";
+  };
+
+  const beginRename = (map: MapSummary) => {
+    onSelectMap(map.id);
+    setEditingMapId(map.id);
+    setEditingName(map.name);
+  };
+
+  const cancelRename = () => {
+    setEditingMapId(null);
+    setEditingName("");
+  };
+
+  const commitRename = async (map: MapSummary) => {
+    const trimmedName = editingName.trim();
+
+    if (!trimmedName || trimmedName === map.name) {
+      cancelRename();
+      return;
+    }
+
+    await onRenameMap(map.id, trimmedName);
+    cancelRename();
+  };
+
+  const onRenameKeyDown = (event: KeyboardEvent<HTMLInputElement>, map: MapSummary) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void commitRename(map);
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancelRename();
+    }
   };
 
   return (
@@ -118,20 +158,62 @@ export function MapMenu({
             <ul className="map-list">
               {maps.map((map) => {
                 const isSelected = selectedMapId === map.id;
+                const isRenaming = editingMapId === map.id;
 
                 return (
-                  <li key={map.id} className={isSelected ? "map-list-item is-selected" : "map-list-item"}>
-                    <label>
+                  <li
+                    key={map.id}
+                    className={isSelected ? "map-list-item is-selected" : "map-list-item"}
+                    onClick={() => onSelectMap(map.id)}
+                  >
+                    <div className="map-list-main">
                       <input
+                        className="map-list-select"
                         type="radio"
                         name="selected-map"
                         checked={isSelected}
                         onChange={() => onSelectMap(map.id)}
                       />
-                      <span className="map-list-name">{map.name}</span>
-                    </label>
+                      {isRenaming ? (
+                        <input
+                          className="map-name-input"
+                          type="text"
+                          value={editingName}
+                          autoFocus
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) => setEditingName(event.currentTarget.value)}
+                          onBlur={() => {
+                            void commitRename(map);
+                          }}
+                          onKeyDown={(event) => onRenameKeyDown(event, map)}
+                          disabled={isBusy}
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          className="map-name-button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            beginRename(map);
+                          }}
+                          disabled={isBusy}
+                        >
+                          {map.name}
+                        </button>
+                      )}
+                    </div>
                     <span className="map-list-date">{formatUpdatedAt(map.updatedAt)}</span>
-                    <button type="button" className="compact-button" onClick={() => void onOpenMap(map.id)} disabled={isBusy}>Open</button>
+                    <button
+                      type="button"
+                      className="compact-button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void onOpenMap(map.id);
+                      }}
+                      disabled={isBusy}
+                    >
+                      Open
+                    </button>
                   </li>
                 );
               })}

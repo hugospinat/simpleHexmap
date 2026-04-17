@@ -117,6 +117,20 @@ export default function App() {
     });
   }, [withBusyState]);
 
+  const renameMapById = useCallback(async (mapId: string, name: string) => {
+    await withBusyState("Renaming map...", async () => {
+      const existing = await loadMapById(mapId);
+
+      await saveMapById(mapId, {
+        name: getDefaultMapName(name),
+        content: existing.content
+      });
+
+      await refreshMaps();
+      setSelectedMapId(mapId);
+    });
+  }, [refreshMaps, withBusyState]);
+
   const saveOpenMap = useCallback(async (world: World) => {
     const currentOpenMap = openMap;
 
@@ -169,6 +183,7 @@ export default function App() {
       onExportMap={exportMapById}
       onImportMap={importMapFile}
       onOpenMap={openExistingMap}
+      onRenameMap={renameMapById}
       onRefresh={refreshMaps}
       onSelectMap={setSelectedMapId}
       selectedMapId={selectedMapId}
