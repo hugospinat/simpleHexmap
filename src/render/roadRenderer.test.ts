@@ -33,9 +33,12 @@ function createRoadRenderCell(world: ReturnType<typeof createEmptyWorld>, transf
     corners: transform.hexCorners(axial),
     factionColor: null,
     feature: null,
+    featureImage: null,
+    featureTerrainOverrideImage: null,
     key,
     riverEdges: new Set(),
-    roadEdges: getRoadLevelMap(world, 3).get(key) ?? new Set()
+    roadEdges: getRoadLevelMap(world, 3).get(key) ?? new Set(),
+    terrainImage: null
   };
 }
 

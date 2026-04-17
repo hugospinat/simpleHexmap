@@ -2,7 +2,7 @@ import { getTerrainAsset } from "@/assets/terrainAssets";
 import type { Pixel } from "@/core/geometry/hex";
 import type { TerrainType } from "@/core/map/world";
 import { getLoadedImage } from "./assetImages";
-import { drawImageContainedInBounds, getPolygonBounds } from "./imageFit";
+import { drawMaskedHexImage } from "./maskedHexSprites";
 
 export const tileLabels: Record<TerrainType, string> = {
   empty: "Empty",
@@ -39,24 +39,22 @@ function withTileClip(context: CanvasRenderingContext2D, points: Pixel[], draw: 
 export function drawTileAsset(
   context: CanvasRenderingContext2D,
   type: TerrainType,
-  points: Pixel[]
+  points: Pixel[],
+  imageOverride?: HTMLImageElement | null
 ): boolean {
   const asset = getTerrainAsset(type);
 
-  if (!asset) {
+  if (!asset && !imageOverride) {
     return false;
   }
 
-  const image = getLoadedImage(asset.src);
+  const image = imageOverride ?? (asset ? getLoadedImage(asset.src) : null);
 
   if (!image) {
     return false;
   }
 
-  const bounds = getPolygonBounds(points);
-  withTileClip(context, points, () => {
-    drawImageContainedInBounds(context, image, bounds, 0.08);
-  });
+  drawMaskedHexImage(context, image, points, 0.08);
   return true;
 }
 
@@ -200,13 +198,14 @@ export function drawTileContent(
   type: TerrainType,
   points: Pixel[],
   center: Pixel,
-  radius: number
+  radius: number,
+  imageOverride?: HTMLImageElement | null
 ) {
   if (type === "empty") {
     return;
   }
 
-  if (drawTileAsset(context, type, points)) {
+  if (drawTileAsset(context, type, points, imageOverride)) {
     return;
   }
 

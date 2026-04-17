@@ -7,6 +7,16 @@ export function fillPolygon(context: CanvasRenderingContext2D, points: Pixel[], 
   context.fill();
 }
 
+export function addPolygonPath(context: CanvasRenderingContext2D, points: Pixel[]): void {
+  context.moveTo(points[0].x, points[0].y);
+
+  for (const point of points.slice(1)) {
+    context.lineTo(point.x, point.y);
+  }
+
+  context.closePath();
+}
+
 export function strokePolygon(
   context: CanvasRenderingContext2D,
   points: Pixel[],

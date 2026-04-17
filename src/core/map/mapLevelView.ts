@@ -21,7 +21,20 @@ export type MapLevelView = {
   world: MapState;
 };
 
-const mapLevelViewCache = new WeakMap<MapState, Map<number, MapLevelView>>();
+const mapLevelViewCache = new WeakMap<MapState, Map<string, MapLevelView>>();
+
+function getMapLevelViewCacheKey(world: MapState, level: number): string {
+  const versions = world.versions;
+
+  return [
+    level,
+    versions?.terrain ?? 0,
+    versions?.features ?? 0,
+    versions?.factions ?? 0,
+    versions?.roads ?? 0,
+    versions?.rivers ?? 0
+  ].join(":");
+}
 
 export function buildMapLevelView(world: MapState, level: number): MapLevelView {
   let viewsByLevel = mapLevelViewCache.get(world);
@@ -31,7 +44,8 @@ export function buildMapLevelView(world: MapState, level: number): MapLevelView 
     mapLevelViewCache.set(world, viewsByLevel);
   }
 
-  const cached = viewsByLevel.get(level);
+  const cacheKey = getMapLevelViewCacheKey(world, level);
+  const cached = viewsByLevel.get(cacheKey);
 
   if (cached) {
     return cached;
@@ -47,7 +61,7 @@ export function buildMapLevelView(world: MapState, level: number): MapLevelView 
     world
   };
 
-  viewsByLevel.set(level, view);
+  viewsByLevel.set(cacheKey, view);
   return view;
 }
 

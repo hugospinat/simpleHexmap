@@ -1,8 +1,15 @@
 import type { Axial } from "@/core/geometry/hex";
+import {
+  canFeatureOverrideTerrain,
+  getFeatureAsset,
+  getFeatureTerrainOverrideAsset
+} from "@/assets/featureAssets";
 import type { FeatureVisibilityMode } from "@/core/map/features";
 import type { RiverEdgeRef, MapState } from "@/core/map/world";
+import { getTerrainAsset } from "@/assets/terrainAssets";
 import { buildMapLevelView } from "@/core/map/mapLevelView";
 import { createMapRenderTransform, type MapRenderTransform } from "@/render/mapTransform";
+import { getLoadedImage } from "@/render/assetImages";
 import type { RenderCell, VisibleCell, Viewport } from "@/render/renderTypes";
 import { collectVisibleCells } from "@/render/visibleCells";
 
@@ -43,15 +50,27 @@ export function createMapRenderFrame({
   const worldView = buildMapLevelView(world, level);
   const transform = createMapRenderTransform(center, level, visualZoom, viewport);
   const visible = collectVisibleCells(worldView.levelMap, center, level, visualZoom, viewport);
-  const renderCells = visible.cells.map<RenderCell>((visibleCell) => ({
-    ...visibleCell,
-    center: transform.axialToScreen(visibleCell.axial),
-    corners: transform.hexCorners(visibleCell.axial),
-    factionColor: worldView.factionOverlayColorMap.get(visibleCell.key) ?? null,
-    feature: worldView.featuresByHex.get(visibleCell.key) ?? null,
-    riverEdges: worldView.riverLevelMap.get(visibleCell.key) ?? new Set(),
-    roadEdges: worldView.roadLevelMap.get(visibleCell.key) ?? new Set()
-  }));
+  const renderCells = visible.cells.map<RenderCell>((visibleCell) => {
+    const feature = worldView.featuresByHex.get(visibleCell.key) ?? null;
+    const terrainAsset = getTerrainAsset(visibleCell.cell.type);
+    const featureAsset = feature ? getFeatureAsset(feature.kind) : undefined;
+    const featureOverrideAsset = feature && canFeatureOverrideTerrain(feature.kind)
+      ? getFeatureTerrainOverrideAsset(feature.kind)
+      : undefined;
+
+    return {
+      ...visibleCell,
+      center: transform.axialToScreen(visibleCell.axial),
+      corners: transform.hexCorners(visibleCell.axial),
+      factionColor: worldView.factionOverlayColorMap.get(visibleCell.key) ?? null,
+      feature,
+      featureImage: featureAsset ? getLoadedImage(featureAsset.src) : null,
+      featureTerrainOverrideImage: featureOverrideAsset ? getLoadedImage(featureOverrideAsset.src) : null,
+      riverEdges: worldView.riverLevelMap.get(visibleCell.key) ?? new Set(),
+      roadEdges: worldView.roadLevelMap.get(visibleCell.key) ?? new Set(),
+      terrainImage: terrainAsset ? getLoadedImage(terrainAsset.src) : null
+    };
+  });
   const hiddenCells = renderCells.filter(({ cell }) => cell.hidden);
   const visibleTerrainCells = featureVisibilityMode === "player"
     ? renderCells.filter(({ cell }) => !cell.hidden)

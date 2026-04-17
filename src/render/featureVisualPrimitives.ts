@@ -10,7 +10,7 @@ import {
   type FeatureKind
 } from "@/core/map/features";
 import { getLoadedImage } from "./assetImages";
-import { drawImageContainedInBounds, getPolygonBounds } from "./imageFit";
+import { drawMaskedHexImage } from "./maskedHexSprites";
 
 export const featureGlyphs: Record<FeatureKind, string> = {
   city: "o",
@@ -77,15 +77,16 @@ export function drawLabel(context: CanvasRenderingContext2D, text: string, cente
 export function drawFeatureAsset(
   context: CanvasRenderingContext2D,
   type: FeatureKind,
-  center: Pixel
+  center: Pixel,
+  imageOverride?: HTMLImageElement | null
 ): boolean {
   const asset = getFeatureAsset(type);
 
-  if (!asset) {
+  if (!asset && !imageOverride) {
     return false;
   }
 
-  const image = getLoadedImage(asset.src);
+  const image = imageOverride ?? (asset ? getLoadedImage(asset.src) : null);
 
   if (!image) {
     return false;
@@ -93,39 +94,30 @@ export function drawFeatureAsset(
 
   const hexRadius = featureIconSize / Math.sqrt(3);
   const points = getHexPoints(center, hexRadius);
-  const bounds = getPolygonBounds(points);
 
-  context.save();
-  tracePolygon(context, points);
-  context.clip();
-  drawImageContainedInBounds(context, image, bounds, featureImagePadding);
-  context.restore();
+  drawMaskedHexImage(context, image, points, featureImagePadding);
   return true;
 }
 
 export function drawFeatureTerrainOverrideTile(
   context: CanvasRenderingContext2D,
   featureKind: FeatureKind,
-  points: Pixel[]
+  points: Pixel[],
+  imageOverride?: HTMLImageElement | null
 ): boolean {
   const asset = getFeatureTerrainOverrideAsset(featureKind);
 
-  if (!asset) {
+  if (!asset && !imageOverride) {
     return false;
   }
 
-  const image = getLoadedImage(asset.src);
+  const image = imageOverride ?? (asset ? getLoadedImage(asset.src) : null);
 
   if (!image) {
     return false;
   }
 
-  const bounds = getPolygonBounds(points);
-  context.save();
-  tracePolygon(context, points);
-  context.clip();
-  drawImageContainedInBounds(context, image, bounds, 0);
-  context.restore();
+  drawMaskedHexImage(context, image, points, 0);
   return true;
 }
 

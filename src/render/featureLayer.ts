@@ -34,7 +34,8 @@ export function renderFeature(
   origin: Pixel,
   scale: number,
   visibilityMode: FeatureVisibilityMode,
-  emphasizeHidden = false
+  emphasizeHidden = false,
+  featureImage?: HTMLImageElement | null
 ) {
   const center = { x: 0, y: 0 };
   const label = getFeatureLabel(feature, visibilityMode);
@@ -62,7 +63,7 @@ export function renderFeature(
     return;
   }
 
-  if (drawFeatureAsset(context, feature.kind, center)) {
+  if (drawFeatureAsset(context, feature.kind, center, featureImage)) {
     if (label) {
       drawLabel(context, label, { x: center.x, y: center.y + 16 }, scale);
     }
@@ -363,6 +364,48 @@ export function renderFeaturesForLevelWithStats(
       featureScale,
       visibilityMode,
       emphasizeHidden
+    );
+  }
+
+  return {
+    features: visibleFeatures,
+    hexes: visibleHexes
+  };
+}
+
+export function renderFeatureCellsWithStats(
+  context: CanvasRenderingContext2D,
+  renderCells: Array<{
+    center: Pixel;
+    feature: Feature | null;
+    featureImage: HTMLImageElement | null;
+    key: string;
+  }>,
+  transform: MapRenderTransform,
+  excludedHexes?: ReadonlySet<string>,
+  visibilityMode: FeatureVisibilityMode = "gm",
+  emphasizeHidden = false
+): FeatureRenderStats {
+  const featureScale = transform.mapScale;
+  let visibleHexes = 0;
+  let visibleFeatures = 0;
+
+  for (const { center, feature, featureImage, key } of renderCells) {
+    if (!feature || excludedHexes?.has(key) || !isFeatureVisible(feature, visibilityMode)) {
+      continue;
+    }
+
+    visibleHexes += 1;
+    visibleFeatures += 1;
+
+    renderFeature(
+      context,
+      feature,
+      center,
+      featureScale,
+      visibilityMode,
+      emphasizeHidden,
+      featureImage
     );
   }
 

@@ -77,21 +77,21 @@ export function drawRiverOverlays(
 
   context.strokeStyle = "#cfe8ff";
   context.lineWidth = transform.scaleMapLength(riverHaloWidth);
+  context.beginPath();
   for (const [start, end] of segments.values()) {
-    context.beginPath();
     context.moveTo(start.x, start.y);
     context.lineTo(end.x, end.y);
-    context.stroke();
   }
+  context.stroke();
 
   context.strokeStyle = "#1f6fb5";
   context.lineWidth = transform.scaleMapLength(riverStrokeWidth);
+  context.beginPath();
   for (const [start, end] of segments.values()) {
-    context.beginPath();
     context.moveTo(start.x, start.y);
     context.lineTo(end.x, end.y);
-    context.stroke();
   }
+  context.stroke();
 
   context.restore();
   return segments.size;

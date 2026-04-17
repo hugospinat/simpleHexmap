@@ -13,24 +13,62 @@ function scaleDashForTransform(dash: readonly number[], transform: MapRenderTran
   return dash.map((segment) => transform.scaleMapLength(segment));
 }
 
+function collectBoundarySegments(visibleCells: RenderCell[]): Segment[] {
+  const segments: Segment[] = [];
+  const seenSegments = new Set<string>();
+
+  for (const { corners } of visibleCells) {
+    for (let edgeIndex = 0; edgeIndex < 6; edgeIndex += 1) {
+      const start = corners[edgeIndex];
+      const end = corners[(edgeIndex + 1) % corners.length];
+      const segmentKey = getSegmentKey(start, end);
+
+      if (seenSegments.has(segmentKey)) {
+        continue;
+      }
+
+      seenSegments.add(segmentKey);
+      segments.push([start, end]);
+    }
+  }
+
+  return segments;
+}
+
 function drawSegmentLayer(
   context: CanvasRenderingContext2D,
-  segments: Map<string, Segment>,
+  segments: readonly Segment[],
   transform: MapRenderTransform,
   dash: readonly number[]
 ) {
-  if (segments.size === 0) {
+  if (segments.length === 0) {
     return;
   }
 
   context.setLineDash(scaleDashForTransform(dash, transform));
+  context.beginPath();
 
-  for (const [start, end] of segments.values()) {
-    context.beginPath();
+  for (const [start, end] of segments) {
     context.moveTo(start.x, start.y);
     context.lineTo(end.x, end.y);
-    context.stroke();
   }
+
+  context.stroke();
+}
+
+function drawBoundarySegments(
+  context: CanvasRenderingContext2D,
+  segments: readonly Segment[],
+  transform: MapRenderTransform
+): void {
+  context.save();
+  context.globalAlpha = editorConfig.boundaryLineAlpha;
+  context.strokeStyle = editorConfig.boundaryLineColor;
+  context.lineWidth = transform.scaleMapLength(editorConfig.boundaryLineWidth);
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  drawSegmentLayer(context, segments, transform, editorConfig.boundaryLineDashCurrent);
+  context.restore();
 }
 
 export function drawBoundaryOverlays(
@@ -42,29 +80,7 @@ export function drawBoundaryOverlays(
     return 0;
   }
 
-  const currentSegments = new Map<string, Segment>();
-
-  for (const { corners } of visibleCells) {
-    for (let edgeIndex = 0; edgeIndex < 6; edgeIndex += 1) {
-      const start = corners[edgeIndex];
-      const end = corners[(edgeIndex + 1) % corners.length];
-      const segmentKey = getSegmentKey(start, end);
-
-      if (!currentSegments.has(segmentKey)) {
-        currentSegments.set(segmentKey, [start, end]);
-      }
-    }
-  }
-
-  context.save();
-  context.globalAlpha = editorConfig.boundaryLineAlpha;
-  context.strokeStyle = editorConfig.boundaryLineColor;
-  context.lineWidth = transform.scaleMapLength(editorConfig.boundaryLineWidth);
-  context.lineCap = "round";
-  context.lineJoin = "round";
-
-  drawSegmentLayer(context, currentSegments, transform, editorConfig.boundaryLineDashCurrent);
-
-  context.restore();
-  return currentSegments.size;
+  const segments = collectBoundarySegments(visibleCells);
+  drawBoundarySegments(context, segments, transform);
+  return segments.length;
 }

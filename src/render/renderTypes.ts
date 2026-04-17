@@ -16,8 +16,11 @@ export type RenderCell = VisibleCell & {
   corners: Pixel[];
   factionColor: string | null;
   feature: Feature | null;
+  featureImage: HTMLImageElement | null;
+  featureTerrainOverrideImage: HTMLImageElement | null;
   riverEdges: RiverEdgeSet;
   roadEdges: RoadEdgeSet;
+  terrainImage: HTMLImageElement | null;
 };
 
 export type RenderStats = {
