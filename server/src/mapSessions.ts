@@ -1,4 +1,4 @@
-export { getMap, getOrCreateSession, listMaps } from "./sessionStore.js";
+export { deleteMap, getMap, getOrCreateSession, listMaps } from "./sessionStore.js";
 export {
   applyOperationBatchToSession,
   applyOperationToSession

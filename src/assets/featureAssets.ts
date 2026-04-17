@@ -34,7 +34,7 @@ export const featureAssets: MapImageAssetRegistry<FeatureKind> = {
   village: defineMapImageAsset(village)
 };
 
-const featureTerrainOverrideAssets: MapImageAssetRegistry<FeatureKind> = {
+export const featureTerrainOverrideAssets: MapImageAssetRegistry<FeatureKind> = {
   capital: defineMapImageAsset(overRideCapital),
   city: defineMapImageAsset(overRideCity),
   dungeon: defineMapImageAsset(overRideDungeon),

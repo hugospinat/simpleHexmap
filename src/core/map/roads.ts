@@ -8,6 +8,7 @@ import {
   type HexId
 } from "@/core/geometry/hex";
 import type { MapState } from "@/core/map/worldTypes";
+import { bumpMapStateVersion } from "@/core/map/worldTypes";
 import { SOURCE_LEVEL } from "@/core/map/mapRules";
 
 export type RoadEdgeIndex = 0 | 1 | 2 | 3 | 4 | 5;
@@ -166,7 +167,8 @@ export function addRoadConnection(world: MapState, level: number, from: Axial, t
     roadsByLevel: {
       ...world.roadsByLevel,
       [level]: levelMap
-    }
+    },
+    versions: bumpMapStateVersion(world, "roads")
   };
 }
 
@@ -198,7 +200,8 @@ export function removeRoadConnection(world: MapState, level: number, from: Axial
     roadsByLevel: {
       ...world.roadsByLevel,
       [level]: levelMap
-    }
+    },
+    versions: bumpMapStateVersion(world, "roads")
   };
 }
 
@@ -226,7 +229,8 @@ export function removeRoadConnectionsAt(world: MapState, level: number, axial: A
     roadsByLevel: {
       ...world.roadsByLevel,
       [level]: levelMap
-    }
+    },
+    versions: bumpMapStateVersion(world, "roads")
   };
 }
 

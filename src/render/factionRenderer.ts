@@ -1,12 +1,12 @@
 import type { MapRenderTransform } from "./mapTransform";
-import type { VisibleCell } from "./renderTypes";
+import type { RenderCell } from "./renderTypes";
 import { fillPolygon } from "./canvasPrimitives";
 
 const defaultFactionOverlayOpacity = 0.3;
 
 export function drawFactionOverlays(
   context: CanvasRenderingContext2D,
-  visibleCells: VisibleCell[],
+  visibleCells: RenderCell[],
   factionColorByHex: Map<string, string>,
   transform: MapRenderTransform,
   opacity = defaultFactionOverlayOpacity
@@ -20,14 +20,14 @@ export function drawFactionOverlays(
   context.save();
   context.globalAlpha = opacity;
 
-  for (const { axial, key } of visibleCells) {
-    const color = factionColorByHex.get(key);
+  for (const { corners, factionColor } of visibleCells) {
+    const color = factionColor;
 
     if (!color) {
       continue;
     }
 
-    fillPolygon(context, transform.hexCorners(axial), color);
+    fillPolygon(context, corners, color);
     count += 1;
   }
 

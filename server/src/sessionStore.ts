@@ -1,8 +1,13 @@
 import { WebSocket } from "ws";
 import {
+  deleteMapFile,
   listDiskMapSummaries,
   readDiskMap
 } from "./mapStorage.js";
+import {
+  createMapDocumentRuntime,
+  materializeRuntimeContent
+} from "./mapDocumentRuntime.js";
 import type {
   MapRecord,
   MapSession,
@@ -16,6 +21,13 @@ function toMapSummary(map: MapRecord): MapSummary {
     id: map.id,
     name: map.name,
     updatedAt: map.updatedAt
+  };
+}
+
+export function getSessionMapRecord(session: MapSession): MapRecord {
+  return {
+    ...session.map,
+    content: materializeRuntimeContent(session.runtime)
   };
 }
 
@@ -39,7 +51,7 @@ export async function getMap(mapId: string): Promise<MapRecord | null> {
   const session = mapSessions.get(mapId);
 
   if (session) {
-    return session.map;
+    return getSessionMapRecord(session);
   }
 
   return readDiskMap(mapId);
@@ -60,6 +72,7 @@ export async function getOrCreateSession(mapId: string): Promise<MapSession | nu
 
   const session: MapSession = {
     map,
+    runtime: createMapDocumentRuntime(map),
     clients: new Set<WebSocket>(),
     persistTimer: null,
     appliedOperationPayloads: new Map<string, string>(),
@@ -68,4 +81,27 @@ export async function getOrCreateSession(mapId: string): Promise<MapSession | nu
   };
   mapSessions.set(mapId, session);
   return session;
+}
+
+export async function deleteMap(mapId: string): Promise<boolean> {
+  const session = mapSessions.get(mapId);
+
+  if (session) {
+    if (session.persistTimer) {
+      clearTimeout(session.persistTimer);
+      session.persistTimer = null;
+    }
+
+    for (const client of session.clients) {
+      if (client.readyState === WebSocket.OPEN || client.readyState === WebSocket.CONNECTING) {
+        client.close(1000, "map_deleted");
+      }
+    }
+
+    session.clients.clear();
+    mapSessions.delete(mapId);
+  }
+
+  const deletedFile = await deleteMapFile(mapId);
+  return Boolean(session) || deletedFile;
 }

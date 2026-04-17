@@ -3,20 +3,19 @@ import {
   featureCanOverrideTerrainTile
 } from "@/render/featureLayer";
 import { getLevelRotation, hexKey, type Axial } from "@/core/geometry/hex";
-import type { Feature } from "@/core/map/features";
 import { tileColors } from "@/core/map/world";
 import { drawTileContent } from "@/render/tileVisuals";
 import { fillPolygon, strokePolygon } from "./canvasPrimitives";
 import type { MapRenderTransform } from "./mapTransform";
-import type { VisibleCell } from "./renderTypes";
+import type { RenderCell } from "./renderTypes";
 
 export function drawTerrainBaseLayer(
   context: CanvasRenderingContext2D,
-  visibleCells: VisibleCell[],
+  visibleCells: RenderCell[],
   transform: MapRenderTransform
 ): number {
-  for (const { axial, cell } of visibleCells) {
-    fillPolygon(context, transform.hexCorners(axial), tileColors[cell.type]);
+  for (const { cell, corners } of visibleCells) {
+    fillPolygon(context, corners, tileColors[cell.type]);
   }
 
   return visibleCells.length;
@@ -24,7 +23,7 @@ export function drawTerrainBaseLayer(
 
 export function drawHiddenCellOverlay(
   context: CanvasRenderingContext2D,
-  hiddenCells: VisibleCell[],
+  hiddenCells: RenderCell[],
   transform: MapRenderTransform,
   opacity = 0.4
 ): void {
@@ -35,8 +34,8 @@ export function drawHiddenCellOverlay(
   context.save();
   context.globalAlpha = opacity;
 
-  for (const { axial } of hiddenCells) {
-    fillPolygon(context, transform.hexCorners(axial), "#000000");
+  for (const { corners } of hiddenCells) {
+    fillPolygon(context, corners, "#000000");
   }
 
   context.restore();
@@ -44,8 +43,7 @@ export function drawHiddenCellOverlay(
 
 export function drawTerrainDetailLayer(
   context: CanvasRenderingContext2D,
-  visibleCells: VisibleCell[],
-  featuresByHex: Map<string, Feature>,
+  visibleCells: RenderCell[],
   highlightedHex: Axial | null,
   transform: MapRenderTransform,
   showCoordinates: boolean
@@ -54,11 +52,9 @@ export function drawTerrainDetailLayer(
   let labels = 0;
   const terrainOverriddenHexes = new Set<string>();
 
-  for (const { axial, cell, key } of visibleCells) {
-    const corners = transform.hexCorners(axial);
-    const label = transform.axialToScreen(axial);
+  for (const { cell, center, corners, feature, key } of visibleCells) {
+    const label = center;
     const radius = transform.scaleMapLength(32);
-    const feature = featuresByHex.get(key);
     const canOverride = feature ? featureCanOverrideTerrainTile(feature) : false;
 
     if (canOverride && feature && drawFeatureTerrainOverrideTile(context, feature.kind, corners)) {

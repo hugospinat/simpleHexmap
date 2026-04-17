@@ -20,9 +20,9 @@ const defaultFactionColors = [
 type UseFactionControlsOptions = {
   activeFactionId: string | null;
   canEdit: boolean;
+  commitLocalOperations: (operations: MapOperation[]) => void;
   factionCount: number;
   presentWorld: MapState;
-  sendOperations: (operations: MapOperation[]) => void;
   setActiveFactionId: (factionId: string | null) => void;
   setActiveMode: (mode: EditorMode) => void;
 };
@@ -30,9 +30,9 @@ type UseFactionControlsOptions = {
 export function useFactionControls({
   activeFactionId,
   canEdit,
+  commitLocalOperations,
   factionCount,
   presentWorld,
-  sendOperations,
   setActiveFactionId,
   setActiveMode
 }: UseFactionControlsOptions) {
@@ -57,11 +57,11 @@ export function useFactionControls({
     const result = commandAddFaction(presentWorld, nextFaction);
 
     if (result.operations.length > 0) {
-      sendOperations(result.operations);
+      commitLocalOperations(result.operations);
       setActiveFactionId(nextFaction.id);
       setActiveMode("faction");
     }
-  }, [canEdit, createFactionId, factionCount, presentWorld, sendOperations, setActiveFactionId, setActiveMode]);
+  }, [canEdit, commitLocalOperations, createFactionId, factionCount, presentWorld, setActiveFactionId, setActiveMode]);
 
   const renameFaction = useCallback((factionId: string, name: string) => {
     if (!canEdit) {
@@ -77,9 +77,9 @@ export function useFactionControls({
     const result = commandUpdateFaction(presentWorld, factionId, { name: trimmed });
 
     if (result.operations.length > 0) {
-      sendOperations(result.operations);
+      commitLocalOperations(result.operations);
     }
-  }, [canEdit, presentWorld, sendOperations]);
+  }, [canEdit, commitLocalOperations, presentWorld]);
 
   const recolorFaction = useCallback((factionId: string, color: string) => {
     if (!canEdit) {
@@ -89,9 +89,9 @@ export function useFactionControls({
     const result = commandUpdateFaction(presentWorld, factionId, { color });
 
     if (result.operations.length > 0) {
-      sendOperations(result.operations);
+      commitLocalOperations(result.operations);
     }
-  }, [canEdit, presentWorld, sendOperations]);
+  }, [canEdit, commitLocalOperations, presentWorld]);
 
   const deleteFaction = useCallback((factionId: string) => {
     if (!canEdit) {
@@ -101,13 +101,13 @@ export function useFactionControls({
     const result = commandRemoveFaction(presentWorld, factionId);
 
     if (result.operations.length > 0) {
-      sendOperations(result.operations);
+      commitLocalOperations(result.operations);
     }
 
     if (activeFactionId === factionId) {
       setActiveFactionId(null);
     }
-  }, [activeFactionId, canEdit, presentWorld, sendOperations, setActiveFactionId]);
+  }, [activeFactionId, canEdit, commitLocalOperations, presentWorld, setActiveFactionId]);
 
   return {
     createFaction,

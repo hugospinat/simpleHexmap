@@ -19,11 +19,15 @@ export type {
 export {
   applyMapOperation,
   applyMapOperations,
+  applyOperationToSavedMapContentIndex,
   applyOperationToSavedMapContent,
   applyOperationsToSavedMapContent,
   applyRoadOperationToRecords,
+  indexSavedMapContent,
+  materializeSavedMapContent,
   savedMapContentOperationApplier
 } from "./contentOperations.js";
+export type { SavedMapContentIndex } from "./contentOperations.js";
 export { coalesceMapOperations } from "./mapOperationCoalescer.js";
 export {
   addRoadConnectionToRecords,

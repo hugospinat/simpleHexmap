@@ -9,6 +9,7 @@ type MapMenuProps = {
   maps: MapSummary[];
   selectedMapId: string | null;
   onCreateMap: (name: string) => Promise<void>;
+  onDeleteMap: (mapId: string) => Promise<void>;
   onExportMap: (mapId: string) => Promise<void>;
   onImportMap: (file: File) => Promise<void>;
   onOpenMap: (mapId: string, role: ViewerRole) => Promise<void>;
@@ -33,6 +34,7 @@ export function MapMenu({
   maps,
   selectedMapId,
   onCreateMap,
+  onDeleteMap,
   onExportMap,
   onImportMap,
   onOpenMap,
@@ -85,6 +87,24 @@ export function MapMenu({
 
     await onRenameMap(map.id, trimmedName);
     cancelRename();
+  };
+
+  const removeSelectedMap = async () => {
+    if (!selectedMap) {
+      return;
+    }
+
+    const confirmed = window.confirm(`Remove "${selectedMap.name}"? This cannot be undone.`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    await onDeleteMap(selectedMap.id);
+
+    if (editingMapId === selectedMap.id) {
+      cancelRename();
+    }
   };
 
   const onRenameKeyDown = (event: KeyboardEvent<HTMLInputElement>, map: MapSummary) => {
@@ -148,6 +168,14 @@ export function MapMenu({
             disabled={isBusy || !selectedMap}
           >
             Export selected
+          </button>
+          <button
+            type="button"
+            className="danger-button"
+            onClick={() => void removeSelectedMap()}
+            disabled={isBusy || !selectedMap}
+          >
+            Remove selected
           </button>
           <button type="button" className="compact-button" onClick={() => fileInputRef.current?.click()} disabled={isBusy}>Import JSON</button>
           <input
@@ -213,28 +241,6 @@ export function MapMenu({
                       )}
                     </div>
                     <span className="map-list-date">{formatUpdatedAt(map.updatedAt)}</span>
-                    <button
-                      type="button"
-                      className="compact-button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void onOpenMap(map.id, "player");
-                      }}
-                      disabled={isBusy}
-                    >
-                      Open as Player
-                    </button>
-                    <button
-                      type="button"
-                      className="compact-button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void onOpenMap(map.id, "gm");
-                      }}
-                      disabled={isBusy}
-                    >
-                      Open as GM
-                    </button>
                   </li>
                 );
               })}

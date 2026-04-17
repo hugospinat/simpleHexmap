@@ -42,6 +42,7 @@ import {
   type MapState
 } from "@/core/map/world";
 import { SOURCE_LEVEL } from "@/core/map/mapRules";
+import { bumpMapStateVersion } from "@/core/map/worldTypes";
 
 function applySetTileToWorld(world: MapState, tile: Extract<MapOperation, { type: "set_tile" }>["tile"]): MapState {
   const axial = { q: tile.q, r: tile.r };
@@ -144,7 +145,8 @@ function applyRoadOperationToWorld(
     roadsByLevel: {
       ...world.roadsByLevel,
       [SOURCE_LEVEL]: new Map()
-    }
+    },
+    versions: bumpMapStateVersion(world, "roads")
   };
 
   for (const road of updatedRoadRecords) {

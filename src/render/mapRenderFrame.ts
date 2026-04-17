@@ -3,18 +3,19 @@ import type { FeatureVisibilityMode } from "@/core/map/features";
 import type { RiverEdgeRef, MapState } from "@/core/map/world";
 import { buildMapLevelView } from "@/core/map/mapLevelView";
 import { createMapRenderTransform, type MapRenderTransform } from "@/render/mapTransform";
-import type { VisibleCell, Viewport } from "@/render/renderTypes";
+import type { RenderCell, VisibleCell, Viewport } from "@/render/renderTypes";
 import { collectVisibleCells } from "@/render/visibleCells";
 
 export type MapRenderFrame = ReturnType<typeof buildMapLevelView> & {
   featureVisibleKeys: ReadonlySet<string>;
-  hiddenCells: VisibleCell[];
+  hiddenCells: RenderCell[];
   highlightedHex: Axial | null;
   hoverRiverEdge: RiverEdgeRef | null;
   transform: MapRenderTransform;
+  renderCells: RenderCell[];
   visibleCells: VisibleCell[];
   visibleKeys: ReadonlySet<string>;
-  visibleTerrainCells: VisibleCell[];
+  visibleTerrainCells: RenderCell[];
   visibleTerrainKeys: ReadonlySet<string>;
 };
 
@@ -42,10 +43,19 @@ export function createMapRenderFrame({
   const worldView = buildMapLevelView(world, level);
   const transform = createMapRenderTransform(center, level, visualZoom, viewport);
   const visible = collectVisibleCells(worldView.levelMap, center, level, visualZoom, viewport);
-  const hiddenCells = visible.cells.filter(({ cell }) => cell.hidden);
+  const renderCells = visible.cells.map<RenderCell>((visibleCell) => ({
+    ...visibleCell,
+    center: transform.axialToScreen(visibleCell.axial),
+    corners: transform.hexCorners(visibleCell.axial),
+    factionColor: worldView.factionOverlayColorMap.get(visibleCell.key) ?? null,
+    feature: worldView.featuresByHex.get(visibleCell.key) ?? null,
+    riverEdges: worldView.riverLevelMap.get(visibleCell.key) ?? new Set(),
+    roadEdges: worldView.roadLevelMap.get(visibleCell.key) ?? new Set()
+  }));
+  const hiddenCells = renderCells.filter(({ cell }) => cell.hidden);
   const visibleTerrainCells = featureVisibilityMode === "player"
-    ? visible.cells.filter(({ cell }) => !cell.hidden)
-    : visible.cells;
+    ? renderCells.filter(({ cell }) => !cell.hidden)
+    : renderCells;
   const visibleTerrainKeys = new Set(visibleTerrainCells.map((cell) => cell.key));
 
   return {
@@ -54,6 +64,7 @@ export function createMapRenderFrame({
     hiddenCells,
     highlightedHex,
     hoverRiverEdge,
+    renderCells,
     transform,
     visibleCells: visible.cells,
     visibleKeys: visible.keys,

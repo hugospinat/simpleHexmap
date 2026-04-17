@@ -5,7 +5,8 @@ import {
   applyOperationToSession
 } from "./operationService.js";
 import {
-  getOrCreateSession
+  getOrCreateSession,
+  getSessionMapRecord
 } from "./sessionStore.js";
 
 const maxOperationsPerBatch = 500;
@@ -23,11 +24,13 @@ function sendSnapshot(client, session) {
     return;
   }
 
+  const map = getSessionMapRecord(session);
+
   client.send(JSON.stringify({
     type: "sync_snapshot",
     lastSequence: session.nextSequence - 1,
-    updatedAt: session.map.updatedAt,
-    content: session.map.content
+    updatedAt: map.updatedAt,
+    content: map.content
   }));
 }
 

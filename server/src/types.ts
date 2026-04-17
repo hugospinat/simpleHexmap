@@ -1,5 +1,6 @@
 import type { WebSocket } from "ws";
 import type { MapOperation, SavedMapContent } from "../../src/core/protocol/index.js";
+import type { MapDocumentRuntime } from "./mapDocumentRuntime.js";
 
 export type MapRecord = {
   id: string;
@@ -26,6 +27,7 @@ export type OperationEnvelope = {
 
 export type MapSession = {
   map: MapRecord;
+  runtime: MapDocumentRuntime;
   clients: Set<WebSocket>;
   persistTimer: ReturnType<typeof setTimeout> | null;
   appliedOperationPayloads: Map<string, string>;

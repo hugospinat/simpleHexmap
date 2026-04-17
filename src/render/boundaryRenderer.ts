@@ -1,7 +1,7 @@
 import { editorConfig } from "@/config/editorConfig";
 import { getSegmentKey } from "./canvasPrimitives";
 import type { MapRenderTransform } from "./mapTransform";
-import type { VisibleCell } from "./renderTypes";
+import type { RenderCell } from "./renderTypes";
 
 type Segment = [{ x: number; y: number }, { x: number; y: number }];
 
@@ -35,7 +35,7 @@ function drawSegmentLayer(
 
 export function drawBoundaryOverlays(
   context: CanvasRenderingContext2D,
-  visibleCells: VisibleCell[],
+  visibleCells: RenderCell[],
   transform: MapRenderTransform
 ): number {
   if (visibleCells.length === 0) {
@@ -44,9 +44,7 @@ export function drawBoundaryOverlays(
 
   const currentSegments = new Map<string, Segment>();
 
-  for (const { axial } of visibleCells) {
-    const corners = transform.hexCorners(axial);
-
+  for (const { corners } of visibleCells) {
     for (let edgeIndex = 0; edgeIndex < 6; edgeIndex += 1) {
       const start = corners[edgeIndex];
       const end = corners[(edgeIndex + 1) % corners.length];

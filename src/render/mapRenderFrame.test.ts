@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  addFaction,
   addFeature,
-  addRoadConnection,
   addTile,
+  assignFactionAt,
   createEmptyWorld,
   setCellHidden
 } from "@/core/map/world";
@@ -63,5 +64,28 @@ describe("map render view visibility", () => {
       hidden: true,
       overrideTerrainTile: true
     })).toBe(false);
+  });
+
+  it("precomputes render cell geometry and overlays", () => {
+    let world = createEmptyWorld();
+    world = addTile(world, 3, { q: 0, r: 0 }, "plain");
+    world = addFaction(world, { id: "f-1", name: "North", color: "#112233" });
+    world = assignFactionAt(world, 3, { q: 0, r: 0 }, "f-1");
+
+    const frame = createMapRenderFrame({
+      center: { q: 0, r: 0 },
+      featureVisibilityMode: "gm",
+      highlightedHex: null,
+      hoverRiverEdge: null,
+      level: 3,
+      viewport,
+      visualZoom: 1,
+      world
+    });
+    const cell = frame.renderCells.find((entry) => entry.key === "0,0");
+
+    expect(cell?.center).toEqual(expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }));
+    expect(cell?.corners).toHaveLength(6);
+    expect(cell?.factionColor).toBe("#112233");
   });
 });

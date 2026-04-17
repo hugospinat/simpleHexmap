@@ -99,11 +99,8 @@ function drawMapRenderFrame(
     hiddenCells,
     highlightedHex,
     hoverRiverEdge,
-    riverLevelMap,
-    roadLevelMap,
     transform,
-    visibleTerrainCells,
-    visibleTerrainKeys
+    visibleTerrainCells
   } = renderView;
 
   const tileCount = drawTerrainBaseLayer(
@@ -119,13 +116,11 @@ function drawMapRenderFrame(
   const riverCount = drawRiverOverlays(
     context,
     visibleTerrainCells,
-    riverLevelMap,
     transform
   );
   const cellStats = drawTerrainDetailLayer(
     context,
     visibleTerrainCells,
-    featuresByHex,
     highlightedHex,
     transform,
     showCoordinates
@@ -138,9 +133,8 @@ function drawMapRenderFrame(
   );
   const roadCount = drawRoadOverlays(
     context,
-    roadLevelMap,
-    transform,
-    featureVisibilityMode === "player" ? visibleTerrainKeys : undefined
+    visibleTerrainCells,
+    transform
   );
 
   if (fogEditingActive && featureVisibilityMode === "gm") {

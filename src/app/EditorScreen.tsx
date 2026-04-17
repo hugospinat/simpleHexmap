@@ -50,10 +50,11 @@ export function EditorScreen({ initialWorld, mapId, mapName, role, onBackToMaps 
           onFeatureKindChange={editor.chooseFeatureKind}
           onModeChange={editor.setActiveMode}
           onRecolorFaction={editor.recolorFaction}
+          onRedo={editor.redoLastOperationBatch}
           onRenameFaction={editor.renameFaction}
           onSelectFaction={editor.selectFaction}
-          syncStatus={editor.syncStatus}
           onTileTypeChange={editor.setActiveType}
+          onUndo={editor.undoLastOperationBatch}
         />
         <MapPane {...editor.canvasProps} />
         {editor.selectedFeature ? (
@@ -70,6 +71,7 @@ export function EditorScreen({ initialWorld, mapId, mapName, role, onBackToMaps 
           hoveredHex={editor.hoveredHex}
           level={editor.view.level}
           maxLevels={editor.maxLevels}
+          syncStatus={editor.syncStatus}
           visualZoom={editor.visualZoom}
         />
       </AppShell>

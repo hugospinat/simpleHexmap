@@ -1,13 +1,14 @@
 import { WebSocket } from "ws";
-import { applyOperationToContent, applyOperationsToContent, validateMapOperation } from "./mapContent.js";
+import { validateMapOperation } from "./mapContent.js";
 import {
   nowIso,
   sanitizeName
 } from "./mapStorage.js";
+import { applyOperationToRuntime } from "./mapDocumentRuntime.js";
 import { broadcastPayload } from "./broadcastService.js";
 import { parseAppliedOperationPayload, rememberAppliedOperation } from "./appliedOperationLog.js";
 import { schedulePersist } from "./persistenceScheduler.js";
-import { getOrCreateSession } from "./sessionStore.js";
+import { getOrCreateSession, getSessionMapRecord } from "./sessionStore.js";
 import type {
   AppliedOperationMessage,
   MapRecord,
@@ -24,11 +25,7 @@ function applyOperationToMap(map: MapRecord, operation: MapOperation, updatedAt:
     };
   }
 
-  return {
-    ...map,
-    updatedAt,
-    content: applyOperationToContent(map.content, operation)
-  };
+  return { ...map, updatedAt };
 }
 
 function shouldLogServerPerf(durationMs: number): boolean {
@@ -88,7 +85,7 @@ export async function applyOperationToSession(
       broadcastPayload(session, existingPayload);
     }
 
-    return session.map;
+    return getSessionMapRecord(session);
   }
 
   console.info("[MapSyncServer] operation_received", {
@@ -100,11 +97,14 @@ export async function applyOperationToSession(
 
   const applyStartedAt = performance.now();
   session.map = applyOperationToMap(session.map, operation, nowIso());
+  if (operation.type !== "rename_map") {
+    applyOperationToRuntime(session.runtime, operation);
+  }
   logServerPerf("operation_apply", applyStartedAt, {
     mapId,
     operationType: operation.type,
     operationCount: 1,
-    tileCount: session.map.content.tiles.length
+    tileCount: session.runtime.contentIndex.tilesByHex.size
   });
   schedulePersist(session);
 
@@ -131,7 +131,7 @@ export async function applyOperationToSession(
     updatedAt: session.map.updatedAt
   });
 
-  return session.map;
+  return getSessionMapRecord(session);
 }
 
 export async function applyOperationBatchToSession(
@@ -148,10 +148,10 @@ export async function applyOperationBatchToSession(
 
   const resolvedMessages: AppliedOperationMessage[] = [];
   const newMessages: AppliedOperationMessage[] = [];
-  const newOperations: MapOperation[] = [];
   let mutated = false;
   let batchUpdatedAt = session.map.updatedAt;
   let nextName = session.map.name;
+  const applyStartedAt = performance.now();
 
   for (const envelope of envelopes) {
     const operationId = envelope.operationId;
@@ -187,7 +187,7 @@ export async function applyOperationBatchToSession(
     if (operation.type === "rename_map") {
       nextName = sanitizeName(operation.name);
     } else {
-      newOperations.push(operation);
+      applyOperationToRuntime(session.runtime, operation);
     }
 
     const appliedMessage: AppliedOperationMessage = {
@@ -208,20 +208,16 @@ export async function applyOperationBatchToSession(
   }
 
   if (mutated) {
-    const applyStartedAt = performance.now();
     session.map = {
       ...session.map,
       name: nextName,
-      updatedAt: batchUpdatedAt,
-      content: newOperations.length > 0
-        ? applyOperationsToContent(session.map.content, newOperations)
-        : session.map.content
+      updatedAt: batchUpdatedAt
     };
     logServerPerf("operation_batch_apply", applyStartedAt, {
       mapId,
-      operationCount: newOperations.length,
+      operationCount: newMessages.length,
       totalEnvelopeCount: envelopes.length,
-      tileCount: session.map.content.tiles.length
+      tileCount: session.runtime.contentIndex.tilesByHex.size
     });
     schedulePersist(session);
   }
@@ -255,6 +251,6 @@ export async function applyOperationBatchToSession(
     }
   }
 
-  return session.map;
+  return getSessionMapRecord(session);
 }
 

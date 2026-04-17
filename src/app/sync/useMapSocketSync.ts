@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { applyMapOperationToWorld, type MapOperation } from "@/app/document/mapOperations";
 import { deserializeWorld } from "@/app/document/worldMapCodec";
 import type {
-  MapOperationBatchAppliedMessage,
   MapOperationBatchRequest,
   MapOperationMessage,
-  MapOperationRequest,
-  MapSyncSnapshotMessage
+  MapOperationRequest
 } from "@/app/api/mapApi";
 import { buildWebSocketUrl } from "@/app/api/apiBase";
+import type { MapOperation } from "@/core/protocol";
+import type { MapState } from "@/core/map/world";
 import {
+  applyReadySessionOperations,
   acknowledgeSessionOperation,
   clearMapSyncSession,
+  commitSessionLocalOperations,
   createMapSyncSession,
   enqueueSessionOperation,
   getSessionUnsentOperationBatches,
@@ -20,21 +21,34 @@ import {
   markSessionOperationsSent,
   markSessionSocketClosed,
   markSessionSocketOpened,
-  queueSessionLocalOperations,
   resetSessionFromSnapshot,
-  takeReadySessionOperations
+  type MapSyncSessionStatus
 } from "@/app/sync/mapSyncSession";
-import type { MapState } from "@/core/map/world";
+import { parseMapSyncSocketMessage } from "@/app/sync/mapSyncMessages";
+import { createMapSocketTransport, type MapSocketTransport } from "@/app/sync/mapSocketTransport";
 
-export type MapSyncStatus = "connecting" | "saving" | "saved" | "error";
+export type MapSyncStatus = MapSyncSessionStatus;
 
 type UseMapSyncOptions = {
   clearPreviewWorld: () => void;
+  initialWorld: MapState;
   mapId: string;
-  resetWorldFromCurrent: (deriveNextState: (currentState: MapState) => MapState) => void;
+};
+
+export type UseMapSocketSyncResult = {
+  commitLocalOperations: (operations: MapOperation[]) => void;
+  confirmedWorld: MapState;
+  syncStatus: MapSyncStatus;
+  visibleWorld: MapState;
 };
 
 const maxOperationsPerBatch = 500;
+
+function createClientId(): string {
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? `client-${crypto.randomUUID()}`
+    : `client-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 function isMapSyncDebugEnabled(): boolean {
   if (!import.meta.env.DEV) {
@@ -49,32 +63,31 @@ function isMapSyncDebugEnabled(): boolean {
 }
 
 function logMapSync(event: string, payload: Record<string, unknown>): void {
-  if (!isMapSyncDebugEnabled()) {
-    return;
+  if (isMapSyncDebugEnabled()) {
+    console.info(`[MapSync] ${event}`, payload);
   }
-
-  console.info(`[MapSync] ${event}`, payload);
 }
 
-function toRoundedMs(durationMs: number): number {
-  return Number(durationMs.toFixed(2));
-}
-
-export function useMapSocketSync({ clearPreviewWorld, mapId, resetWorldFromCurrent }: UseMapSyncOptions) {
+export function useMapSocketSync({ clearPreviewWorld, initialWorld, mapId }: UseMapSyncOptions): UseMapSocketSyncResult {
+  const clientIdRef = useRef(createClientId());
+  const sessionRef = useRef(createMapSyncSession(clientIdRef.current, initialWorld));
+  const transportRef = useRef<MapSocketTransport | null>(null);
+  const [confirmedWorld, setConfirmedWorld] = useState(initialWorld);
+  const [visibleWorld, setVisibleWorld] = useState(initialWorld);
   const [syncStatus, setSyncStatus] = useState<MapSyncStatus>("connecting");
-  const websocketRef = useRef<WebSocket | null>(null);
-  const clientIdRef = useRef(
-    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? `client-${crypto.randomUUID()}`
-      : `client-${Date.now()}-${Math.random().toString(36).slice(2)}`
-  );
-  const sessionRef = useRef(createMapSyncSession(clientIdRef.current));
+
+  const publishSessionState = useCallback(() => {
+    const session = sessionRef.current;
+    setConfirmedWorld(session.confirmedWorld);
+    setVisibleWorld(session.visibleWorld);
+    setSyncStatus(session.status);
+  }, []);
 
   const flushOperations = useCallback(() => {
-    const socket = websocketRef.current;
+    const transport = transportRef.current;
     const session = sessionRef.current;
 
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
+    if (!transport || transport.socket.readyState !== WebSocket.OPEN) {
       setSyncStatus("connecting");
       return;
     }
@@ -105,15 +118,12 @@ export function useMapSocketSync({ clearPreviewWorld, mapId, resetWorldFromCurre
         operation: envelope.operation,
         clientId: clientIdRef.current
       };
-
-      socket.send(JSON.stringify(payload));
+      transport.sendJson(payload);
       markSessionOperationsSent(session, [envelope]);
-
       logMapSync("operation_sent", {
         mapId,
         operationId: envelope.operationId,
-        operationType: envelope.operation.type,
-        queued: session.pendingOperations.length
+        operationType: envelope.operation.type
       });
     } else {
       for (let batchIndex = 0; batchIndex < unsentBatches.length; batchIndex += 1) {
@@ -126,25 +136,22 @@ export function useMapSocketSync({ clearPreviewWorld, mapId, resetWorldFromCurre
             operation: envelope.operation
           }))
         };
-
-        socket.send(JSON.stringify(payload));
+        transport.sendJson(payload);
         markSessionOperationsSent(session, batchItems);
-
         logMapSync("operation_batch_sent", {
           mapId,
           batchIndex: batchIndex + 1,
-          totalBatches: unsentBatches.length,
           operations: batchItems.length,
-          queued: session.pendingOperations.length
+          totalBatches: unsentBatches.length
         });
       }
     }
 
-    setSyncStatus("saving");
-  }, [mapId]);
+    publishSessionState();
+  }, [mapId, publishSessionState]);
 
-  const sendOperations = useCallback((operations: MapOperation[]) => {
-    const envelopes = queueSessionLocalOperations(sessionRef.current, operations, Date.now());
+  const commitLocalOperations = useCallback((operations: MapOperation[]) => {
+    const envelopes = commitSessionLocalOperations(sessionRef.current, operations, Date.now());
 
     for (const envelope of envelopes) {
       logMapSync("operation_created", {
@@ -155,114 +162,76 @@ export function useMapSocketSync({ clearPreviewWorld, mapId, resetWorldFromCurre
     }
 
     if (envelopes.length > 0) {
-      setSyncStatus("saving");
+      clearPreviewWorld();
+      publishSessionState();
     }
 
     flushOperations();
-  }, [flushOperations, mapId]);
-
-  const acknowledgeOperation = useCallback((operationId: string) => {
-    acknowledgeSessionOperation(sessionRef.current, operationId);
-  }, []);
+  }, [clearPreviewWorld, flushOperations, mapId, publishSessionState]);
 
   const applyQueuedReceivedOperations = useCallback(() => {
-    const debugEnabled = isMapSyncDebugEnabled();
-    const applyDispatchTimerLabel = `[MapSync] apply_queue_dispatch:${mapId}`;
-    const applyQueueStartedAt = performance.now();
-    let appliedCount = 0;
-    let firstAppliedSequence: number | null = null;
-    let lastAppliedSequence: number | null = null;
+    const appliedOperations = applyReadySessionOperations(sessionRef.current);
 
-    if (debugEnabled) {
-      console.time(applyDispatchTimerLabel);
-    }
-
-    const session = sessionRef.current;
-    const operationsToApply = takeReadySessionOperations(session);
-    for (const { sequence, message } of operationsToApply) {
-      if (message.sourceClientId === clientIdRef.current) {
-        acknowledgeOperation(message.operationId);
-      }
-      appliedCount += 1;
-      firstAppliedSequence ??= sequence;
-      lastAppliedSequence = sequence;
-    }
-
-    if (operationsToApply.length > 0) {
+    if (appliedOperations.length > 0) {
       clearPreviewWorld();
-      resetWorldFromCurrent((currentWorld) => {
-        let world = currentWorld;
-        for (const { sequence, message } of operationsToApply) {
-          const operationTimerBase = `[MapSync] apply_operation:${mapId}:${sequence}:${message.operationId}`;
-          if (debugEnabled) {
-            console.time(`${operationTimerBase}:applyMapOperationToWorld`);
-          }
-          const operationStart = performance.now();
-          world = applyMapOperationToWorld(world, message.operation);
-          const applyDurationMs = performance.now() - operationStart;
-          if (debugEnabled) {
-            console.timeEnd(`${operationTimerBase}:applyMapOperationToWorld`);
-            if (applyDurationMs >= 8) {
-              console.info("[MapSync] apply_operation_slow", {
-                mapId,
-                sequence,
-                operationId: message.operationId,
-                operationType: message.operation.type,
-                durationMs: toRoundedMs(applyDurationMs)
-              });
-            }
-          }
-          logMapSync("operation_applied_sequence", {
-            mapId,
-            sequence,
-            operationId: message.operationId,
-            operationType: message.operation.type,
-            sourceClientId: message.sourceClientId
-          });
-        }
-        return world;
-      });
+      publishSessionState();
+    } else {
+      setSyncStatus(sessionRef.current.status);
     }
 
-    if (debugEnabled) {
-      console.timeEnd(applyDispatchTimerLabel);
-      const applyQueueDispatchMs = performance.now() - applyQueueStartedAt;
-      const bufferedSequences = Array.from(session.receiveQueue.bufferedOperations.keys());
-      const nextBufferedSequence = bufferedSequences.length > 0 ? Math.min(...bufferedSequences) : null;
-      console.info("[MapSync] apply_queue_summary", {
+    for (const { acknowledgedLocal, message, sequence } of appliedOperations) {
+      logMapSync("operation_applied_sequence", {
+        acknowledgedLocal,
         mapId,
-        appliedCount,
-        firstAppliedSequence,
-        lastAppliedSequence,
-        expectedNextSequence: session.receiveQueue.expectedSequence,
-        bufferedWaiting: session.receiveQueue.bufferedOperations.size,
-        nextBufferedSequence,
-        queuedLocal: session.pendingOperations.length,
-        dispatchLoopMs: toRoundedMs(applyQueueDispatchMs)
+        operationId: message.operationId,
+        operationType: message.operation.type,
+        sequence,
+        sourceClientId: message.sourceClientId
       });
-      if (appliedCount > 0) {
-        const queueToPaintStartedAt = performance.now();
-        window.requestAnimationFrame(() => {
-          console.info("[MapSync] apply_queue_to_paint_summary", {
-            mapId,
-            appliedCount,
-            durationMs: toRoundedMs(performance.now() - applyQueueStartedAt),
-            toNextPaintMs: toRoundedMs(performance.now() - queueToPaintStartedAt)
-          });
-        });
-      }
     }
 
-    setSyncStatus(session.pendingOperations.length > 0 ? "saving" : "saved");
     flushOperations();
-  }, [acknowledgeOperation, clearPreviewWorld, flushOperations, mapId, resetWorldFromCurrent]);
+  }, [clearPreviewWorld, flushOperations, mapId, publishSessionState]);
+
+  const enqueueAppliedOperation = useCallback((payload: MapOperationMessage) => {
+    const result = enqueueSessionOperation(sessionRef.current, payload);
+
+    if (result.status === "invalid") {
+      console.error("[MapSync] invalid_operation_id", payload);
+      return;
+    }
+
+    if (result.status === "past_sequence") {
+      if (payload.sourceClientId === sessionRef.current.clientId) {
+        acknowledgeSessionOperation(sessionRef.current, payload.operationId);
+        publishSessionState();
+      }
+
+      logMapSync("operation_ignored_past_sequence", {
+        expectedSequence: result.expectedSequence,
+        mapId,
+        operationId: payload.operationId,
+        sequence: payload.sequence
+      });
+      return;
+    }
+
+    if (result.status === "gap") {
+      logMapSync("operation_gap_detected", {
+        bufferedWaiting: result.bufferedWaiting,
+        expectedSequence: result.expectedSequence,
+        mapId,
+        receivedSequence: result.receivedSequence
+      });
+    }
+  }, [mapId, publishSessionState]);
 
   useEffect(() => {
     const socketUrl = buildWebSocketUrl(`/api/maps/${encodeURIComponent(mapId)}/ws`);
     let disposed = false;
     let reconnectTimer: number | null = null;
     let reconnectAttempt = 0;
-    let activeSocket: WebSocket | null = null;
+    let activeTransport: MapSocketTransport | null = null;
 
     const clearReconnectTimer = () => {
       if (reconnectTimer !== null) {
@@ -280,12 +249,8 @@ export function useMapSocketSync({ clearPreviewWorld, mapId, resetWorldFromCurre
       reconnectAttempt += 1;
       clearReconnectTimer();
       setSyncStatus("connecting");
-
-      logMapSync("reconnect_scheduled", { mapId, socketUrl, delayMs, reconnectAttempt });
-
-      reconnectTimer = window.setTimeout(() => {
-        connect();
-      }, delayMs);
+      logMapSync("reconnect_scheduled", { delayMs, mapId, reconnectAttempt, socketUrl });
+      reconnectTimer = window.setTimeout(connect, delayMs);
     };
 
     const connect = () => {
@@ -293,159 +258,86 @@ export function useMapSocketSync({ clearPreviewWorld, mapId, resetWorldFromCurre
         return;
       }
 
-      if (activeSocket && (activeSocket.readyState === WebSocket.CONNECTING || activeSocket.readyState === WebSocket.OPEN)) {
+      if (activeTransport && (
+        activeTransport.socket.readyState === WebSocket.CONNECTING
+        || activeTransport.socket.readyState === WebSocket.OPEN
+      )) {
         return;
       }
 
-      logMapSync("connecting", { mapId, socketUrl });
-
-      const socket = new WebSocket(socketUrl);
-      activeSocket = socket;
-      websocketRef.current = socket;
+      const transport = createMapSocketTransport(socketUrl);
+      const socket = transport.socket;
+      activeTransport = transport;
+      transportRef.current = transport;
       setSyncStatus("connecting");
 
       socket.onopen = () => {
-        if (disposed || websocketRef.current !== socket) {
+        if (disposed || transportRef.current !== transport) {
           return;
         }
 
         reconnectAttempt = 0;
         markSessionSocketOpened(sessionRef.current);
-
+        publishSessionState();
         logMapSync("open", { mapId, socketUrl });
       };
 
       socket.onmessage = (event) => {
-        if (disposed || websocketRef.current !== socket) {
+        if (disposed || transportRef.current !== transport) {
           return;
         }
 
-        let message: unknown;
+        const parsed = parseMapSyncSocketMessage(event.data);
 
-        try {
-          message = JSON.parse(String(event.data)) as unknown;
-        } catch {
-          return;
-        }
-
-        if (typeof message !== "object" || message === null || !("type" in message)) {
-          return;
-        }
-
-        if ((message as { type?: string }).type === "sync_error") {
-          console.error("[MapSync] sync_error", message);
+        if (parsed.type === "sync_error") {
+          console.error("[MapSync] sync_error", parsed.payload);
           markSessionError(sessionRef.current);
-          setSyncStatus("error");
+          publishSessionState();
           return;
         }
 
-        if ((message as { type?: string }).type === "sync_snapshot") {
-          const payload = message as MapSyncSnapshotMessage;
+        if (parsed.type === "sync_snapshot") {
+          const payload = parsed.payload;
 
           if (!Number.isInteger(payload.lastSequence) || payload.lastSequence < 0) {
             console.error("[MapSync] invalid_snapshot_sequence", payload);
             markSessionError(sessionRef.current);
-            setSyncStatus("error");
+            publishSessionState();
             return;
           }
 
           try {
             const snapshotWorld = deserializeWorld(payload.content);
+            resetSessionFromSnapshot(sessionRef.current, snapshotWorld, payload.lastSequence);
             clearPreviewWorld();
-            resetWorldFromCurrent(() => snapshotWorld);
-            resetSessionFromSnapshot(sessionRef.current, payload.lastSequence);
-            setSyncStatus(sessionRef.current.status);
-
+            publishSessionState();
             logMapSync("snapshot_loaded", {
-              mapId,
               lastSequence: payload.lastSequence,
-              nextExpectedSequence: sessionRef.current.receiveQueue.expectedSequence,
-              queuedLocal: sessionRef.current.pendingOperations.length
+              mapId,
+              pendingLocal: sessionRef.current.pendingOperations.length
             });
-
             flushOperations();
           } catch (error) {
             console.error("[MapSync] invalid_snapshot", error);
             markSessionError(sessionRef.current);
-            setSyncStatus("error");
+            publishSessionState();
           }
-
           return;
         }
 
-        const enqueueAppliedOperation = (payload: MapOperationMessage) => {
-          const operationId = payload.operationId;
-          const result = enqueueSessionOperation(sessionRef.current, payload);
-
-          if (result.status === "invalid") {
-            console.error("[MapSync] invalid_operation_id", payload);
-            return;
-          }
-
-          if (result.status === "waiting_for_snapshot") {
-            logMapSync("operation_waiting_snapshot", {
-              mapId,
-              operationId,
-              sequence: payload.sequence,
-              operationType: payload.operation.type
-            });
-            return;
-          }
-
-          if (result.status === "past_sequence") {
-            if (payload.sourceClientId === clientIdRef.current) {
-              acknowledgeOperation(operationId);
-            }
-
-            logMapSync("operation_ignored_past_sequence", {
-              mapId,
-              operationId,
-              sequence: payload.sequence,
-              expectedSequence: result.expectedSequence,
-              operationType: payload.operation.type
-            });
-
-            return;
-          }
-
-          logMapSync("operation_received", {
-            mapId,
-            sequence: payload.sequence,
-            operationId,
-            operationType: payload.operation.type,
-            sourceClientId: payload.sourceClientId
-          });
-
-          if (result.status === "gap") {
-            logMapSync("operation_gap_detected", {
-              mapId,
-              expectedSequence: result.expectedSequence,
-              receivedSequence: result.receivedSequence,
-              bufferedWaiting: result.bufferedWaiting
-            });
-          }
-        };
-
-        const messageType = (message as { type?: string }).type;
-
-        if (messageType === "map_operation_applied") {
-          enqueueAppliedOperation(message as MapOperationMessage);
+        if (parsed.type === "map_operation_applied") {
+          enqueueAppliedOperation(parsed.payload);
           applyQueuedReceivedOperations();
           return;
         }
 
-        if (messageType === "map_operation_batch_applied") {
-          const batch = message as MapOperationBatchAppliedMessage;
+        if (parsed.type === "map_operation_batch_applied") {
+          const batch = parsed.payload;
 
           if (!Array.isArray(batch.operations)) {
             console.error("[MapSync] invalid_operation_batch", batch);
             return;
           }
-
-          logMapSync("operation_batch_received", {
-            mapId,
-            operations: batch.operations.length
-          });
 
           for (const operation of batch.operations) {
             enqueueAppliedOperation({ type: "map_operation_applied", ...operation });
@@ -456,68 +348,61 @@ export function useMapSocketSync({ clearPreviewWorld, mapId, resetWorldFromCurre
       };
 
       socket.onerror = (event) => {
-        if (disposed || websocketRef.current !== socket) {
-          return;
+        if (!disposed && transportRef.current === transport) {
+          console.error("[MapSync] error", { event, mapId, socketUrl });
         }
-
-        console.error("[MapSync] error", { mapId, socketUrl, event });
       };
 
       socket.onclose = (event) => {
-        const isCurrentSocket = websocketRef.current === socket;
+        const isCurrentSocket = transportRef.current === transport;
 
         if (isCurrentSocket) {
-          websocketRef.current = null;
+          transportRef.current = null;
         }
 
-        if (activeSocket === socket) {
-          activeSocket = null;
+        if (activeTransport === transport) {
+          activeTransport = null;
         }
 
         if (disposed || !isCurrentSocket) {
-          logMapSync("close_intentional", {
-            mapId,
-            socketUrl,
-            code: event.code,
-            reason: event.reason,
-            wasClean: event.wasClean
-          });
           return;
         }
 
         console.warn("[MapSync] close", {
-          mapId,
-          socketUrl,
           code: event.code,
+          mapId,
           reason: event.reason,
+          socketUrl,
           wasClean: event.wasClean
         });
-
         markSessionSocketClosed(sessionRef.current);
-        setSyncStatus("connecting");
+        publishSessionState();
         scheduleReconnect();
       };
     };
 
-    reconnectTimer = window.setTimeout(() => {
-      connect();
-    }, 0);
+    reconnectTimer = window.setTimeout(connect, 0);
 
     return () => {
       disposed = true;
       clearReconnectTimer();
       clearMapSyncSession(sessionRef.current);
-
-      if (activeSocket && (activeSocket.readyState === WebSocket.CONNECTING || activeSocket.readyState === WebSocket.OPEN)) {
-        activeSocket.close(1000, "client_cleanup");
-      }
-
-      websocketRef.current = null;
+      activeTransport?.close();
+      transportRef.current = null;
     };
-  }, [acknowledgeOperation, applyQueuedReceivedOperations, clearPreviewWorld, flushOperations, mapId, resetWorldFromCurrent]);
+  }, [
+    applyQueuedReceivedOperations,
+    clearPreviewWorld,
+    enqueueAppliedOperation,
+    flushOperations,
+    mapId,
+    publishSessionState
+  ]);
 
   return {
-    sendOperations,
-    syncStatus
+    commitLocalOperations,
+    confirmedWorld,
+    syncStatus,
+    visibleWorld
   };
 }

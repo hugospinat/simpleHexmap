@@ -1,5 +1,6 @@
 import { getAncestorAtLevel, hexKey, parseHexKey, type Axial, type HexId } from "@/core/geometry/hex";
 import type { MapState } from "./worldTypes";
+import { bumpMapStateVersion } from "./worldTypes";
 import { SOURCE_LEVEL } from "./mapRules";
 
 export type FeatureKind =
@@ -176,7 +177,8 @@ export function addFeature(world: MapState, level: number, feature: FeatureInput
     featuresByLevel: {
       ...world.featuresByLevel,
       [level]: nextLevelFeatures
-    }
+    },
+    versions: bumpMapStateVersion(world, "features")
   };
 }
 
@@ -236,7 +238,8 @@ export function updateFeature(
     featuresByLevel: {
       ...world.featuresByLevel,
       [targetLevel]: nextLevelFeatures
-    }
+    },
+    versions: bumpMapStateVersion(world, "features")
   };
 }
 
@@ -260,7 +263,8 @@ export function removeFeatureAt(world: MapState, level: number, coord: Axial): M
     featuresByLevel: {
       ...world.featuresByLevel,
       [level]: nextLevelFeatures
-    }
+    },
+    versions: bumpMapStateVersion(world, "features")
   };
 }
 

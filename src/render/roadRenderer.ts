@@ -1,13 +1,10 @@
 import { getRoadPathAsset } from "@/assets/terrainAssets";
 import type { Pixel } from "@/core/geometry/hex";
-import {
-  roadHexIdToAxial,
-  type RoadEdgeIndex,
-  type RoadLevelMap
-} from "@/core/map/roads";
+import type { RoadEdgeIndex } from "@/core/map/roads";
 import { getLoadedImage } from "./assetImages";
 import { getSegmentKey } from "./canvasPrimitives";
 import type { MapRenderTransform } from "./mapTransform";
+import type { RenderCell } from "./renderTypes";
 
 type RoadEdgeStamp = {
   angle: number;
@@ -22,25 +19,15 @@ function getMidpoint(a: Pixel, b: Pixel): Pixel {
 }
 
 function getEdgeStamps(
-  roadLevelMap: RoadLevelMap,
-  transform: MapRenderTransform,
-  visibleKeys?: ReadonlySet<string>
+  renderCells: RenderCell[]
 ): RoadEdgeStamp[] {
   const stamps: RoadEdgeStamp[] = [];
   const seenEdges = new Set<string>();
 
-  for (const [hexId, edgeSet] of roadLevelMap.entries()) {
-    if (visibleKeys && !visibleKeys.has(hexId)) {
-      continue;
-    }
-
+  for (const { center: hexCenter, corners, roadEdges: edgeSet } of renderCells) {
     if (edgeSet.size === 0) {
       continue;
     }
-
-    const axial = roadHexIdToAxial(hexId);
-    const corners = transform.hexCorners(axial);
-    const hexCenter = transform.axialToScreen(axial);
 
     for (const edge of edgeSet as Set<RoadEdgeIndex>) {
       const start = corners[edge];
@@ -84,15 +71,14 @@ function drawRoadEdgeStamp(
 
 export function drawRoadOverlays(
   context: CanvasRenderingContext2D,
-  roadLevelMap: RoadLevelMap,
+  renderCells: RenderCell[],
   transform: MapRenderTransform,
-  visibleKeys?: ReadonlySet<string>
 ): number {
-  if (roadLevelMap.size === 0) {
+  if (renderCells.length === 0) {
     return 0;
   }
 
-  const stamps = getEdgeStamps(roadLevelMap, transform, visibleKeys);
+  const stamps = getEdgeStamps(renderCells);
 
   if (stamps.length === 0) {
     return 0;

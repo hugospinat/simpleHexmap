@@ -19,10 +19,11 @@ type SidebarProps = {
   onFeatureKindChange: (type: FeatureKind) => void;
   onModeChange: (mode: EditorMode) => void;
   onRecolorFaction: (factionId: string, color: string) => void;
+  onRedo: () => void;
   onRenameFaction: (factionId: string, name: string) => void;
   onSelectFaction: (factionId: string | null) => void;
-  syncStatus: "connecting" | "saving" | "saved" | "error";
   onTileTypeChange: (type: TerrainType) => void;
+  onUndo: () => void;
 };
 
 export function Sidebar({
@@ -38,10 +39,11 @@ export function Sidebar({
   onFeatureKindChange,
   onModeChange,
   onRecolorFaction,
+  onRedo,
   onRenameFaction,
   onSelectFaction,
-  syncStatus,
-  onTileTypeChange
+  onTileTypeChange,
+  onUndo
 }: SidebarProps) {
   const [editingFactionId, setEditingFactionId] = useState<string | null>(null);
   const [editingFactionName, setEditingFactionName] = useState("");
@@ -72,9 +74,8 @@ export function Sidebar({
     <aside className="sidebar" aria-label="Map editor tools">
       <div className="brand">
         <span className="eyebrow">OSR CARTOGRAPHY</span>
-        <h1>Hex Map</h1>
+        <h1>Simple Hex</h1>
         <p>{mapName}</p>
-        <button type="button" className="compact-button" onClick={onBackToMaps}>Back to maps</button>
       </div>
 
       <section className="panel tool-panel">
@@ -197,17 +198,12 @@ export function Sidebar({
         </section>
       )}
 
-      <section className="panel data-panel">
-        <h2>Data</h2>
-        <p>
-          {syncStatus === "connecting"
-            ? "Connecting..."
-            : syncStatus === "saving"
-              ? "Saving..."
-              : syncStatus === "error"
-                ? "Sync error"
-                : "Saved"}
-        </p>
+      <section className="sidebar-footer" aria-label="History actions">
+        <button type="button" className="compact-button sidebar-back-button" onClick={onBackToMaps}>Back to maps</button>
+        <div className="sidebar-history-actions">
+          <button type="button" className="compact-button" onClick={onUndo}>Undo</button>
+          <button type="button" className="compact-button" onClick={onRedo}>Redo</button>
+        </div>
       </section>
     </aside>
   );

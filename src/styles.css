@@ -105,6 +105,24 @@ input::placeholder {
   overscroll-behavior: contain;
 }
 
+.sidebar-footer {
+  display: grid;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
+  background: #ffffff;
+}
+
+.sidebar-back-button {
+  width: 100%;
+}
+
+.sidebar-history-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 .brand {
   display: grid;
   gap: 8px;
@@ -550,7 +568,7 @@ input::placeholder {
 
 .map-list-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   border: 1px solid #d6d6d6;

@@ -12,6 +12,7 @@ import {
   applyOperationToSession,
 } from "./operationService.js";
 import {
+  deleteMap,
   getMap,
   getOrCreateSession,
   listMaps
@@ -114,13 +115,25 @@ async function handleMapResourceRequest(request, response, mapId) {
     return true;
   }
 
+  if (request.method === "DELETE") {
+    const deleted = await deleteMap(mapId);
+
+    if (!deleted) {
+      sendJson(response, 404, { error: "Map not found." });
+      return true;
+    }
+
+    sendJson(response, 200, { deleted: true });
+    return true;
+  }
+
   return false;
 }
 
 export function createHttpHandler() {
   return async (request, response) => {
     response.setHeader("Access-Control-Allow-Origin", "*");
-    response.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS");
+    response.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
     response.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
     if (request.method === "OPTIONS") {

@@ -1,8 +1,8 @@
 import type { Pixel } from "@/core/geometry/hex";
-import type { RiverEdgeIndex, RiverEdgeRef, RiverLevelMap } from "@/core/map/world";
+import type { RiverEdgeIndex, RiverEdgeRef } from "@/core/map/world";
 import { getSegmentKey } from "./canvasPrimitives";
 import type { MapRenderTransform } from "./mapTransform";
-import type { VisibleCell } from "./renderTypes";
+import type { RenderCell } from "./renderTypes";
 
 const riverStrokeWidth = 2.3;
 const riverHaloWidth = 4.4;
@@ -41,11 +41,10 @@ export function drawHoveredRiverEdge(
 
 export function drawRiverOverlays(
   context: CanvasRenderingContext2D,
-  visibleCells: VisibleCell[],
-  riverLevelMap: RiverLevelMap,
+  visibleCells: RenderCell[],
   transform: MapRenderTransform
 ): number {
-  if (visibleCells.length === 0 || riverLevelMap.size === 0) {
+  if (visibleCells.length === 0) {
     return 0;
   }
 
@@ -55,16 +54,12 @@ export function drawRiverOverlays(
 
   const segments = new Map<string, [Pixel, Pixel]>();
 
-  for (const { axial, key } of visibleCells) {
-    const edges = riverLevelMap.get(key);
-
-    if (!edges || edges.size === 0) {
+  for (const { corners, riverEdges } of visibleCells) {
+    if (riverEdges.size === 0) {
       continue;
     }
 
-    const corners = transform.hexCorners(axial);
-
-    for (const edge of edges as Set<RiverEdgeIndex>) {
+    for (const edge of riverEdges as Set<RiverEdgeIndex>) {
       const start = corners[edge];
       const end = corners[(edge + 1) % corners.length];
       const segmentKey = getSegmentKey(start, end);

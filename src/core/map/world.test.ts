@@ -120,6 +120,18 @@ describe("world operations", () => {
     expect(getLevelMap(hidden, 2).get("0,0")?.hidden).toBe(true);
   });
 
+  it("increments terrain version when terrain changes", () => {
+    const empty = createEmptyWorld();
+    const painted = addTile(empty, 3, { q: 0, r: 0 }, "plain");
+    const unchanged = addTile(painted, 3, { q: 0, r: 0 }, "plain");
+    const hidden = setCellHidden(painted, 3, { q: 0, r: 0 }, true);
+
+    expect(empty.versions.terrain).toBe(0);
+    expect(painted.versions.terrain).toBe(1);
+    expect(unchanged).toBe(painted);
+    expect(hidden.versions.terrain).toBe(2);
+  });
+
   it("adds river edges symmetrically for both adjacent cells", () => {
     const world = addRiverEdge(createEmptyWorld(), 3, { axial: { q: 3, r: -1 }, edge: 0 });
 

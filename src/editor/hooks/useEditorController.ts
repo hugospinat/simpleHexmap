@@ -44,7 +44,6 @@ import {
   type MapState
 } from "@/core/map/world";
 import { useCamera } from "./useCamera";
-import { useAuthoritativeWorld } from "./useAuthoritativeWorld";
 import { hexKey, type Axial } from "@/core/geometry/hex";
 import { SOURCE_LEVEL } from "@/core/map/mapRules";
 import { useMapSocketSync } from "@/app/sync/useMapSocketSync";
@@ -82,9 +81,8 @@ type ActiveEditorGesture =
 export function useEditorController({ initialWorld, mapId, role }: UseEditorControllerOptions) {
   const maxLevels = editorConfig.maxLevels;
   const appRef = useRef<HTMLElement | null>(null);
-  const { resetFromCurrent, world: authoritativeWorld } = useAuthoritativeWorld<MapState>(() => initialWorld);
   const { changeLevelByDelta, changeVisualZoom, setCenter, view, visualZoom } = useCamera();
-  const [gesturePreviewWorld, setGesturePreviewWorld] = useState<MapState | null>(null);
+  const [toolPreviewWorld, setToolPreviewWorld] = useState<MapState | null>(null);
   const [activeMode, setActiveMode] = useState<EditorMode>("terrain");
   const [activeType, setActiveType] = useState<TerrainType>("plain");
   const [activeFeatureKind, setActiveFeatureKind] = useState<FeatureKind>("city");
@@ -95,16 +93,20 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
   const activeGestureRef = useRef<ActiveEditorGesture | null>(null);
   const operationHistoryRef = useRef(createOperationHistoryState());
   const featureIdRef = useRef(0);
-  const clearGesturePreviewWorld = useCallback(() => {
-    setGesturePreviewWorld(null);
+  const clearToolPreviewWorld = useCallback(() => {
+    setToolPreviewWorld(null);
   }, []);
-  const { sendOperations, syncStatus } = useMapSocketSync({
-    clearPreviewWorld: clearGesturePreviewWorld,
-    mapId,
-    resetWorldFromCurrent: resetFromCurrent
+  const {
+    commitLocalOperations,
+    syncStatus,
+    visibleWorld
+  } = useMapSocketSync({
+    clearPreviewWorld: clearToolPreviewWorld,
+    initialWorld,
+    mapId
   });
 
-  const world = gesturePreviewWorld ?? authoritativeWorld;
+  const world = toolPreviewWorld ?? visibleWorld;
   const canEdit = role === "gm";
   const factions = useMemo(() => getFactions(world), [world]);
   const selectedFaction = useMemo(
@@ -116,15 +118,15 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
     [selectedFeatureId, view.level, world]
   );
   const submitLocalOperations = useCallback(
-    (operations: MapOperation[], worldBefore: MapState = authoritativeWorld) => {
+    (operations: MapOperation[], worldBefore: MapState = visibleWorld) => {
       if (operations.length === 0) {
         return;
       }
 
       recordOperationHistory(operationHistoryRef.current, worldBefore, operations);
-      sendOperations(operations);
+      commitLocalOperations(operations);
     },
-    [authoritativeWorld, sendOperations]
+    [commitLocalOperations, visibleWorld]
   );
 
   const undoLastOperationBatch = useCallback(() => {
@@ -135,9 +137,9 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
     const operations = takeUndoOperations(operationHistoryRef.current);
 
     if (operations.length > 0) {
-      sendOperations(operations);
+      commitLocalOperations(operations);
     }
-  }, [canEdit, sendOperations]);
+  }, [canEdit, commitLocalOperations]);
 
   const redoLastOperationBatch = useCallback(() => {
     if (!canEdit) {
@@ -147,9 +149,9 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
     const operations = takeRedoOperations(operationHistoryRef.current);
 
     if (operations.length > 0) {
-      sendOperations(operations);
+      commitLocalOperations(operations);
     }
-  }, [canEdit, sendOperations]);
+  }, [canEdit, commitLocalOperations]);
 
   const createFeatureId = useCallback(() => {
     featureIdRef.current += 1;
@@ -159,7 +161,7 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
   useEffect(() => {
     clearOperationHistory(operationHistoryRef.current);
     activeGestureRef.current = null;
-    setGesturePreviewWorld(null);
+    setToolPreviewWorld(null);
   }, [mapId]);
 
   const applyTerrainGestureCells = useCallback(
@@ -175,7 +177,7 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
       const nextWorld = applyEditGestureCells(gesture, axials);
 
       if (nextWorld !== beforeWorld) {
-        setGesturePreviewWorld(nextWorld);
+        setToolPreviewWorld(nextWorld);
       }
     },
     []
@@ -195,7 +197,7 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
         const nextWorld = applyFactionGestureCells(activeGesture.gesture, axials);
 
         if (nextWorld !== beforeWorld) {
-          setGesturePreviewWorld(nextWorld);
+          setToolPreviewWorld(nextWorld);
         }
         return;
       }
@@ -205,7 +207,7 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
         const nextWorld = applyRoadGestureCells(activeGesture.gesture, axials);
 
         if (nextWorld !== beforeWorld) {
-          setGesturePreviewWorld(nextWorld);
+          setToolPreviewWorld(nextWorld);
         }
         return;
       }
@@ -215,7 +217,7 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
         const nextWorld = applyFogGestureCells(activeGesture.gesture, axials);
 
         if (nextWorld !== beforeWorld) {
-          setGesturePreviewWorld(nextWorld);
+          setToolPreviewWorld(nextWorld);
         }
       }
     },
@@ -235,7 +237,7 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
       const nextWorld = applyRiverGestureEdges(gesture, edges);
 
       if (nextWorld !== beforeWorld) {
-        setGesturePreviewWorld(nextWorld);
+        setToolPreviewWorld(nextWorld);
       }
     },
     []
@@ -257,7 +259,7 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
           return;
         }
 
-        const existingFeature = getFeatureAt(authoritativeWorld, view.level, axial);
+        const existingFeature = getFeatureAt(visibleWorld, view.level, axial);
 
         if (action === "paint") {
           if (existingFeature) {
@@ -272,7 +274,7 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
           }
 
           const result = commandAddFeature(
-            authoritativeWorld,
+            visibleWorld,
             view.level,
             createFeature(createFeatureId(), activeFeatureKind, hexKey(axial))
           );
@@ -294,7 +296,7 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
           return;
         }
 
-        const result = commandRemoveFeature(authoritativeWorld, existingFeature.id);
+        const result = commandRemoveFeature(visibleWorld, existingFeature.id);
         setSelectedFeatureId(existingFeature.id === selectedFeatureId ? null : selectedFeatureId);
 
         if (result.operations.length > 0) {
@@ -317,10 +319,10 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
           kind: "road",
           gesture: createRoadGesture(
             action === "paint" ? "add" : "remove",
-            authoritativeWorld,
+            visibleWorld,
             view.level
           ),
-          worldBefore: authoritativeWorld
+          worldBefore: visibleWorld
         };
         applyActiveGestureCells(axials);
         return;
@@ -331,11 +333,11 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
           kind: "faction",
           gesture: createFactionGesture(
             action === "paint" ? "assign" : "clear",
-            authoritativeWorld,
+            visibleWorld,
             view.level,
             activeFactionId
           ),
-          worldBefore: authoritativeWorld
+          worldBefore: visibleWorld
         };
         applyActiveGestureCells(axials);
         return;
@@ -345,8 +347,8 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
         if (action === "paint") {
           activeGestureRef.current = {
             kind: "fog",
-            gesture: createFogGesture(authoritativeWorld, view.level),
-            worldBefore: authoritativeWorld
+            gesture: createFogGesture(visibleWorld, view.level),
+            worldBefore: visibleWorld
           };
           applyActiveGestureCells(axials);
           return;
@@ -358,7 +360,7 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
           return;
         }
 
-        const result = commandToggleFeatureHiddenAt(authoritativeWorld, view.level, axial);
+        const result = commandToggleFeatureHiddenAt(visibleWorld, view.level, axial);
 
         if (result.operations.length > 0) {
           submitLocalOperations(result.operations);
@@ -371,11 +373,11 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
         kind: "terrain",
         gesture: createEditGesture(
           action,
-          authoritativeWorld,
+          visibleWorld,
           view.level,
           activeType
         ),
-        worldBefore: authoritativeWorld
+        worldBefore: visibleWorld
       };
       applyActiveGestureCells(axials);
     },
@@ -386,7 +388,7 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
       activeType,
       applyActiveGestureCells,
       createFeatureId,
-      authoritativeWorld,
+      visibleWorld,
       canEdit,
       selectedFeatureId,
       submitLocalOperations,
@@ -410,20 +412,20 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
         kind: "river",
         gesture: createRiverGesture(
           action === "paint" ? "add" : "remove",
-          authoritativeWorld,
+          visibleWorld,
           view.level
         ),
-        worldBefore: authoritativeWorld
+        worldBefore: visibleWorld
       };
       applyActiveRiverGestureEdges(edges);
     },
-    [applyActiveRiverGestureEdges, canEdit, authoritativeWorld, view.level]
+    [applyActiveRiverGestureEdges, canEdit, visibleWorld, view.level]
   );
 
   const finishEditGesture = useCallback(() => {
     const activeGesture = activeGestureRef.current;
     activeGestureRef.current = null;
-    setGesturePreviewWorld(null);
+    setToolPreviewWorld(null);
 
     const operations = activeGesture?.gesture.operations ?? [];
 
@@ -467,13 +469,13 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
         return;
       }
 
-      const result = commandUpdateFeature(authoritativeWorld, view.level, selectedFeatureId, updates);
+      const result = commandUpdateFeature(visibleWorld, view.level, selectedFeatureId, updates);
 
       if (result.operations.length > 0) {
         submitLocalOperations(result.operations);
       }
     },
-    [canEdit, authoritativeWorld, selectedFeatureId, submitLocalOperations, view.level]
+    [canEdit, visibleWorld, selectedFeatureId, submitLocalOperations, view.level]
   );
 
   const deleteSelectedFeature = useCallback(() => {
@@ -490,14 +492,14 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
       return;
     }
 
-    const result = commandRemoveFeature(authoritativeWorld, selectedFeature.id);
+    const result = commandRemoveFeature(visibleWorld, selectedFeature.id);
 
     if (result.operations.length > 0) {
       submitLocalOperations(result.operations);
     }
 
     setSelectedFeatureId(null);
-  }, [canEdit, authoritativeWorld, selectedFeature, submitLocalOperations, view.level]);
+  }, [canEdit, visibleWorld, selectedFeature, submitLocalOperations, view.level]);
 
   useEffect(() => {
     if (selectedFeatureId && !selectedFeature) {
@@ -523,9 +525,9 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
   } = useFactionControls({
     activeFactionId,
     canEdit,
+    commitLocalOperations: submitLocalOperations,
     factionCount: factions.length,
-    presentWorld: authoritativeWorld,
-    sendOperations: submitLocalOperations,
+    presentWorld: visibleWorld,
     setActiveFactionId,
     setActiveMode
   });
@@ -599,8 +601,11 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
     setActiveMode: changeMode,
     setActiveType,
     syncStatus,
+    redoLastOperationBatch,
     updateSelectedFeature,
+    undoLastOperationBatch,
     view,
     visualZoom
   };
 }
+

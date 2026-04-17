@@ -6,6 +6,7 @@ import {
   type HexId
 } from "@/core/geometry/hex";
 import type { RiverEdgeIndex, RiverEdgeRef, RiverLevelMap, MapState } from "./worldTypes";
+import { bumpMapStateVersion } from "./worldTypes";
 
 const riverEdgeDirectionIndex = [2, 5, 1, 3, 4, 0] as const;
 
@@ -96,7 +97,8 @@ function setRiverEdge(world: MapState, level: number, ref: RiverEdgeRef, enabled
     riversByLevel: {
       ...world.riversByLevel,
       [level]: nextLevel
-    }
+    },
+    versions: bumpMapStateVersion(world, "rivers")
   };
 }
 

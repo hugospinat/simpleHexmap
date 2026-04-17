@@ -32,4 +32,26 @@ export type MapState = {
   factionAssignmentsByLevel: Record<number, FactionLevelMap>;
   riversByLevel: Record<number, RiverLevelMap>;
   roadsByLevel: Record<number, RoadLevelMap>;
+  versions: MapStateVersions;
 };
+
+export type MapStateVersionKey = "terrain" | "features" | "factions" | "roads" | "rivers";
+
+export type MapStateVersions = Record<MapStateVersionKey, number>;
+
+export function createInitialMapStateVersions(): MapStateVersions {
+  return {
+    terrain: 0,
+    features: 0,
+    factions: 0,
+    roads: 0,
+    rivers: 0
+  };
+}
+
+export function bumpMapStateVersion(world: MapState, key: MapStateVersionKey): MapStateVersions {
+  return {
+    ...(world.versions ?? createInitialMapStateVersions()),
+    [key]: (world.versions?.[key] ?? 0) + 1
+  };
+}

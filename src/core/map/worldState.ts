@@ -9,6 +9,7 @@ import {
 import { TERRAIN_TYPES } from "./terrainTypes";
 import { SOURCE_LEVEL } from "./mapRules";
 import type { LevelMap, RiverLevelMap, RoadLevelMap, TerrainType, MapState } from "./worldTypes";
+import { bumpMapStateVersion, createInitialMapStateVersions } from "./worldTypes";
 
 export function createEmptyWorld(): MapState {
   return {
@@ -17,7 +18,8 @@ export function createEmptyWorld(): MapState {
     factions: new Map(),
     factionAssignmentsByLevel: {},
     riversByLevel: {},
-    roadsByLevel: {}
+    roadsByLevel: {},
+    versions: createInitialMapStateVersions()
   };
 }
 
@@ -117,7 +119,8 @@ export function addTile(world: MapState, level: number, axial: Axial, type: Terr
     levels: {
       ...world.levels,
       [level]: nextLevel
-    }
+    },
+    versions: bumpMapStateVersion(world, "terrain")
   };
 }
 
@@ -155,7 +158,8 @@ export function setCellHidden(world: MapState, level: number, axial: Axial, hidd
     levels: {
       ...world.levels,
       [SOURCE_LEVEL]: nextLevel
-    }
+    },
+    versions: bumpMapStateVersion(world, "terrain")
   };
 }
 
@@ -175,7 +179,8 @@ export function removeTile(world: MapState, level: number, axial: Axial): MapSta
     levels: {
       ...world.levels,
       [level]: nextLevel
-    }
+    },
+    versions: bumpMapStateVersion(world, "terrain")
   };
 }
 
@@ -206,7 +211,8 @@ function removeTiles(world: MapState, level: number, axials: Axial[]): MapState 
     levels: {
       ...world.levels,
       [level]: nextLevel
-    }
+    },
+    versions: bumpMapStateVersion(world, "terrain")
   };
 }
 

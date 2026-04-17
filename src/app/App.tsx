@@ -3,7 +3,15 @@ import { editorConfig } from "@/config/editorConfig";
 import { createInitialWorld, type MapState } from "@/core/map/world";
 import { EditorScreen } from "@/app/EditorScreen";
 import { MapMenu, type ViewerRole } from "@/ui/components/MapMenu/MapMenu";
-import { createMap, listMaps, loadMapById, renameMapById as renameMapRecordById, type MapRecord, type MapSummary } from "@/app/api/mapApi";
+import {
+  createMap,
+  deleteMapById as deleteMapRecordById,
+  listMaps,
+  loadMapById,
+  renameMapById as renameMapRecordById,
+  type MapRecord,
+  type MapSummary
+} from "@/app/api/mapApi";
 import { downloadSavedMapContentFile, readSavedMapContentFile } from "@/app/document/mapFile";
 import { deserializeWorld, serializeWorld } from "@/app/document/worldMapCodec";
 
@@ -128,6 +136,13 @@ export default function App() {
     });
   }, [refreshMaps, withBusyState]);
 
+  const deleteMapById = useCallback(async (mapId: string) => {
+    await withBusyState("Removing map...", async () => {
+      await deleteMapRecordById(mapId);
+      await refreshMaps();
+    });
+  }, [refreshMaps, withBusyState]);
+
   const closeEditor = useCallback(() => {
     if (openMap) {
       setSelectedMapId(openMap.id);
@@ -158,6 +173,7 @@ export default function App() {
       onCreateMap={createNewMap}
       onExportMap={exportMapById}
       onImportMap={importMapFile}
+      onDeleteMap={deleteMapById}
       onOpenMap={openExistingMap}
       onRenameMap={renameMapById}
       onRefresh={refreshMaps}

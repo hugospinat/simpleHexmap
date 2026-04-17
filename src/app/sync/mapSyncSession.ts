@@ -1,5 +1,7 @@
 import { coalesceMapOperations, type MapOperation } from "@/core/protocol";
 import type { MapOperationMessage } from "@/app/api/mapApi";
+import { applyOperationsToWorld, applyOperationToWorld } from "@/core/map/worldOperationApplier";
+import type { MapState } from "@/core/map/world";
 import {
   acknowledgePendingOperation,
   getUnsentOperationBatches,
@@ -21,25 +23,61 @@ export type MapSyncSessionStatus = "connecting" | "saving" | "saved" | "error";
 
 export type MapSyncSession = {
   clientId: string;
+  confirmedWorld: MapState;
   operationCounter: number;
   pendingOperations: PendingOperationEnvelope[];
   receiveQueue: SyncReceiveQueue;
   status: MapSyncSessionStatus;
+  visibleWorld: MapState;
 };
 
-export function createMapSyncSession(clientId: string): MapSyncSession {
+export type MapSyncAction =
+  | { type: "snapshot_received"; world: MapState; lastSequence: number }
+  | { type: "local_operations_committed"; operations: MapOperation[]; nowMs: number }
+  | { type: "operation_ack_received"; operationId: string }
+  | { type: "remote_operation_received"; message: MapOperationMessage }
+  | { type: "ready_remote_operations_applied" }
+  | { type: "socket_opened" }
+  | { type: "socket_closed" }
+  | { type: "sync_error" };
+
+export type MapSyncReadyOperation = {
+  acknowledgedLocal: boolean;
+  message: MapOperationMessage;
+  sequence: number;
+};
+
+function replayPendingOperations(confirmedWorld: MapState, pendingOperations: PendingOperationEnvelope[]): MapState {
+  return applyOperationsToWorld(
+    confirmedWorld,
+    pendingOperations.map((envelope) => envelope.operation)
+  );
+}
+
+function refreshVisibleWorld(session: MapSyncSession): void {
+  session.visibleWorld = replayPendingOperations(session.confirmedWorld, session.pendingOperations);
+}
+
+function updateSessionSavedStatus(session: MapSyncSession): void {
+  session.status = session.pendingOperations.length > 0 ? "saving" : "saved";
+}
+
+export function createMapSyncSession(clientId: string, initialWorld: MapState): MapSyncSession {
   return {
     clientId,
+    confirmedWorld: initialWorld,
     operationCounter: 0,
     pendingOperations: [],
     receiveQueue: createSyncReceiveQueue(),
-    status: "connecting"
+    status: "connecting",
+    visibleWorld: initialWorld
   };
 }
 
 export function markSessionSocketOpened(session: MapSyncSession): void {
   clearSyncReceiveQueue(session.receiveQueue);
   session.pendingOperations = markAllPendingOperationsUnsent(session.pendingOperations);
+  refreshVisibleWorld(session);
   session.status = "connecting";
 }
 
@@ -51,12 +89,14 @@ export function markSessionError(session: MapSyncSession): void {
   session.status = "error";
 }
 
-export function resetSessionFromSnapshot(session: MapSyncSession, lastSequence: number): void {
+export function resetSessionFromSnapshot(session: MapSyncSession, world: MapState, lastSequence: number): void {
+  session.confirmedWorld = world;
   resetSyncReceiveQueueFromSnapshot(session.receiveQueue, lastSequence);
-  session.status = session.pendingOperations.length > 0 ? "saving" : "saved";
+  refreshVisibleWorld(session);
+  updateSessionSavedStatus(session);
 }
 
-export function queueSessionLocalOperations(
+export function commitSessionLocalOperations(
   session: MapSyncSession,
   operations: MapOperation[],
   nowMs: number
@@ -76,6 +116,7 @@ export function queueSessionLocalOperations(
   }
 
   if (envelopes.length > 0) {
+    session.visibleWorld = applyOperationsToWorld(session.visibleWorld, envelopes.map((envelope) => envelope.operation));
     session.status = "saving";
   }
 
@@ -91,12 +132,13 @@ export function getSessionUnsentOperationBatches(
 
 export function markSessionOperationsSent(session: MapSyncSession, envelopes: PendingOperationEnvelope[]): void {
   markPendingOperationsSent(envelopes);
-  session.status = session.pendingOperations.length > 0 ? "saving" : "saved";
+  updateSessionSavedStatus(session);
 }
 
 export function acknowledgeSessionOperation(session: MapSyncSession, operationId: string): boolean {
   const acknowledged = acknowledgePendingOperation(session.pendingOperations, operationId);
-  session.status = session.pendingOperations.length > 0 ? "saving" : "saved";
+  refreshVisibleWorld(session);
+  updateSessionSavedStatus(session);
   return acknowledged;
 }
 
@@ -109,6 +151,26 @@ export function enqueueSessionOperation(
 
 export function takeReadySessionOperations(session: MapSyncSession): Array<{ sequence: number; message: MapOperationMessage }> {
   return takeReadyReceivedOperations(session.receiveQueue);
+}
+
+export function applyReadySessionOperations(session: MapSyncSession): MapSyncReadyOperation[] {
+  const readyOperations = takeReadySessionOperations(session);
+  const applied: MapSyncReadyOperation[] = [];
+
+  for (const { sequence, message } of readyOperations) {
+    session.confirmedWorld = applyOperationToWorld(session.confirmedWorld, message.operation);
+    const acknowledgedLocal = message.sourceClientId === session.clientId
+      ? acknowledgePendingOperation(session.pendingOperations, message.operationId)
+      : false;
+    applied.push({ acknowledgedLocal, message, sequence });
+  }
+
+  if (applied.length > 0) {
+    refreshVisibleWorld(session);
+  }
+
+  updateSessionSavedStatus(session);
+  return applied;
 }
 
 export function clearMapSyncSession(session: MapSyncSession): void {

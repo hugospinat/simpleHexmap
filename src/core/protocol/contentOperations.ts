@@ -251,7 +251,7 @@ export function applyRoadOperationToRecords(
 export const applyMapOperation = applyOperationToSavedMapContent;
 export const applyMapOperations = applyOperationsToSavedMapContent;
 
-type SavedMapContentIndex = {
+export type SavedMapContentIndex = {
   factionTerritoriesByHex: Map<string, MapFactionTerritoryRecord>;
   factionsById: Map<string, MapFactionRecord>;
   featuresById: Map<string, MapFeatureRecord>;
@@ -260,7 +260,7 @@ type SavedMapContentIndex = {
   tilesByHex: Map<string, MapTileRecord>;
 };
 
-function indexSavedMapContent(snapshot: SavedMapContent): SavedMapContentIndex {
+export function indexSavedMapContent(snapshot: SavedMapContent): SavedMapContentIndex {
   return {
     factionTerritoriesByHex: new Map(snapshot.factionTerritories.map((territory) => [tileKey(territory), territory])),
     factionsById: new Map(snapshot.factions.map((faction) => [faction.id, faction])),
@@ -271,7 +271,7 @@ function indexSavedMapContent(snapshot: SavedMapContent): SavedMapContentIndex {
   };
 }
 
-function materializeSavedMapContent<TSnapshot extends SavedMapContent>(
+export function materializeSavedMapContent<TSnapshot extends SavedMapContent>(
   snapshot: TSnapshot,
   index: SavedMapContentIndex
 ): TSnapshot {
@@ -286,7 +286,7 @@ function materializeSavedMapContent<TSnapshot extends SavedMapContent>(
   };
 }
 
-function applyOperationToSavedMapContentIndex(index: SavedMapContentIndex, operation: MapOperation): void {
+export function applyOperationToSavedMapContentIndex(index: SavedMapContentIndex, operation: MapOperation): void {
   switch (operation.type) {
     case "set_tile": {
       const key = tileKey(operation.tile);

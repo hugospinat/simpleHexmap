@@ -1,4 +1,5 @@
 import { writeMapToFile } from "./mapStorage.js";
+import { getSessionMapRecord } from "./sessionStore.js";
 import type { MapSession } from "./types.js";
 
 export const persistDebounceMs = 400;
@@ -13,16 +14,17 @@ export function schedulePersist(session: MapSession): void {
 
     try {
       const startedAtMs = performance.now();
-      await writeMapToFile(session.map);
+      const map = getSessionMapRecord(session);
+      await writeMapToFile(map);
       const durationMs = performance.now() - startedAtMs;
 
       if (process.env.HEXMAP_PERF_DEBUG === "1" || durationMs >= 50) {
         console.info("[MapSyncServer] perf", {
           event: "persist_map",
           durationMs: Number(durationMs.toFixed(2)),
-          mapId: session.map.id,
-          tileCount: session.map.content.tiles.length,
-          byteEstimate: Buffer.byteLength(JSON.stringify(session.map), "utf8")
+          mapId: map.id,
+          tileCount: map.content.tiles.length,
+          byteEstimate: Buffer.byteLength(JSON.stringify(map), "utf8")
         });
       }
     } catch (error) {

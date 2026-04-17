@@ -152,6 +152,25 @@ export async function writeMapToFile(mapRecord) {
   }
 }
 
+export async function deleteMapFile(mapId) {
+  const filePath = mapPathFromId(mapId);
+
+  if (!filePath) {
+    throw new Error("Invalid map id.");
+  }
+
+  try {
+    await fs.unlink(filePath);
+    return true;
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
 export async function listDiskMapSummaries() {
   await ensureStorage();
 

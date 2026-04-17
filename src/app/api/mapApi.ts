@@ -114,6 +114,16 @@ export async function renameMapById(mapId: string, name: string): Promise<MapRec
   return parseMapRecord(payload.map);
 }
 
+export async function deleteMapById(mapId: string): Promise<void> {
+  const payload = await requestJson(`/api/maps/${encodeURIComponent(mapId)}`, {
+    method: "DELETE"
+  });
+
+  if (!isObject(payload) || payload.deleted !== true) {
+    throw new Error("Invalid map delete response.");
+  }
+}
+
 export type MapOperationMessage = {
   type: "map_operation_applied";
   sequence: number;

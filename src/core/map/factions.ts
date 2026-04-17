@@ -6,6 +6,7 @@ import {
   type Axial
 } from "@/core/geometry/hex";
 import type { MapState } from "./worldTypes";
+import { bumpMapStateVersion } from "./worldTypes";
 import { SOURCE_LEVEL } from "./mapRules";
 
 export type Faction = {
@@ -81,7 +82,8 @@ export function addFaction(world: MapState, faction: Faction): MapState {
 
   return {
     ...world,
-    factions
+    factions,
+    versions: bumpMapStateVersion(world, "factions")
   };
 }
 
@@ -110,7 +112,8 @@ export function updateFaction(
 
   return {
     ...world,
-    factions
+    factions,
+    versions: bumpMapStateVersion(world, "factions")
   };
 }
 
@@ -151,7 +154,8 @@ export function removeFaction(world: MapState, factionId: string): MapState {
   return {
     ...world,
     factions,
-    factionAssignmentsByLevel: nextAssignmentsByLevel
+    factionAssignmentsByLevel: nextAssignmentsByLevel,
+    versions: bumpMapStateVersion(world, "factions")
   };
 }
 
@@ -196,7 +200,8 @@ function setSourceFactionAssignment(
       factionAssignmentsByLevel: {
         ...world.factionAssignmentsByLevel,
         [SOURCE_LEVEL]: sourceAssignments
-      }
+      },
+      versions: bumpMapStateVersion(world, "factions")
     }
   };
 }
