@@ -79,6 +79,10 @@ function isStringOrNull(value: unknown): value is string | null {
   return typeof value === "string" || value === null;
 }
 
+function isHexColor(value: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(value);
+}
+
 function serializeTiles(world: World): MapTileRecord[] {
   const levelMap = world.levels[sourceLevel] ?? new Map();
 
@@ -259,6 +263,10 @@ export function parseSavedMap(raw: unknown): SavedMap {
 
     if (!faction.id.trim() || !faction.name.trim() || !faction.color.trim()) {
       throw new Error(`Invalid faction values at index ${index}.`);
+    }
+
+    if (!isHexColor(faction.color)) {
+      throw new Error(`Invalid faction color at index ${index}.`);
     }
 
     return {

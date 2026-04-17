@@ -40,6 +40,17 @@ describe("mapFormat", () => {
     expect(() => parseSavedMap({ version: 1 })).toThrow("Map file is missing required arrays.");
   });
 
+  test("parseSavedMap rejects invalid faction colors", () => {
+    expect(() => parseSavedMap({
+      version: 1,
+      tiles: [],
+      features: [],
+      rivers: [],
+      factions: [{ id: "f-1", name: "Faction", color: "blue" }],
+      factionTerritories: []
+    })).toThrow("Invalid faction color");
+  });
+
   test("serializing and deserializing preserves saved map shape", () => {
     const world = createSampleWorld();
     const serialized = serializeWorld(world);

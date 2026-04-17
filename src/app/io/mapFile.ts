@@ -13,7 +13,10 @@ async function readFileAsText(file: File): Promise<string> {
 
 function sanitizeFileName(name: string): string {
   const trimmed = name.trim();
-  const normalized = trimmed.replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "");
+  const normalized = trimmed
+    .replace(/[^a-z0-9_-]+/gi, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
   return normalized || "map";
 }
 

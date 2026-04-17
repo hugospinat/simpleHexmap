@@ -1,10 +1,12 @@
 import { createServer } from "node:http";
 import { promises as fs } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 const port = Number(process.env.PORT ?? 8787);
 const mapsDir = path.resolve(process.cwd(), "data/maps");
 const mapIdPattern = /^[a-zA-Z0-9_-]{1,64}$/;
+const maxRequestBodySizeBytes = 5 * 1024 * 1024;
 
 const defaultMapContent = {
   version: 1,
@@ -56,7 +58,7 @@ function nowIso() {
 }
 
 function createMapId() {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return randomUUID();
 }
 
 function sendJson(response, statusCode, payload) {
@@ -73,7 +75,7 @@ async function readBody(request) {
     request.on("data", (chunk) => {
       data += chunk;
 
-      if (data.length > 5 * 1024 * 1024) {
+      if (data.length > maxRequestBodySizeBytes) {
         reject(new Error("Request body too large."));
       }
     });
