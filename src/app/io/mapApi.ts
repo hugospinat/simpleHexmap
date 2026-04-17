@@ -1,3 +1,4 @@
+import type { MapOperation } from "@/app/io/mapOperations";
 import type { SavedMap } from "@/app/io/mapFormat";
 import { parseSavedMap } from "@/app/io/mapFormat";
 
@@ -14,11 +15,6 @@ export type MapRecord = MapSummary & {
 type CreateMapInput = {
   name: string;
   content?: SavedMap;
-};
-
-type SaveMapInput = {
-  name?: string;
-  content: SavedMap;
 };
 
 async function requestJson(path: string, init?: RequestInit): Promise<unknown> {
@@ -104,15 +100,28 @@ export async function loadMapById(mapId: string): Promise<MapRecord> {
   return parseMapRecord(payload.map);
 }
 
-export async function saveMapById(mapId: string, input: SaveMapInput): Promise<MapRecord> {
+export async function renameMapById(mapId: string, name: string): Promise<MapRecord> {
   const payload = await requestJson(`/api/maps/${encodeURIComponent(mapId)}`, {
-    method: "PUT",
-    body: JSON.stringify(input)
+    method: "PATCH",
+    body: JSON.stringify({ name })
   });
 
   if (!isObject(payload) || !("map" in payload)) {
-    throw new Error("Invalid map save response.");
+    throw new Error("Invalid map rename response.");
   }
 
   return parseMapRecord(payload.map);
 }
+
+export type MapOperationMessage = {
+  type: "map_operation_applied";
+  operation: MapOperation;
+  sourceClientId: string;
+  updatedAt: string;
+};
+
+export type MapOperationRequest = {
+  type: "map_operation";
+  operation: MapOperation;
+  clientId: string;
+};

@@ -8,15 +8,15 @@ import type { World } from "@/domain/world/world";
 
 type EditorScreenProps = {
   initialWorld: World;
+  mapId: string;
   mapName: string;
   onBackToMaps: () => void;
-  onSaveMap: (world: World) => Promise<void>;
 };
 
-export function EditorScreen({ initialWorld, mapName, onBackToMaps, onSaveMap }: EditorScreenProps) {
+export function EditorScreen({ initialWorld, mapId, mapName, onBackToMaps }: EditorScreenProps) {
   const editor = useEditorState({
     initialWorld,
-    onSaveMap
+    mapId
   });
 
   return (
@@ -35,8 +35,8 @@ export function EditorScreen({ initialWorld, mapName, onBackToMaps, onSaveMap }:
         onModeChange={editor.setActiveMode}
         onRecolorFaction={editor.recolorFaction}
         onRenameFaction={editor.renameFaction}
-        onSaveMap={editor.onSaveMap}
         onSelectFaction={editor.selectFaction}
+        syncStatus={editor.syncStatus}
         onTileTypeChange={editor.setActiveType}
       />
       <MapPane {...editor.canvasProps} />

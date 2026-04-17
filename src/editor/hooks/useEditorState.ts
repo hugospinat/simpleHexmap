@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { editorConfig } from "@/config/editorConfig";
+import { applyMapOperationToWorld, diffWorldAsOperations, type MapOperation } from "@/app/io/mapOperations";
+import type { MapOperationMessage, MapOperationRequest } from "@/app/io/mapApi";
 import type { EditorMode } from "@/editor/tools/editorTypes";
 import { useKeyboardNavigation } from "@/editor/hooks/useKeyboardNavigation";
 import {
@@ -66,13 +68,13 @@ const defaultFactionColors = [
 
 type UseEditorStateOptions = {
   initialWorld: World;
-  onSaveMap: (world: World) => Promise<void>;
+  mapId: string;
 };
 
-export function useEditorState({ initialWorld, onSaveMap }: UseEditorStateOptions) {
+export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
   const maxLevels = editorConfig.maxLevels;
   const appRef = useRef<HTMLElement | null>(null);
-  const { history, record, redo, undo } = useUndoRedo<World>(() => initialWorld);
+  const { history, record, redo, reset, undo } = useUndoRedo<World>(() => initialWorld);
   const { changeLevelByDelta, changeVisualZoom, setCenter, view, visualZoom } = useCamera();
   const [draftWorld, setDraftWorld] = useState<World | null>(null);
   const [activeMode, setActiveMode] = useState<EditorMode>("terrain");
@@ -82,14 +84,22 @@ export function useEditorState({ initialWorld, onSaveMap }: UseEditorStateOption
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
   const [showCoordinates, setShowCoordinates] = useState(false);
   const [hoveredHex, setHoveredHex] = useState<Axial | null>(null);
+  const [syncStatus, setSyncStatus] = useState<"connecting" | "saving" | "saved" | "error">("connecting");
   const editGestureRef = useRef<EditGesture | null>(null);
   const factionGestureRef = useRef<FactionGesture | null>(null);
   const riverGestureRef = useRef<RiverGesture | null>(null);
   const roadGestureRef = useRef<RoadGesture | null>(null);
   const featureIdRef = useRef(0);
   const factionIdRef = useRef(0);
+  const websocketRef = useRef<WebSocket | null>(null);
+  const clientIdRef = useRef(`client-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const pendingAckCountRef = useRef(0);
+  const queuedOperationsRef = useRef<MapOperation[]>([]);
+  const skipSyncRef = useRef(false);
+  const previousPresentRef = useRef(history.present);
 
   const world = draftWorld ?? history.present;
+  const worldRef = useRef(world);
   const factions = useMemo(() => getFactions(world), [world]);
   const selectedFaction = useMemo(
     () => activeFactionId ? getFactionById(world, activeFactionId) : null,
@@ -99,6 +109,39 @@ export function useEditorState({ initialWorld, onSaveMap }: UseEditorStateOption
     () => selectedFeatureId ? getFeatureById(world, view.level, selectedFeatureId) : null,
     [selectedFeatureId, view.level, world]
   );
+
+  useEffect(() => {
+    worldRef.current = world;
+  }, [world]);
+
+  const sendOperations = useCallback((operations: MapOperation[]) => {
+    if (operations.length === 0 && queuedOperationsRef.current.length === 0) {
+      return;
+    }
+
+    const socket = websocketRef.current;
+
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      queuedOperationsRef.current.push(...operations);
+      setSyncStatus("connecting");
+      return;
+    }
+
+    const toSend = [...queuedOperationsRef.current, ...operations];
+    queuedOperationsRef.current = [];
+
+    for (const operation of toSend) {
+      const payload: MapOperationRequest = {
+        type: "map_operation",
+        operation,
+        clientId: clientIdRef.current
+      };
+      socket.send(JSON.stringify(payload));
+      pendingAckCountRef.current += 1;
+    }
+
+    setSyncStatus("saving");
+  }, []);
 
   const createFeatureId = useCallback(() => {
     featureIdRef.current += 1;
@@ -391,19 +434,93 @@ export function useEditorState({ initialWorld, onSaveMap }: UseEditorStateOption
     }
   }, [activeFactionId, selectedFaction]);
 
+  useEffect(() => {
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const socket = new WebSocket(`${protocol}://${window.location.host}/api/maps/${encodeURIComponent(mapId)}/ws`);
+    websocketRef.current = socket;
+    setSyncStatus("connecting");
+
+    socket.onopen = () => {
+      if (queuedOperationsRef.current.length > 0) {
+        sendOperations([]);
+        return;
+      }
+
+      setSyncStatus(pendingAckCountRef.current > 0 ? "saving" : "saved");
+    };
+
+    socket.onmessage = (event) => {
+      let message: unknown;
+
+      try {
+        message = JSON.parse(String(event.data)) as unknown;
+      } catch {
+        return;
+      }
+
+      if (typeof message !== "object" || message === null || !("type" in message)) {
+        return;
+      }
+
+      if ((message as { type?: string }).type === "sync_error") {
+        setSyncStatus("error");
+        return;
+      }
+
+      if ((message as { type?: string }).type !== "map_operation_applied") {
+        return;
+      }
+
+      const payload = message as MapOperationMessage;
+
+      if (payload.sourceClientId === clientIdRef.current) {
+        pendingAckCountRef.current = Math.max(0, pendingAckCountRef.current - 1);
+        setSyncStatus(pendingAckCountRef.current > 0 ? "saving" : "saved");
+        return;
+      }
+
+      skipSyncRef.current = true;
+      setDraftWorld(null);
+      reset(applyMapOperationToWorld(worldRef.current, payload.operation));
+      setSyncStatus(pendingAckCountRef.current > 0 ? "saving" : "saved");
+    };
+
+    socket.onerror = () => {
+      setSyncStatus("error");
+    };
+
+    socket.onclose = () => {
+      websocketRef.current = null;
+      setSyncStatus("error");
+    };
+
+    return () => {
+      websocketRef.current = null;
+      socket.close();
+    };
+  }, [mapId, reset]);
+
+  useEffect(() => {
+    const previous = previousPresentRef.current;
+    const current = history.present;
+
+    if (previous === current) {
+      return;
+    }
+
+    previousPresentRef.current = current;
+
+    if (skipSyncRef.current) {
+      skipSyncRef.current = false;
+      return;
+    }
+
+    sendOperations(diffWorldAsOperations(previous, current));
+  }, [history.present, sendOperations]);
+
   const toggleCoordinates = useCallback(() => {
     setShowCoordinates((previous) => !previous);
   }, []);
-
-  const saveCurrentMap = useCallback(async () => {
-    try {
-      await onSaveMap(world);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to save map.";
-      console.error(error);
-      window.alert(message);
-    }
-  }, [onSaveMap, world]);
 
   const createNewFaction = useCallback(() => {
     const factionNumber = factions.length + 1;
@@ -564,9 +681,9 @@ export function useEditorState({ initialWorld, onSaveMap }: UseEditorStateOption
     renameFaction,
     recolorFaction,
     selectFaction: setActiveFactionId,
-    onSaveMap: saveCurrentMap,
     setActiveMode: changeMode,
     setActiveType,
+    syncStatus,
     updateSelectedFeature,
     view,
     visualZoom

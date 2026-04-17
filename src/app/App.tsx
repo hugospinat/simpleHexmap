@@ -3,7 +3,7 @@ import { editorConfig } from "@/config/editorConfig";
 import { createInitialWorld, type World } from "@/domain/world/world";
 import { EditorScreen } from "@/app/EditorScreen";
 import { MapMenu } from "@/ui/components/MapMenu/MapMenu";
-import { createMap, listMaps, loadMapById, saveMapById, type MapRecord, type MapSummary } from "@/app/io/mapApi";
+import { createMap, listMaps, loadMapById, renameMapById as renameMapRecordById, type MapRecord, type MapSummary } from "@/app/io/mapApi";
 import { downloadSavedMapFile, readSavedMapFile } from "@/app/io/mapFile";
 import { deserializeWorld, serializeWorld } from "@/app/io/mapFormat";
 
@@ -119,40 +119,12 @@ export default function App() {
 
   const renameMapById = useCallback(async (mapId: string, name: string) => {
     await withBusyState("Renaming map...", async () => {
-      const existing = await loadMapById(mapId);
-
-      await saveMapById(mapId, {
-        name: getDefaultMapName(name),
-        content: existing.content
-      });
+      await renameMapRecordById(mapId, getDefaultMapName(name));
 
       await refreshMaps();
       setSelectedMapId(mapId);
     });
   }, [refreshMaps, withBusyState]);
-
-  const saveOpenMap = useCallback(async (world: World) => {
-    const currentOpenMap = openMap;
-
-    if (!currentOpenMap) {
-      return;
-    }
-
-    await withBusyState("Saving map...", async () => {
-      const saved = await saveMapById(currentOpenMap.id, {
-        name: currentOpenMap.name,
-        content: serializeWorld(world)
-      });
-
-      setOpenMap({
-        id: saved.id,
-        name: saved.name,
-        updatedAt: saved.updatedAt,
-        world
-      });
-      await refreshMaps();
-    });
-  }, [openMap, refreshMaps, withBusyState]);
 
   const closeEditor = useCallback(() => {
     if (openMap) {
@@ -160,16 +132,17 @@ export default function App() {
     }
 
     setOpenMap(null);
-  }, [openMap]);
+    void withBusyState("Refreshing maps...", refreshMaps);
+  }, [openMap, refreshMaps, withBusyState]);
 
   if (openMap) {
     return (
       <EditorScreen
         key={openMap.id}
         initialWorld={openMap.world}
+        mapId={openMap.id}
         mapName={openMap.name}
         onBackToMaps={closeEditor}
-        onSaveMap={saveOpenMap}
       />
     );
   }
