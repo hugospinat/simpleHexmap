@@ -1,5 +1,5 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createInitialWorld, type World } from "../src/domain/world/world";
 import { deserializeWorld, serializeWorld, type SerializedWorld } from "../src/domain/world/worldSerialization";
@@ -29,13 +29,22 @@ function normalizeMapId(mapId: string): string {
 
 export class FileMapStore {
   private readonly mapsDirectory: string;
+  private readonly mapsDirectoryResolved: string;
 
   constructor(dataDirectory: string) {
     this.mapsDirectory = join(dataDirectory, "maps");
+    this.mapsDirectoryResolved = resolve(this.mapsDirectory);
   }
 
   private getFilePath(mapId: string): string {
-    return join(this.mapsDirectory, `${normalizeMapId(mapId)}.json`);
+    const filePath = resolve(this.mapsDirectory, `${normalizeMapId(mapId)}.json`);
+    const basePath = `${this.mapsDirectoryResolved}${sep}`;
+
+    if (!filePath.startsWith(basePath)) {
+      throw new Error("Invalid map path.");
+    }
+
+    return filePath;
   }
 
   async init() {
