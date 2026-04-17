@@ -41,7 +41,6 @@ import {
 } from "@/domain/world/features";
 import {
   addFaction,
-  createInitialWorld,
   getFactionById,
   getFactions,
   removeFaction,
@@ -52,7 +51,6 @@ import {
   type World
 } from "@/domain/world/world";
 import { tileLabels } from "@/domain/rendering/tileVisuals";
-import { loadMap, saveMap } from "@/app/io/mapPersistence";
 import { useCamera } from "./useCamera";
 import { useUndoRedo } from "./useUndoRedo";
 import type { Axial } from "@/domain/geometry/hex";
@@ -66,10 +64,15 @@ const defaultFactionColors = [
   "#1fa9a3"
 ];
 
-export function useEditorState() {
+type UseEditorStateOptions = {
+  initialWorld: World;
+  onSaveMap: (world: World) => Promise<void>;
+};
+
+export function useEditorState({ initialWorld, onSaveMap }: UseEditorStateOptions) {
   const maxLevels = editorConfig.maxLevels;
   const appRef = useRef<HTMLElement | null>(null);
-  const { history, record, redo, reset, undo } = useUndoRedo<World>(() => createInitialWorld(maxLevels));
+  const { history, record, redo, undo } = useUndoRedo<World>(() => initialWorld);
   const { changeLevelByDelta, changeVisualZoom, setCenter, view, visualZoom } = useCamera();
   const [draftWorld, setDraftWorld] = useState<World | null>(null);
   const [activeMode, setActiveMode] = useState<EditorMode>("terrain");
@@ -392,9 +395,15 @@ export function useEditorState() {
     setShowCoordinates((previous) => !previous);
   }, []);
 
-  const saveCurrentMap = useCallback(() => {
-    saveMap(world);
-  }, [world]);
+  const saveCurrentMap = useCallback(async () => {
+    try {
+      await onSaveMap(world);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to save map.";
+      console.error(error);
+      window.alert(message);
+    }
+  }, [onSaveMap, world]);
 
   const createNewFaction = useCallback(() => {
     const factionNumber = factions.length + 1;
@@ -445,24 +454,6 @@ export function useEditorState() {
       setActiveFactionId(null);
     }
   }, [activeFactionId, history.present, record]);
-
-  const loadMapFromFile = useCallback(async (file: File) => {
-    try {
-      const nextWorld = await loadMap(file);
-      editGestureRef.current = null;
-      factionGestureRef.current = null;
-      riverGestureRef.current = null;
-      roadGestureRef.current = null;
-      setDraftWorld(null);
-      setSelectedFeatureId(null);
-      setActiveFactionId(null);
-      reset(nextWorld);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to load map file.";
-      console.error(error);
-      window.alert(message);
-    }
-  }, [reset]);
 
   useKeyboardNavigation({
     center: view.center,
@@ -573,7 +564,6 @@ export function useEditorState() {
     renameFaction,
     recolorFaction,
     selectFaction: setActiveFactionId,
-    onLoadMap: loadMapFromFile,
     onSaveMap: saveCurrentMap,
     setActiveMode: changeMode,
     setActiveType,
