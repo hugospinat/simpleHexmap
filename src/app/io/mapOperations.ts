@@ -1,4 +1,5 @@
 import { serializeWorld, type MapFactionRecord, type MapFeatureRecord, type MapRiverRecord, type MapRoadRecord, type MapTileRecord, type SavedMap } from "@/app/io/mapFormat";
+import { SOURCE_LEVEL } from "@/domain/world/constants";
 import {
   addRoadConnection,
   addFaction,
@@ -29,7 +30,7 @@ type TileKey = `${number},${number}`;
 type RiverKey = `${number},${number},${number}`;
 type FeaturePatch = Partial<Pick<MapFeatureRecord, "gmLabel" | "labelRevealed" | "overrideTerrainTile" | "playerLabel" | "type" | "visibility">>;
 type FactionPatch = Partial<Pick<MapFactionRecord, "color" | "name">>;
-const sourceLevel = 3;
+const sourceLevel = SOURCE_LEVEL;
 
 export type MapOperation =
   | { type: "set_tile"; tile: Omit<MapTileRecord, "tileId"> & { tileId: string | null } }

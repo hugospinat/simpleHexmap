@@ -5,9 +5,10 @@ import {
   parseHexKey,
   type Axial
 } from "@/domain/geometry/hex";
+import { SOURCE_LEVEL } from "./constants";
 import type { World } from "./worldTypes";
 
-const sourceLevel = 3;
+const sourceLevel = SOURCE_LEVEL;
 
 export type Faction = {
   id: string;

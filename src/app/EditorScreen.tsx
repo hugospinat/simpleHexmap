@@ -2,6 +2,7 @@ import { AppShell } from "./AppShell";
 import { BottomBar } from "@/ui/components/BottomBar/BottomBar";
 import { FeatureInspector } from "@/ui/components/FeatureInspector/FeatureInspector";
 import { MapPane } from "@/ui/components/MapCanvas/MapPane";
+import { SOURCE_LEVEL } from "@/domain/world/constants";
 import { Sidebar } from "@/ui/components/Sidebar/Sidebar";
 import { useEditorState } from "@/editor/hooks/useEditorState";
 import type { World } from "@/domain/world/world";
@@ -53,7 +54,7 @@ export function EditorScreen({ initialWorld, mapId, mapName, role, onBackToMaps 
       <MapPane {...editor.canvasProps} />
       {editor.selectedFeature ? (
         <FeatureInspector
-          canEditStructure={editor.view.level === 3}
+          canEditStructure={editor.view.level === SOURCE_LEVEL}
           feature={editor.selectedFeature}
           onChange={editor.updateSelectedFeature}
           onClose={editor.clearSelectedFeature}

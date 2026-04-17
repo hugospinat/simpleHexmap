@@ -6,10 +6,11 @@ import {
   parseHexKey,
   type Axial
 } from "@/domain/geometry/hex";
+import { SOURCE_LEVEL } from "./constants";
 import { TERRAIN_TYPES } from "./terrainTypes";
 import type { LevelMap, RiverLevelMap, RoadLevelMap, TerrainType, World } from "./worldTypes";
 
-const sourceLevel = 3;
+const sourceLevel = SOURCE_LEVEL;
 
 export function createEmptyWorld(): World {
   return {

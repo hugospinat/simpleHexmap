@@ -27,6 +27,7 @@ export type {
   FactionLevelMap,
   FactionMap
 } from "@/domain/world/factions";
+export { SOURCE_LEVEL } from "@/domain/world/constants";
 export {
   addFeature,
   axialToFeatureHexId,

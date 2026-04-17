@@ -68,6 +68,8 @@ import { useCamera } from "./useCamera";
 import { useUndoRedo } from "./useUndoRedo";
 import type { Axial } from "@/domain/geometry/hex";
 import { buildWebSocketUrl } from "@/app/io/apiBase";
+import { SOURCE_LEVEL } from "@/domain/world/constants";
+import { isMapSyncDebugEnabled, logMapSync, toRoundedMs } from "@/editor/sync/mapSyncDebug";
 
 const defaultFactionColors = [
   "#d94f3d",
@@ -91,30 +93,6 @@ type OperationEnvelope = {
   operation: MapOperation;
   sent: boolean;
 };
-
-function isMapSyncDebugEnabled(): boolean {
-  if (!import.meta.env.DEV) {
-    return false;
-  }
-
-  try {
-    return window.localStorage.getItem("hexmap:sync-debug") === "1";
-  } catch {
-    return false;
-  }
-}
-
-function logMapSync(event: string, payload: Record<string, unknown>): void {
-  if (!isMapSyncDebugEnabled()) {
-    return;
-  }
-
-  console.info(`[MapSync] ${event}`, payload);
-}
-
-function toRoundedMs(durationMs: number): number {
-  return Number(durationMs.toFixed(2));
-}
 
 export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOptions) {
   const maxLevels = editorConfig.maxLevels;
@@ -443,7 +421,7 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
       }
 
       if (activeMode === "road") {
-        if (view.level !== 3) {
+        if (view.level !== SOURCE_LEVEL) {
           return;
         }
 
@@ -536,7 +514,7 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
       roadGestureRef.current = null;
       fogGestureRef.current = null;
 
-      if (view.level !== 3) {
+      if (view.level !== SOURCE_LEVEL) {
         return;
       }
 
@@ -1144,8 +1122,8 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
     }
 
     if (activeMode === "feature") {
-      if (view.level !== 3) {
-        return `Left selects derived ${featureKindLabels[activeFeatureKind]} features, metadata edits update level 3 sources.`;
+      if (view.level !== SOURCE_LEVEL) {
+        return `Left selects derived ${featureKindLabels[activeFeatureKind]} features, metadata edits update level ${SOURCE_LEVEL} sources.`;
       }
 
       return `Left places ${featureKindLabels[activeFeatureKind]} or selects an existing feature, right removes a feature, middle drag pans.`;
@@ -1161,8 +1139,8 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
     }
 
     if (activeMode === "road") {
-      if (view.level !== 3) {
-        return "Roads are derived here. Use A/E to switch to level 3 and edit road edges.";
+      if (view.level !== SOURCE_LEVEL) {
+        return `Roads are derived here. Use A/E to switch to level ${SOURCE_LEVEL} and edit road edges.`;
       }
 
       return "Left click and drag to draw roads, right click a road to remove it, middle drag pans.";
@@ -1172,8 +1150,8 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
       return "Left toggles terrain fog, right toggles feature hidden state, middle drag pans.";
     }
 
-    if (view.level !== 3) {
-      return "Rivers are derived here. Use A/E to switch to level 3 and edit river edges.";
+    if (view.level !== SOURCE_LEVEL) {
+      return `Rivers are derived here. Use A/E to switch to level ${SOURCE_LEVEL} and edit river edges.`;
     }
 
     return "Left paints river edges, right erases river edges, middle drag pans.";

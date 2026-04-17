@@ -5,19 +5,9 @@ import { useCanvasViewport } from "@/editor/hooks/useCanvasViewport";
 import { useCanvasWheelZoom } from "@/editor/hooks/useCanvasWheelZoom";
 import { useMapAssetsVersion } from "@/editor/hooks/useMapAssetsVersion";
 import { useMapInteraction } from "@/editor/hooks/useMapInteraction";
+import { SOURCE_LEVEL } from "@/domain/world/constants";
+import { isMapSyncDebugEnabled } from "@/editor/sync/mapSyncDebug";
 import type { HexCanvasProps } from "@/ui/components/MapCanvas/types";
-
-function isMapSyncDebugEnabled(): boolean {
-  if (!import.meta.env.DEV) {
-    return false;
-  }
-
-  try {
-    return window.localStorage.getItem("hexmap:sync-debug") === "1";
-  } catch {
-    return false;
-  }
-}
 
 export default function HexCanvas({
   world,
@@ -91,14 +81,14 @@ export default function HexCanvas({
     const frameDurationMs = performance.now() - frameStart;
 
     if (isMapSyncDebugEnabled() && frameDurationMs >= 16) {
-      console.info("[MapRender] frame_slow", {
-        frameTimeMs: Number(frameDurationMs.toFixed(2)),
-        level,
-        editMode,
-        visualZoom: Number(visualZoom.toFixed(2)),
-        tileCountLevel3: world.levels[3]?.size ?? 0
-      });
-    }
+        console.info("[MapRender] frame_slow", {
+          frameTimeMs: Number(frameDurationMs.toFixed(2)),
+          level,
+          editMode,
+          visualZoom: Number(visualZoom.toFixed(2)),
+          tileCountLevel3: world.levels[SOURCE_LEVEL]?.size ?? 0
+        });
+      }
 
     if (isMapSyncDebugEnabled()) {
       const now = performance.now();
@@ -114,7 +104,7 @@ export default function HexCanvas({
           frameTimeMs: Number(frameDurationMs.toFixed(2)),
           hasHoverRiverEdge: Boolean(hoverRiverEdge),
           level,
-          sourceTileCount: world.levels[3]?.size ?? 0,
+          sourceTileCount: world.levels[SOURCE_LEVEL]?.size ?? 0,
           visualZoom: Number(visualZoom.toFixed(2)),
           viewport
         });

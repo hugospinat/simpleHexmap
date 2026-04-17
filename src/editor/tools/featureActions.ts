@@ -1,4 +1,5 @@
 import { hexKey, type Axial } from "@/domain/geometry/hex";
+import { SOURCE_LEVEL } from "@/domain/world/constants";
 import {
   addFeature,
   createFeature,
@@ -29,7 +30,7 @@ export function placeOrSelectFeature(
     };
   }
 
-  if (level !== 3) {
+  if (level !== SOURCE_LEVEL) {
     return {
       selectedFeatureId: null,
       world
@@ -59,7 +60,7 @@ export function removeFeatureOnHex(
     };
   }
 
-  if (level !== 3) {
+  if (level !== SOURCE_LEVEL) {
     return {
       selectedFeatureId: existingFeature.id,
       world

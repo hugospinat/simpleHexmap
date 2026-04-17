@@ -1,4 +1,5 @@
 import { hexKey, parseHexKey } from "@/domain/geometry/hex";
+import { SOURCE_LEVEL } from "@/domain/world/constants";
 import {
   addFaction,
   addFeature,
@@ -20,7 +21,7 @@ import {
   type World
 } from "@/domain/world/world";
 
-const sourceLevel = 3;
+const sourceLevel = SOURCE_LEVEL;
 export const mapFileVersion = 1;
 
 export type MapTileRecord = {

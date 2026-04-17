@@ -6,9 +6,10 @@ import {
   parseHexKey,
   type Axial
 } from "@/domain/geometry/hex";
+import { SOURCE_LEVEL } from "./constants";
 import type { World } from "@/domain/world/worldTypes";
 
-const sourceLevel = 3;
+const sourceLevel = SOURCE_LEVEL;
 
 export type RoadEdgeIndex = 0 | 1 | 2 | 3 | 4 | 5;
 export type RoadEdgeSet = Set<RoadEdgeIndex>;

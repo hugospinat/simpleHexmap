@@ -1,8 +1,9 @@
 import { getAncestorAtLevel, hexKey, parseHexKey, type Axial } from "@/domain/geometry/hex";
 import { canFeatureOverrideTerrain } from "@/assets/featureAssets";
+import { SOURCE_LEVEL } from "./constants";
 import type { World } from "./worldTypes";
 
-const sourceLevel = 3;
+const sourceLevel = SOURCE_LEVEL;
 
 export type FeatureKind =
   | "city"
