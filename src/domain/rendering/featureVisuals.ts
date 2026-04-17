@@ -495,6 +495,8 @@ export function getFeatureTitle(type: FeatureKind): string {
 }
 
 export function featureCanOverrideTerrainTile(feature: Feature): boolean {
+  // Hidden features must never override terrain visuals to avoid leaking
+  // unrevealed information through the rendered tile appearance.
   return !feature.hidden && feature.overrideTerrainTile && canFeatureOverrideTerrain(feature.kind);
 }
 

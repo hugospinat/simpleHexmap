@@ -72,6 +72,8 @@ function getDerivedLevelMapFromSource(world: World, level: number): LevelMap {
 
     if (type) {
       derived.set(parentKey, {
+        // A parent cell is hidden only when all source descendants are hidden.
+        // Revealing any descendant reveals the aggregated parent tile.
         hidden: cells.every((cell) => cell.hidden),
         type
       });

@@ -131,7 +131,7 @@ export function MapMenu({
             onClick={() => selectedMap ? void onOpenMap(selectedMap.id, "player") : undefined}
             disabled={isBusy || !selectedMap}
           >
-            Open selected
+            Open as Player
           </button>
           <button
             type="button"
@@ -139,7 +139,7 @@ export function MapMenu({
             onClick={() => selectedMap ? void onOpenMap(selectedMap.id, "gm") : undefined}
             disabled={isBusy || !selectedMap}
           >
-            Open selected as GM
+            Open as GM
           </button>
           <button
             type="button"
@@ -222,7 +222,7 @@ export function MapMenu({
                       }}
                       disabled={isBusy}
                     >
-                      Open
+                      Open as Player
                     </button>
                     <button
                       type="button"

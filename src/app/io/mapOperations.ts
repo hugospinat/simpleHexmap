@@ -362,6 +362,7 @@ export function diffWorldAsOperations(previousWorld: World, nextWorld: World): M
       hasPatch = true;
     }
     if (current.visibility !== feature.visibility) {
+      // Feature fog visibility is synchronized via a dedicated incremental op.
       operations.push({
         type: "set_feature_hidden",
         featureId: id,
