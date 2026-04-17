@@ -123,7 +123,6 @@ export function addTile(world: World, level: number, axial: Axial, type: Terrain
 }
 
 export function setCellHidden(world: World, level: number, axial: Axial, hidden: boolean): World {
-  const key = hexKey(axial);
   const sourceLevelMap = getStoredLevelMap(world, sourceLevel);
   const sourceTargets = level === sourceLevel
     ? [axial]

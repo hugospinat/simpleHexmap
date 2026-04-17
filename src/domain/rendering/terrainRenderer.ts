@@ -10,7 +10,7 @@ import { fillPolygon, strokePolygon } from "./canvasPrimitives";
 import type { MapRenderTransform } from "./mapTransform";
 import type { VisibleCell } from "./renderTypes";
 
-const hiddenCellFillColor = "#0f0f0f";
+const hiddenCellFillColor = "#0f0f0f"; // Slightly lighter than pure black to keep hex boundaries readable.
 
 export function drawTerrainBaseLayer(
   context: CanvasRenderingContext2D,

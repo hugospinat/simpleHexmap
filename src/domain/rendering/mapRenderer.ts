@@ -19,6 +19,8 @@ import { drawHiddenCellOverlay, drawTerrainBaseLayer, drawTerrainDetailLayer } f
 import { collectVisibleCells } from "./visibleCells";
 import type { RenderStats, Viewport } from "./renderTypes";
 
+const fogOverlayOpacity = 0.4;
+
 type RenderMapFrameOptions = {
   canvas: HTMLCanvasElement;
   center: Axial;
@@ -112,7 +114,7 @@ export function renderMapFrame({
   );
 
   if (fogEditingActive) {
-    drawHiddenCellOverlay(context, hiddenCells, transform, 0.4);
+    drawHiddenCellOverlay(context, hiddenCells, transform, fogOverlayOpacity);
   }
 
   if (hoverRiverEdge) {
