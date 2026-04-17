@@ -2,9 +2,10 @@ import {
   addAxial,
   axialDirections,
   hexKey,
-  type Axial
+  type Axial,
+  type HexId
 } from "@/domain/geometry/hex";
-import type { RiverEdgeIndex, RiverEdgeRef, RiverFlow, RiverFlowLevelMap, RiverLevelMap, World } from "./worldTypes";
+import type { RiverEdgeIndex, RiverEdgeRef, RiverLevelMap, World } from "./worldTypes";
 
 const riverEdgeDirectionIndex = [2, 5, 1, 3, 4, 0] as const;
 
@@ -16,8 +17,10 @@ export function getOppositeRiverEdgeIndex(edge: RiverEdgeIndex): RiverEdgeIndex 
   return ((edge + 3) % 6) as RiverEdgeIndex;
 }
 
-export function getRiverEdgeRefKey(ref: RiverEdgeRef): string {
-  return `${hexKey(ref.axial)}|${ref.edge}`;
+export type RiverEdgeId = string & { readonly __brand: "RiverEdgeId" };
+
+export function getRiverEdgeRefKey(ref: RiverEdgeRef): RiverEdgeId {
+  return `${hexKey(ref.axial)}|${ref.edge}` as RiverEdgeId;
 }
 
 export function getCanonicalRiverEdgeRef(ref: RiverEdgeRef): RiverEdgeRef {
@@ -30,7 +33,7 @@ export function getCanonicalRiverEdgeRef(ref: RiverEdgeRef): RiverEdgeRef {
   return localKey <= oppositeKey ? ref : oppositeRef;
 }
 
-export function getCanonicalRiverEdgeKey(ref: RiverEdgeRef): string {
+export function getCanonicalRiverEdgeKey(ref: RiverEdgeRef): RiverEdgeId {
   return getRiverEdgeRefKey(getCanonicalRiverEdgeRef(ref));
 }
 
@@ -65,35 +68,6 @@ function setRiverHalfEdge(levelMap: RiverLevelMap, key: string, edge: RiverEdgeI
 
 function getStoredRiverLevelMap(world: World, level: number): RiverLevelMap {
   return world.riversByLevel[level] ?? new Map();
-}
-
-function walkRiverEdgesAroundParent(
-  start: RiverEdgeIndex,
-  end: RiverEdgeIndex,
-  step: 1 | -1
-): RiverEdgeIndex[] {
-  const edges: RiverEdgeIndex[] = [start];
-  let current = start;
-
-  while (current !== end) {
-    current = ((current + step + 6) % 6) as RiverEdgeIndex;
-    edges.push(current);
-  }
-
-  return edges;
-}
-
-export function getRiverEdgePathBetween(entryEdge: RiverEdgeIndex, exitEdge: RiverEdgeIndex): RiverEdgeIndex[] {
-  const clockwise = walkRiverEdgesAroundParent(entryEdge, exitEdge, 1);
-  const counterClockwise = walkRiverEdgesAroundParent(entryEdge, exitEdge, -1);
-
-  return clockwise.length <= counterClockwise.length ? clockwise : counterClockwise;
-}
-
-export function getRiverFlowLevelMap(world: World, level: number): RiverFlowLevelMap {
-  void world;
-  void level;
-  return new Map();
 }
 
 export function getRiverLevelMap(world: World, level: number): RiverLevelMap {

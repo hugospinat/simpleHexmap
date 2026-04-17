@@ -1,7 +1,7 @@
 import { useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
 import type { MapSummary } from "@/app/io/mapApi";
 
-export type OpenMapRole = "gm" | "player";
+export type ViewerRole = "gm" | "player";
 
 type MapMenuProps = {
   errorMessage: string | null;
@@ -11,7 +11,7 @@ type MapMenuProps = {
   onCreateMap: (name: string) => Promise<void>;
   onExportMap: (mapId: string) => Promise<void>;
   onImportMap: (file: File) => Promise<void>;
-  onOpenMap: (mapId: string, role: OpenMapRole) => Promise<void>;
+  onOpenMap: (mapId: string, role: ViewerRole) => Promise<void>;
   onRenameMap: (mapId: string, name: string) => Promise<void>;
   onRefresh: () => Promise<void>;
   onSelectMap: (mapId: string) => void;

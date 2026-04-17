@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { editorConfig } from "@/config/editorConfig";
 import { createInitialWorld, type World } from "@/domain/world/world";
 import { EditorScreen } from "@/app/EditorScreen";
-import { MapMenu, type OpenMapRole } from "@/ui/components/MapMenu/MapMenu";
+import { MapMenu, type ViewerRole } from "@/ui/components/MapMenu/MapMenu";
 import { createMap, listMaps, loadMapById, renameMapById as renameMapRecordById, type MapRecord, type MapSummary } from "@/app/io/mapApi";
 import { downloadSavedMapFile, readSavedMapFile } from "@/app/io/mapFile";
 import { deserializeWorld, serializeWorld } from "@/app/io/mapFormat";
@@ -10,7 +10,7 @@ import { deserializeWorld, serializeWorld } from "@/app/io/mapFormat";
 type OpenMapState = {
   id: string;
   name: string;
-  role: OpenMapRole;
+  role: ViewerRole;
   updatedAt: string;
   world: World;
 };
@@ -24,7 +24,7 @@ function fileBaseName(fileName: string): string {
   return fileName.replace(/\.[^/.]+$/, "");
 }
 
-function toOpenMap(map: MapRecord, role: OpenMapRole): OpenMapState {
+function toOpenMap(map: MapRecord, role: ViewerRole): OpenMapState {
   return {
     id: map.id,
     name: map.name,
@@ -91,7 +91,7 @@ export default function App() {
     });
   }, [refreshMaps, withBusyState]);
 
-  const openExistingMap = useCallback(async (mapId: string, role: OpenMapRole) => {
+  const openExistingMap = useCallback(async (mapId: string, role: ViewerRole) => {
     await withBusyState("Opening map...", async () => {
       const map = await loadMapById(mapId);
       setOpenMap(toOpenMap(map, role));

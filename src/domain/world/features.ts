@@ -1,8 +1,6 @@
-import { getAncestorAtLevel, hexKey, parseHexKey, type Axial } from "@/domain/geometry/hex";
-import { canFeatureOverrideTerrain } from "@/assets/featureAssets";
+import { getAncestorAtLevel, hexKey, parseHexKey, type Axial, type HexId } from "@/domain/geometry/hex";
 import type { World } from "./worldTypes";
-
-const sourceLevel = 3;
+import { SOURCE_LEVEL } from "./mapRules";
 
 export type FeatureKind =
   | "city"
@@ -27,29 +25,20 @@ export type Feature = {
   // TODO: add player discovery state (e.g. discovered: boolean).
 };
 
-type LegacyFeatureRecord = {
+export type FeatureInput = {
   id: string;
-  coord?: Axial;
+  kind: FeatureKind;
+  hexId: HexId | string;
   gmLabel?: string;
   hidden?: boolean;
-  hexId?: string;
-  kind?: FeatureKind;
-  label?: string;
   labelRevealed?: boolean;
   overrideTerrainTile?: boolean;
   playerLabel?: string;
-  type?: FeatureKind;
-};
-
-type LegacyFeatureWorld = {
-  [key: string]: unknown;
 };
 
 export type FeatureLevelMap = Map<string, Feature>;
 
 export type FeatureVisibilityMode = "gm" | "player";
-
-const legacyFeaturesByLevelKey = ["annot", "ationsByLevel"].join("");
 
 export const featureKinds: FeatureKind[] = [
   "city",
@@ -75,8 +64,12 @@ export const featureKindLabels: Record<FeatureKind, string> = {
   label: "Label"
 };
 
+export function canFeatureKindOverrideTerrain(kind: FeatureKind): boolean {
+  return kind !== "label" && kind !== "marker";
+}
+
 function getDefaultOverrideTerrainTile(kind: FeatureKind): boolean {
-  return canFeatureOverrideTerrain(kind);
+  return canFeatureKindOverrideTerrain(kind);
 }
 
 function optionalTrim(value: string | undefined): string | undefined {
@@ -84,82 +77,37 @@ function optionalTrim(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
-export function axialToFeatureHexId(coord: Axial): string {
+export function axialToFeatureHexId(coord: Axial): HexId {
   return hexKey(coord);
 }
 
-export function featureHexIdToAxial(hexId: string): Axial {
+export function featureHexIdToAxial(hexId: HexId | string): Axial {
   return parseHexKey(hexId);
 }
 
-export function normalizeFeature(feature: Feature | LegacyFeatureRecord, fallbackHexId?: string): Feature {
-  const legacyCoord = "coord" in feature ? feature.coord : undefined;
-  const legacyType = "type" in feature ? feature.type : undefined;
-  const legacyLabel = "label" in feature ? feature.label : undefined;
-  const hexId = feature.hexId ?? (legacyCoord ? axialToFeatureHexId(legacyCoord) : fallbackHexId);
-  const kind = feature.kind ?? legacyType;
-
-  if (!hexId || !kind) {
-    throw new Error("Feature data is missing a hexId or kind.");
-  }
-
+export function normalizeFeature(feature: FeatureInput): Feature {
   return {
     id: feature.id,
-    kind,
-    hexId,
-    overrideTerrainTile: feature.overrideTerrainTile ?? getDefaultOverrideTerrainTile(kind),
+    kind: feature.kind,
+    hexId: feature.hexId,
+    overrideTerrainTile: feature.overrideTerrainTile ?? getDefaultOverrideTerrainTile(feature.kind),
     hidden: feature.hidden ?? false,
-    gmLabel: optionalTrim(feature.gmLabel ?? legacyLabel),
+    gmLabel: optionalTrim(feature.gmLabel),
     playerLabel: optionalTrim(feature.playerLabel),
     labelRevealed: feature.labelRevealed
   };
 }
 
-type FeatureLevelMapInput =
-  | FeatureLevelMap
-  | Map<string, Feature | LegacyFeatureRecord | Array<Feature | LegacyFeatureRecord>>;
-
-function normalizeFeatureLevelMap(levelMap: FeatureLevelMapInput): FeatureLevelMap {
-  const next = new Map<string, Feature>();
-
-  for (const [hexId, featureOrFeatures] of levelMap.entries()) {
-    const firstFeature = Array.isArray(featureOrFeatures)
-      ? featureOrFeatures[0]
-      : featureOrFeatures;
-
-    if (!firstFeature) {
-      continue;
-    }
-
-    next.set(hexId, normalizeFeature(firstFeature, hexId));
-  }
-
-  return next;
-}
-
 function getStoredFeaturesForLevel(world: World, level: number): FeatureLevelMap {
-  const current = world.featuresByLevel[level];
-
-  if (current) {
-    return normalizeFeatureLevelMap(current);
-  }
-
-  const legacyWorld = world as World & LegacyFeatureWorld;
-  const legacyByLevel = legacyWorld[legacyFeaturesByLevelKey] as Record<number, unknown> | undefined;
-  const legacy = legacyByLevel?.[level] as
-    | FeatureLevelMap
-    | Map<string, LegacyFeatureRecord | LegacyFeatureRecord[]>
-    | undefined;
-
-  return legacy ? normalizeFeatureLevelMap(legacy) : new Map();
+  return world.featuresByLevel[level] ?? new Map();
 }
 
 function deriveFeaturesForLevelFromSource(world: World, level: number): FeatureLevelMap {
-  const sourceFeatures = getStoredFeaturesForLevel(world, sourceLevel);
+  const sourceFeatures = getStoredFeaturesForLevel(world, SOURCE_LEVEL);
   const derived = new Map<string, Feature>();
 
   for (const feature of Array.from(sourceFeatures.values()).sort((a, b) => a.hexId.localeCompare(b.hexId))) {
-    const parent = getAncestorAtLevel(featureHexIdToAxial(feature.hexId), sourceLevel, level);
+    const parent = getAncestorAtLevel(featureHexIdToAxial(feature.hexId), SOURCE_LEVEL, level);
     const parentHexId = hexKey(parent);
 
     if (derived.has(parentHexId)) {
@@ -175,7 +123,7 @@ function deriveFeaturesForLevelFromSource(world: World, level: number): FeatureL
   return derived;
 }
 
-export function createFeature(id: string, kind: FeatureKind, hexId: string): Feature {
+export function createFeature(id: string, kind: FeatureKind, hexId: HexId | string): Feature {
   return normalizeFeature({
     id,
     kind,
@@ -187,7 +135,7 @@ export function createFeature(id: string, kind: FeatureKind, hexId: string): Fea
 }
 
 export function getFeaturesForLevel(world: World, level: number): FeatureLevelMap {
-  if (level === sourceLevel) {
+  if (level === SOURCE_LEVEL) {
     return getStoredFeaturesForLevel(world, level);
   }
 
@@ -208,8 +156,8 @@ export function getFeatureById(world: World, level: number, featureId: string): 
   return null;
 }
 
-export function addFeature(world: World, level: number, feature: Feature | LegacyFeatureRecord): World {
-  if (level !== sourceLevel) {
+export function addFeature(world: World, level: number, feature: FeatureInput): World {
+  if (level !== SOURCE_LEVEL) {
     return world;
   }
 
@@ -240,10 +188,10 @@ export function updateFeature(
     Pick<Feature, "gmLabel" | "hidden" | "kind" | "labelRevealed" | "overrideTerrainTile" | "playerLabel">
   >
 ): World {
-  const targetLevel = level === sourceLevel ? level : sourceLevel;
-  const allowedUpdates: typeof updates = level === sourceLevel ? updates : {};
+  const targetLevel = level === SOURCE_LEVEL ? level : SOURCE_LEVEL;
+  const allowedUpdates: typeof updates = level === SOURCE_LEVEL ? updates : {};
 
-  if (level !== sourceLevel) {
+  if (level !== SOURCE_LEVEL) {
     if ("gmLabel" in updates) {
       allowedUpdates.gmLabel = updates.gmLabel;
     }
@@ -293,7 +241,7 @@ export function updateFeature(
 }
 
 export function removeFeatureAt(world: World, level: number, coord: Axial): World {
-  if (level !== sourceLevel) {
+  if (level !== SOURCE_LEVEL) {
     return world;
   }
 

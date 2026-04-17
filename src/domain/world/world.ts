@@ -1,12 +1,11 @@
 export type {
   Axial,
+  HexId,
   HexCell,
   LevelMap,
   RiverEdgeIndex,
   RiverEdgeRef,
   RiverEdgeSet,
-  RiverFlow,
-  RiverFlowLevelMap,
   RiverLevelMap,
   RoadLevelMap,
   TerrainType,
@@ -30,6 +29,7 @@ export type {
 export {
   addFeature,
   axialToFeatureHexId,
+  canFeatureKindOverrideTerrain,
   createFeature,
   featureHexIdToAxial,
   featureKindLabels,
@@ -44,6 +44,14 @@ export {
   updateFeature
 } from "@/domain/world/features";
 export {
+  MAP_LEVELS,
+  MAX_LEVEL,
+  MIN_LEVEL,
+  SOURCE_LEVEL,
+  isSourceLevel,
+  type MapLevel
+} from "@/domain/world/mapRules";
+export {
   addFaction,
   assignFactionAt,
   clearFactionAt,
@@ -56,6 +64,7 @@ export {
 } from "@/domain/world/factions";
 export {
   addRoadConnection,
+  getRoadEdgeBetween,
   getRoadLevelMap,
   getNeighborForRoadEdge,
   getOppositeRoadEdgeIndex,
@@ -86,8 +95,6 @@ export {
   getCanonicalRiverEdgeRef,
   getNeighborForRiverEdge,
   getOppositeRiverEdgeIndex,
-  getRiverEdgePathBetween,
-  getRiverFlowLevelMap,
   getRiverLevelMap,
   getRiverEdgeRefKey,
   removeRiverEdge

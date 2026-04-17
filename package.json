@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "server": "node server/index.mjs",
+    "server": "npm run build:server && node server/dist/server/src/index.js",
     "build": "tsc && vite build",
-    "build:server": "node --check server/index.mjs",
+    "build:server": "tsc -p tsconfig.server.json && node --check server/dist/server/src/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -18,8 +18,10 @@
     "ws": "^8.20.0"
   },
   "devDependencies": {
+    "@types/node": "^25.6.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "^5.8.0",
     "vite": "^7.0.0",

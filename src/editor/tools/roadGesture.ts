@@ -1,19 +1,19 @@
 import { hexKey, type Axial } from "@/domain/geometry/hex";
-import {
-  addRoadConnection,
-  removeRoadConnectionsAt
-} from "@/domain/world/roads";
 import type { World } from "@/domain/world/world";
+import {
+  executeMapCommand
+} from "@/editor/commands/mapEditCommands";
+import {
+  applyGestureUpdate,
+  createGestureSession,
+  finishGestureSession,
+  type GestureSession
+} from "@/editor/tools/gestureSession";
 
 export type RoadGestureAction = "add" | "remove";
 
-export type RoadGesture = {
-  action: RoadGestureAction;
-  changed: boolean;
+export type RoadGesture = GestureSession<RoadGestureAction> & {
   lastAxial: Axial | null;
-  level: number;
-  touchedKeys: Set<string>;
-  world: World;
 };
 
 export function createRoadGesture(
@@ -22,12 +22,8 @@ export function createRoadGesture(
   level: number
 ): RoadGesture {
   return {
-    action,
-    changed: false,
+    ...createGestureSession(action, world, level),
     lastAxial: null,
-    level,
-    touchedKeys: new Set(),
-    world
   };
 }
 
@@ -41,12 +37,14 @@ export function applyRoadGestureCells(gesture: RoadGesture, axials: Axial[]): Wo
       }
 
       gesture.touchedKeys.add(key);
-      const nextWorld = removeRoadConnectionsAt(gesture.world, gesture.level, axial);
-
-      if (nextWorld !== gesture.world) {
-        gesture.world = nextWorld;
-        gesture.changed = true;
-      }
+      applyGestureUpdate(
+        gesture,
+        executeMapCommand(gesture.world, {
+          type: "removeRoadConnectionsAt",
+          level: gesture.level,
+          axial
+        })
+      );
 
       gesture.lastAxial = axial;
       continue;
@@ -61,12 +59,15 @@ export function applyRoadGestureCells(gesture: RoadGesture, axials: Axial[]): Wo
       continue;
     }
 
-    const nextWorld = addRoadConnection(gesture.world, gesture.level, gesture.lastAxial, axial);
-
-    if (nextWorld !== gesture.world) {
-      gesture.world = nextWorld;
-      gesture.changed = true;
-    }
+    applyGestureUpdate(
+      gesture,
+      executeMapCommand(gesture.world, {
+        type: "addRoadConnection",
+        level: gesture.level,
+        from: gesture.lastAxial,
+        to: axial
+      })
+    );
 
     gesture.lastAxial = axial;
   }
@@ -75,5 +76,5 @@ export function applyRoadGestureCells(gesture: RoadGesture, axials: Axial[]): Wo
 }
 
 export function getFinishedRoadGestureWorld(gesture: RoadGesture): World | null {
-  return gesture.changed ? gesture.world : null;
+  return finishGestureSession(gesture).previewWorld;
 }

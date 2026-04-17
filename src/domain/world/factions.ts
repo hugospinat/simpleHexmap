@@ -6,8 +6,7 @@ import {
   type Axial
 } from "@/domain/geometry/hex";
 import type { World } from "./worldTypes";
-
-const sourceLevel = 3;
+import { SOURCE_LEVEL } from "./mapRules";
 
 export type Faction = {
   id: string;
@@ -39,12 +38,12 @@ function getStoredFactionLevelMap(world: World, level: number): FactionLevelMap 
 }
 
 function sourceHasTile(world: World, key: string): boolean {
-  return Boolean(world.levels[sourceLevel]?.has(key));
+  return Boolean(world.levels[SOURCE_LEVEL]?.has(key));
 }
 
 function sanitizeSourceAssignments(world: World): FactionLevelMap {
   const factionMap = getStoredFactionMap(world);
-  const sourceAssignments = getStoredFactionLevelMap(world, sourceLevel);
+  const sourceAssignments = getStoredFactionLevelMap(world, SOURCE_LEVEL);
   const sanitized = new Map<string, string>();
 
   for (const [hexId, factionId] of sourceAssignments.entries()) {
@@ -196,7 +195,7 @@ function setSourceFactionAssignment(
       ...world,
       factionAssignmentsByLevel: {
         ...world.factionAssignmentsByLevel,
-        [sourceLevel]: sourceAssignments
+        [SOURCE_LEVEL]: sourceAssignments
       }
     }
   };
@@ -211,7 +210,7 @@ function assignFactionAcrossDescendants(
   let nextWorld = world;
   let changed = false;
 
-  for (const descendant of getDescendantsAtLevel(axial, level, sourceLevel)) {
+  for (const descendant of getDescendantsAtLevel(axial, level, SOURCE_LEVEL)) {
     const result = setSourceFactionAssignment(nextWorld, descendant, factionId);
 
     if (!result.changed) {
@@ -226,7 +225,7 @@ function assignFactionAcrossDescendants(
 }
 
 export function assignFactionAt(world: World, level: number, axial: Axial, factionId: string): World {
-  if (level === sourceLevel) {
+  if (level === SOURCE_LEVEL) {
     return setSourceFactionAssignment(world, axial, factionId).world;
   }
 
@@ -234,7 +233,7 @@ export function assignFactionAt(world: World, level: number, axial: Axial, facti
 }
 
 export function clearFactionAt(world: World, level: number, axial: Axial): World {
-  if (level === sourceLevel) {
+  if (level === SOURCE_LEVEL) {
     return setSourceFactionAssignment(world, axial, null).world;
   }
 
@@ -265,7 +264,7 @@ function deriveFactionLevelMapFromSource(world: World, level: number): FactionLe
   const grouped = new Map<string, Map<string, number>>();
 
   for (const [hexId, factionId] of sourceAssignments.entries()) {
-    const parent = getAncestorAtLevel(parseHexKey(hexId), sourceLevel, level);
+    const parent = getAncestorAtLevel(parseHexKey(hexId), SOURCE_LEVEL, level);
     const parentKey = hexKey(parent);
     const counts = grouped.get(parentKey) ?? new Map<string, number>();
     counts.set(factionId, (counts.get(factionId) ?? 0) + 1);
@@ -288,7 +287,7 @@ function deriveFactionLevelMapFromSource(world: World, level: number): FactionLe
 }
 
 export function getFactionLevelMap(world: World, level: number): FactionLevelMap {
-  if (level === sourceLevel) {
+  if (level === SOURCE_LEVEL) {
     return sanitizeSourceAssignments(world);
   }
 

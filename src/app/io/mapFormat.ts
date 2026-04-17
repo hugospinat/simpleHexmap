@@ -1,5 +1,15 @@
 import { hexKey, parseHexKey } from "@/domain/geometry/hex";
 import {
+  mapFileVersion,
+  type MapFactionRecord,
+  type MapFactionTerritoryRecord,
+  type MapFeatureRecord,
+  type MapRiverRecord,
+  type MapRoadRecord,
+  type MapTileRecord,
+  type SavedMap
+} from "@/app/io/savedMapTypes";
+import {
   addFaction,
   addFeature,
   addRoadConnection,
@@ -19,62 +29,18 @@ import {
   type TerrainType,
   type World
 } from "@/domain/world/world";
+import { SOURCE_LEVEL } from "@/domain/world/mapRules";
 
-const sourceLevel = 3;
-export const mapFileVersion = 1;
-
-export type MapTileRecord = {
-  q: number;
-  r: number;
-  tileId: string;
-  hidden: boolean;
-};
-
-export type MapFeatureRecord = {
-  id: string;
-  type: string;
-  q: number;
-  r: number;
-  visibility: "visible" | "hidden";
-  overrideTerrainTile: boolean;
-  gmLabel: string | null;
-  playerLabel: string | null;
-  labelRevealed: boolean;
-};
-
-export type MapRiverRecord = {
-  q: number;
-  r: number;
-  edge: RiverEdgeIndex;
-};
-
-export type MapRoadRecord = {
-  q: number;
-  r: number;
-  edges: RoadEdgeIndex[];
-};
-
-export type MapFactionRecord = {
-  id: string;
-  name: string;
-  color: string;
-};
-
-export type MapFactionTerritoryRecord = {
-  q: number;
-  r: number;
-  factionId: string;
-};
-
-export type SavedMap = {
-  version: number;
-  tiles: MapTileRecord[];
-  features: MapFeatureRecord[];
-  rivers: MapRiverRecord[];
-  roads: MapRoadRecord[];
-  factions: MapFactionRecord[];
-  factionTerritories: MapFactionTerritoryRecord[];
-};
+export {
+  mapFileVersion,
+  type MapFactionRecord,
+  type MapFactionTerritoryRecord,
+  type MapFeatureRecord,
+  type MapRiverRecord,
+  type MapRoadRecord,
+  type MapTileRecord,
+  type SavedMap
+} from "@/app/io/savedMapTypes";
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -101,7 +67,7 @@ function isHexColor(value: string): boolean {
 }
 
 function serializeTiles(world: World): MapTileRecord[] {
-  const levelMap = world.levels[sourceLevel] ?? new Map();
+  const levelMap = world.levels[SOURCE_LEVEL] ?? new Map();
 
   return Array.from(levelMap.entries())
     .map(([hexId, cell]) => {
@@ -110,15 +76,15 @@ function serializeTiles(world: World): MapTileRecord[] {
       return {
         q: axial.q,
         r: axial.r,
-        tileId: cell.type,
+        terrain: cell.type,
         hidden: cell.hidden
       };
     })
-    .sort((left, right) => (left.q - right.q) || (left.r - right.r) || left.tileId.localeCompare(right.tileId));
+    .sort((left, right) => (left.q - right.q) || (left.r - right.r) || left.terrain.localeCompare(right.terrain));
 }
 
 function serializeFeatures(world: World): MapFeatureRecord[] {
-  const featureMap = world.featuresByLevel[sourceLevel] ?? new Map();
+  const featureMap = world.featuresByLevel[SOURCE_LEVEL] ?? new Map();
 
   return Array.from(featureMap.values())
     .map((feature) => {
@@ -126,7 +92,7 @@ function serializeFeatures(world: World): MapFeatureRecord[] {
 
       return {
         id: feature.id,
-        type: feature.kind,
+        kind: feature.kind,
         q: axial.q,
         r: axial.r,
         visibility: feature.hidden ? "hidden" as const : "visible" as const,
@@ -136,11 +102,11 @@ function serializeFeatures(world: World): MapFeatureRecord[] {
         labelRevealed: feature.labelRevealed ?? false
       };
     })
-    .sort((left, right) => (left.q - right.q) || (left.r - right.r) || left.type.localeCompare(right.type));
+    .sort((left, right) => (left.q - right.q) || (left.r - right.r) || left.kind.localeCompare(right.kind));
 }
 
 function serializeRivers(world: World): MapRiverRecord[] {
-  const riverMap = world.riversByLevel[sourceLevel] ?? new Map();
+  const riverMap = world.riversByLevel[SOURCE_LEVEL] ?? new Map();
   const seen = new Set<string>();
   const serialized: MapRiverRecord[] = [];
 
@@ -168,7 +134,7 @@ function serializeRivers(world: World): MapRiverRecord[] {
 }
 
 function serializeRoads(world: World): MapRoadRecord[] {
-  const roads = world.roadsByLevel[sourceLevel] ?? new Map();
+  const roads = world.roadsByLevel[SOURCE_LEVEL] ?? new Map();
 
   return Array.from(roads.entries())
     .map(([hexId, edges]) => {
@@ -192,7 +158,7 @@ function serializeFactions(world: World): MapFactionRecord[] {
 }
 
 function serializeFactionTerritories(world: World): MapFactionTerritoryRecord[] {
-  const assignments = getFactionLevelMap(world, sourceLevel);
+  const assignments = getFactionLevelMap(world, SOURCE_LEVEL);
 
   return Array.from(assignments.entries())
     .map(([hexId, factionId]) => {
@@ -224,29 +190,41 @@ export function parseSavedMap(raw: unknown): SavedMap {
   const rawFactionTerritories = Array.isArray(raw.factionTerritories) ? raw.factionTerritories : [];
 
   const tiles = raw.tiles.map((tile, index): MapTileRecord => {
-    if (!isObject(tile) || !isInteger(tile.q) || !isInteger(tile.r) || typeof tile.tileId !== "string") {
+    const terrain = isObject(tile) && typeof tile.terrain === "string"
+      ? tile.terrain
+      : isObject(tile) && typeof tile.tileId === "string"
+        ? tile.tileId
+        : null;
+
+    if (!isObject(tile) || !isInteger(tile.q) || !isInteger(tile.r) || typeof terrain !== "string") {
       throw new Error(`Invalid tile entry at index ${index}.`);
     }
 
-    if (!terrainTypes.includes(tile.tileId as TerrainType)) {
-      throw new Error(`Unknown tileId at index ${index}: ${tile.tileId}.`);
+    if (!terrainTypes.includes(terrain as TerrainType)) {
+      throw new Error(`Unknown terrain at index ${index}: ${terrain}.`);
     }
 
     return {
       q: tile.q,
       r: tile.r,
-      tileId: tile.tileId,
+      terrain,
       hidden: typeof tile.hidden === "boolean" ? tile.hidden : false
     };
   });
 
   const features = raw.features.map((feature, index): MapFeatureRecord => {
-    if (!isObject(feature) || !isInteger(feature.q) || !isInteger(feature.r) || typeof feature.type !== "string") {
+    const kind = isObject(feature) && typeof feature.kind === "string"
+      ? feature.kind
+      : isObject(feature) && typeof feature.type === "string"
+        ? feature.type
+        : null;
+
+    if (!isObject(feature) || !isInteger(feature.q) || !isInteger(feature.r) || typeof kind !== "string") {
       throw new Error(`Invalid feature entry at index ${index}.`);
     }
 
-    if (!featureKinds.includes(feature.type as (typeof featureKinds)[number])) {
-      throw new Error(`Unknown feature type at index ${index}: ${feature.type}.`);
+    if (!featureKinds.includes(kind as (typeof featureKinds)[number])) {
+      throw new Error(`Unknown feature kind at index ${index}: ${kind}.`);
     }
 
     if (feature.visibility !== "visible" && feature.visibility !== "hidden") {
@@ -275,7 +253,7 @@ export function parseSavedMap(raw: unknown): SavedMap {
 
     return {
       id,
-      type: feature.type,
+      kind,
       q: feature.q,
       r: feature.r,
       visibility: feature.visibility,
@@ -367,8 +345,8 @@ export function deserializeWorld(savedMap: SavedMap): World {
   let world = createEmptyWorld();
 
   for (const tile of savedMap.tiles) {
-    world = addTile(world, sourceLevel, { q: tile.q, r: tile.r }, tile.tileId as TerrainType);
-    world = setCellHidden(world, sourceLevel, { q: tile.q, r: tile.r }, tile.hidden);
+    world = addTile(world, SOURCE_LEVEL, { q: tile.q, r: tile.r }, tile.terrain as TerrainType);
+    world = setCellHidden(world, SOURCE_LEVEL, { q: tile.q, r: tile.r }, tile.hidden);
   }
 
   for (const faction of savedMap.factions) {
@@ -378,9 +356,9 @@ export function deserializeWorld(savedMap: SavedMap): World {
   for (let index = 0; index < savedMap.features.length; index += 1) {
     const feature = savedMap.features[index];
 
-    world = addFeature(world, sourceLevel, {
+    world = addFeature(world, SOURCE_LEVEL, {
       id: feature.id,
-      kind: feature.type as (typeof featureKinds)[number],
+      kind: feature.kind as (typeof featureKinds)[number],
       hexId: hexKey({ q: feature.q, r: feature.r }),
       hidden: feature.visibility === "hidden",
       overrideTerrainTile: feature.overrideTerrainTile,
@@ -391,7 +369,7 @@ export function deserializeWorld(savedMap: SavedMap): World {
   }
 
   for (const river of savedMap.rivers) {
-    world = addRiverEdge(world, sourceLevel, {
+    world = addRiverEdge(world, SOURCE_LEVEL, {
       axial: { q: river.q, r: river.r },
       edge: river.edge
     });
@@ -402,12 +380,12 @@ export function deserializeWorld(savedMap: SavedMap): World {
 
     for (const edge of road.edges) {
       const to = getNeighborForRoadEdge(from, edge);
-      world = addRoadConnection(world, sourceLevel, from, to);
+      world = addRoadConnection(world, SOURCE_LEVEL, from, to);
     }
   }
 
   for (const territory of savedMap.factionTerritories) {
-    world = assignFactionAt(world, sourceLevel, { q: territory.q, r: territory.r }, territory.factionId);
+    world = assignFactionAt(world, SOURCE_LEVEL, { q: territory.q, r: territory.r }, territory.factionId);
   }
 
   return world;

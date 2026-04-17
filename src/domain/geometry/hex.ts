@@ -1,4 +1,5 @@
 export type Axial = { q: number; r: number };
+export type HexId = string & { readonly __brand: "HexId" };
 
 export type Pixel = { x: number; y: number };
 
@@ -15,11 +16,11 @@ export const HEX_BASE_SIZE = 32;
 export const LEVEL_SCALE = Math.sqrt(7);
 export const LEVEL_ROTATION = Math.atan2(Math.sqrt(3) / 2, 2.5);
 
-export function hexKey({ q, r }: Axial): string {
-  return `${q},${r}`;
+export function hexKey({ q, r }: Axial): HexId {
+  return `${q},${r}` as HexId;
 }
 
-export function parseHexKey(key: string): Axial {
+export function parseHexKey(key: HexId | string): Axial {
   const [q, r] = key.split(",").map(Number);
   return { q, r };
 }

@@ -1,34 +1,30 @@
 import { hexKey, type Axial } from "@/domain/geometry/hex";
 import type { TerrainType, World } from "@/domain/world/world";
-import { eraseTile, paintTile } from "./editorActions";
+import {
+  executeMapCommand
+} from "@/editor/commands/mapEditCommands";
+import {
+  applyGestureUpdate,
+  createGestureSession,
+  finishGestureSession,
+  type GestureSession
+} from "@/editor/tools/gestureSession";
 
 export type EditGestureAction = "paint" | "erase";
 
-export type EditGesture = {
-  action: EditGestureAction;
-  changed: boolean;
-  level: number;
-  maxLevels: number;
-  touchedKeys: Set<string>;
+export type EditGesture = GestureSession<EditGestureAction> & {
   type: TerrainType;
-  world: World;
 };
 
 export function createEditGesture(
   action: EditGestureAction,
   world: World,
   level: number,
-  type: TerrainType,
-  maxLevels: number
+  type: TerrainType
 ): EditGesture {
   return {
-    action,
-    changed: false,
-    level,
-    maxLevels,
-    touchedKeys: new Set(),
-    type,
-    world
+    ...createGestureSession(action, world, level),
+    type
   };
 }
 
@@ -42,20 +38,20 @@ export function applyEditGestureCells(gesture: EditGesture, axials: Axial[]): Wo
 
     gesture.touchedKeys.add(key);
 
-    const nextWorld =
-      gesture.action === "paint"
-        ? paintTile(gesture.world, gesture.level, axial, gesture.type, gesture.maxLevels)
-        : eraseTile(gesture.world, gesture.level, axial, gesture.maxLevels);
-
-    if (nextWorld !== gesture.world) {
-      gesture.world = nextWorld;
-      gesture.changed = true;
-    }
+    applyGestureUpdate(
+      gesture,
+      executeMapCommand(
+        gesture.world,
+        gesture.action === "paint"
+          ? { type: "paintTerrain", level: gesture.level, axial, terrainType: gesture.type }
+          : { type: "eraseTerrain", level: gesture.level, axial }
+      )
+    );
   }
 
   return gesture.world;
 }
 
 export function getFinishedGestureWorld(gesture: EditGesture): World | null {
-  return gesture.changed ? gesture.world : null;
+  return finishGestureSession(gesture).previewWorld;
 }

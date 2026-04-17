@@ -1,28 +1,26 @@
 import {
-  addRiverEdge,
   getCanonicalRiverEdgeKey,
-  removeRiverEdge,
   type RiverEdgeRef,
   type World
 } from "@/domain/world/world";
+import { executeMapCommand } from "@/editor/commands/mapEditCommands";
+import {
+  applyGestureUpdate,
+  createGestureSession,
+  finishGestureSession,
+  type GestureSession
+} from "@/editor/tools/gestureSession";
 
 export type RiverGestureAction = "add" | "remove";
 
-export type RiverGesture = {
-  action: RiverGestureAction;
-  changed: boolean;
-  level: number;
+export type RiverGesture = GestureSession<RiverGestureAction> & {
   touchedEdgeKeys: Set<string>;
-  world: World;
 };
 
 export function createRiverGesture(action: RiverGestureAction, world: World, level: number): RiverGesture {
   return {
-    action,
-    changed: false,
-    level,
+    ...createGestureSession(action, world, level),
     touchedEdgeKeys: new Set(),
-    world
   };
 }
 
@@ -36,20 +34,20 @@ export function applyRiverGestureEdges(gesture: RiverGesture, edges: RiverEdgeRe
 
     gesture.touchedEdgeKeys.add(key);
 
-    const nextWorld =
-      gesture.action === "add"
-        ? addRiverEdge(gesture.world, gesture.level, edge)
-        : removeRiverEdge(gesture.world, gesture.level, edge);
-
-    if (nextWorld !== gesture.world) {
-      gesture.world = nextWorld;
-      gesture.changed = true;
-    }
+    applyGestureUpdate(
+      gesture,
+      executeMapCommand(gesture.world, {
+        type: "setRiverEdge",
+        level: gesture.level,
+        ref: edge,
+        enabled: gesture.action === "add"
+      })
+    );
   }
 
   return gesture.world;
 }
 
 export function getFinishedRiverGestureWorld(gesture: RiverGesture): World | null {
-  return gesture.changed ? gesture.world : null;
+  return finishGestureSession(gesture).previewWorld;
 }

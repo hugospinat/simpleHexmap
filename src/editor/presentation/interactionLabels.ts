@@ -1,0 +1,68 @@
+import { tileLabels } from "@/domain/rendering/tileVisuals";
+import { featureKindLabels, type FeatureKind } from "@/domain/world/features";
+import type { Faction, TerrainType } from "@/domain/world/world";
+import { SOURCE_LEVEL } from "@/domain/world/mapRules";
+import type { EditorMode } from "@/editor/tools/editorTypes";
+
+type InteractionLabelOptions = {
+  activeFactionId: string | null;
+  activeFeatureKind: FeatureKind;
+  activeMode: EditorMode;
+  activeType: TerrainType;
+  canEdit: boolean;
+  level: number;
+  selectedFaction: Faction | null;
+};
+
+export function getInteractionLabel({
+  activeFactionId,
+  activeFeatureKind,
+  activeMode,
+  activeType,
+  canEdit,
+  level,
+  selectedFaction
+}: InteractionLabelOptions): string {
+  if (!canEdit) {
+    return "Read-only map view.";
+  }
+
+  if (activeMode === "terrain") {
+    return `Left paints ${tileLabels[activeType]}, right erases terrain, middle drag pans.`;
+  }
+
+  if (activeMode === "feature") {
+    if (level !== SOURCE_LEVEL) {
+      return `Left selects derived ${featureKindLabels[activeFeatureKind]} features, metadata edits update level 3 sources.`;
+    }
+
+    return `Left places ${featureKindLabels[activeFeatureKind]} or selects an existing feature, right removes a feature, middle drag pans.`;
+  }
+
+  if (activeMode === "faction") {
+    if (!activeFactionId) {
+      return "Select a faction first. Left assigns hexes, right clears faction marks, middle drag pans.";
+    }
+
+    const name = selectedFaction?.name ?? "selected faction";
+    return `Left assigns ${name}, right clears faction marks, middle drag pans.`;
+  }
+
+  if (activeMode === "road") {
+    if (level !== SOURCE_LEVEL) {
+      return "Roads are derived here. Use A/E to switch to level 3 and edit road edges.";
+    }
+
+    return "Left click and drag to draw roads, right click a road to remove it, middle drag pans.";
+  }
+
+  if (activeMode === "fog") {
+    return "Left toggles terrain fog, right toggles feature hidden state, middle drag pans.";
+  }
+
+  if (level !== SOURCE_LEVEL) {
+    return "Rivers are derived here. Use A/E to switch to level 3 and edit river edges.";
+  }
+
+  return "Left paints river edges, right erases river edges, middle drag pans.";
+}

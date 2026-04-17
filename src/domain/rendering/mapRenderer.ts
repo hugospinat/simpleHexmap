@@ -1,22 +1,13 @@
-import { getFeaturesForLevel } from "@/domain/world/features";
-import {
-  getFactionOverlayColorMap,
-  getLevelMap,
-  getRoadLevelMap,
-  getRiverLevelMap,
-  type RiverEdgeRef,
-  type World
-} from "@/domain/world/world";
+import { type RiverEdgeRef, type World } from "@/domain/world/world";
 import { renderFeaturesForLevelWithStats } from "@/domain/rendering/featureVisuals";
 import type { Axial } from "@/domain/geometry/hex";
 import type { FeatureVisibilityMode } from "@/domain/world/features";
 import { drawBoundaryOverlays } from "./boundaryRenderer";
 import { drawFactionOverlays } from "./factionRenderer";
-import { createMapRenderTransform } from "./mapTransform";
+import { createMapRenderView, type MapRenderView } from "./mapRenderView";
 import { drawRoadOverlays } from "./roadRenderer";
 import { drawHoveredRiverEdge, drawRiverOverlays } from "./riverRenderer";
 import { drawHiddenCellOverlay, drawTerrainBaseLayer, drawTerrainDetailLayer } from "./terrainRenderer";
-import { collectVisibleCells } from "./visibleCells";
 import type { RenderStats, Viewport } from "./renderTypes";
 
 const fogOverlayOpacity = 0.4;
@@ -55,8 +46,14 @@ export function renderMapFrame({
   }
 
   const pixelRatio = window.devicePixelRatio || 1;
-  canvas.width = Math.max(1, Math.floor(viewport.width * pixelRatio));
-  canvas.height = Math.max(1, Math.floor(viewport.height * pixelRatio));
+  const targetWidth = Math.max(1, Math.floor(viewport.width * pixelRatio));
+  const targetHeight = Math.max(1, Math.floor(viewport.height * pixelRatio));
+
+  if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+  }
+
   context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
@@ -64,17 +61,47 @@ export function renderMapFrame({
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, viewport.width, viewport.height);
 
-  const levelMap = getLevelMap(world, level);
-  const factionOverlayColorMap = getFactionOverlayColorMap(world, level);
-  const featuresByHex = getFeaturesForLevel(world, level);
-  const riverLevelMap = getRiverLevelMap(world, level);
-  const transform = createMapRenderTransform(center, level, visualZoom, viewport);
-  const visible = collectVisibleCells(levelMap, center, level, visualZoom, viewport);
-  const hiddenCells = visible.cells.filter(({ cell }) => cell.hidden);
-  const visibleTerrainCells = featureVisibilityMode === "player"
-    ? visible.cells.filter(({ cell }) => !cell.hidden)
-    : visible.cells;
-  const visibleTerrainKeys = new Set(visibleTerrainCells.map((cell) => cell.key));
+  const renderView = createMapRenderView({
+    center,
+    featureVisibilityMode,
+    highlightedHex,
+    hoverRiverEdge,
+    level,
+    viewport,
+    visualZoom,
+    world
+  });
+
+  return drawMapRenderView(
+    context,
+    renderView,
+    showCoordinates,
+    fogEditingActive,
+    featureVisibilityMode
+  );
+}
+
+function drawMapRenderView(
+  context: CanvasRenderingContext2D,
+  renderView: MapRenderView,
+  showCoordinates: boolean,
+  fogEditingActive: boolean,
+  featureVisibilityMode: FeatureVisibilityMode
+): RenderStats {
+  const {
+    factionOverlayColorMap,
+    featureVisibleKeys,
+    featuresByHex,
+    hiddenCells,
+    highlightedHex,
+    hoverRiverEdge,
+    riverLevelMap,
+    roadLevelMap,
+    transform,
+    visibleTerrainCells,
+    visibleTerrainKeys
+  } = renderView;
+
   const tileCount = drawTerrainBaseLayer(
     context,
     visibleTerrainCells,
@@ -107,7 +134,7 @@ export function renderMapFrame({
   );
   const roadCount = drawRoadOverlays(
     context,
-    getRoadLevelMap(world, level),
+    roadLevelMap,
     transform,
     featureVisibilityMode === "player" ? visibleTerrainKeys : undefined
   );
@@ -124,7 +151,7 @@ export function renderMapFrame({
     context,
     featuresByHex,
     transform,
-    featureVisibilityMode === "player" ? visibleTerrainKeys : visible.keys,
+    featureVisibleKeys,
     cellStats.terrainOverriddenHexes,
     featureVisibilityMode,
     fogEditingActive && featureVisibilityMode === "gm"

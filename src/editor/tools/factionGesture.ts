@@ -1,15 +1,17 @@
 import { hexKey, type Axial } from "@/domain/geometry/hex";
-import { assignFactionAt, clearFactionAt, type World } from "@/domain/world/world";
+import type { World } from "@/domain/world/world";
+import { executeMapCommand } from "@/editor/commands/mapEditCommands";
+import {
+  applyGestureUpdate,
+  createGestureSession,
+  finishGestureSession,
+  type GestureSession
+} from "@/editor/tools/gestureSession";
 
 export type FactionGestureAction = "assign" | "clear";
 
-export type FactionGesture = {
-  action: FactionGestureAction;
-  changed: boolean;
+export type FactionGesture = GestureSession<FactionGestureAction> & {
   factionId: string | null;
-  level: number;
-  touchedKeys: Set<string>;
-  world: World;
 };
 
 export function createFactionGesture(
@@ -19,12 +21,8 @@ export function createFactionGesture(
   factionId: string | null
 ): FactionGesture {
   return {
-    action,
-    changed: false,
+    ...createGestureSession(action, world, level),
     factionId,
-    level,
-    touchedKeys: new Set(),
-    world
   };
 }
 
@@ -38,21 +36,24 @@ export function applyFactionGestureCells(gesture: FactionGesture, axials: Axial[
 
     gesture.touchedKeys.add(key);
 
-    const nextWorld = gesture.action === "assign"
-      ? gesture.factionId
-        ? assignFactionAt(gesture.world, gesture.level, axial, gesture.factionId)
-        : gesture.world
-      : clearFactionAt(gesture.world, gesture.level, axial);
-
-    if (nextWorld !== gesture.world) {
-      gesture.world = nextWorld;
-      gesture.changed = true;
+    if (gesture.action === "assign" && !gesture.factionId) {
+      continue;
     }
+
+    applyGestureUpdate(
+      gesture,
+      executeMapCommand(
+        gesture.world,
+        gesture.action === "assign"
+          ? { type: "assignFaction", level: gesture.level, axial, factionId: gesture.factionId! }
+          : { type: "clearFaction", level: gesture.level, axial }
+      )
+    );
   }
 
   return gesture.world;
 }
 
 export function getFinishedFactionGestureWorld(gesture: FactionGesture): World | null {
-  return gesture.changed ? gesture.world : null;
+  return finishGestureSession(gesture).previewWorld;
 }

@@ -13,7 +13,7 @@ const wsUrl = `ws://localhost:8787/api/maps/${mapId}/ws`;
 const clientAId = "stress-client-a";
 const clientBId = "stress-client-b";
 const operationId = `${clientAId}-${Date.now()}-1`;
-const operation = { type: "set_tile", tile: { q: 321, r: 654, tileId: "plain", hidden: false } };
+const operation = { type: "set_tile", tile: { q: 321, r: 654, terrain: "plain", hidden: false } };
 const events = [];
 
 const connect = () => new Promise((resolve, reject) => {
@@ -60,7 +60,7 @@ clientB.close(1000, "done");
 const afterResponse = await fetch(base + "/api/maps/" + encodeURIComponent(mapId));
 const afterPayload = await afterResponse.json();
 const tileExists = Array.isArray(afterPayload?.map?.content?.tiles)
-  && afterPayload.map.content.tiles.some((tile) => tile.q === 321 && tile.r === 654 && tile.tileId === "plain");
+  && afterPayload.map.content.tiles.some((tile) => tile.q === 321 && tile.r === 654 && tile.terrain === "plain");
 
 const byClient = events.reduce((accumulator, event) => {
   accumulator[event.client] = (accumulator[event.client] ?? 0) + 1;

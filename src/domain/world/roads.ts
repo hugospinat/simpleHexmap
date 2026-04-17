@@ -4,11 +4,11 @@ import {
   getAncestorAtLevel,
   hexKey,
   parseHexKey,
-  type Axial
+  type Axial,
+  type HexId
 } from "@/domain/geometry/hex";
 import type { World } from "@/domain/world/worldTypes";
-
-const sourceLevel = 3;
+import { SOURCE_LEVEL } from "@/domain/world/mapRules";
 
 export type RoadEdgeIndex = 0 | 1 | 2 | 3 | 4 | 5;
 export type RoadEdgeSet = Set<RoadEdgeIndex>;
@@ -71,7 +71,7 @@ function setRoadEdges(levelMap: RoadLevelMap, axial: Axial, edges: RoadEdgeSet) 
 }
 
 export function getRoadLevelMap(world: World, level: number): RoadLevelMap {
-  if (level !== sourceLevel) {
+  if (level !== SOURCE_LEVEL) {
     return deriveRoadLevelMapFromSource(world, level);
   }
 
@@ -83,7 +83,7 @@ function getStoredRoadLevelMap(world: World, level: number): RoadLevelMap {
 }
 
 function deriveRoadLevelMapFromSource(world: World, level: number): RoadLevelMap {
-  const sourceMap = getStoredRoadLevelMap(world, sourceLevel);
+  const sourceMap = getStoredRoadLevelMap(world, SOURCE_LEVEL);
   const derived = new Map<string, RoadEdgeSet>();
   const seenSourceEdges = new Set<string>();
 
@@ -100,8 +100,8 @@ function deriveRoadLevelMapFromSource(world: World, level: number): RoadLevelMap
 
       seenSourceEdges.add(sourceEdgeKey);
 
-      const parent = getAncestorAtLevel(axial, sourceLevel, level);
-      const neighborParent = getAncestorAtLevel(neighbor, sourceLevel, level);
+      const parent = getAncestorAtLevel(axial, SOURCE_LEVEL, level);
+      const neighborParent = getAncestorAtLevel(neighbor, SOURCE_LEVEL, level);
 
       if (hexKey(parent) === hexKey(neighborParent)) {
         continue;
@@ -230,6 +230,6 @@ export function removeRoadConnectionsAt(world: World, level: number, axial: Axia
   };
 }
 
-export function roadHexIdToAxial(hexId: string): Axial {
+export function roadHexIdToAxial(hexId: HexId | string): Axial {
   return parseHexKey(hexId);
 }

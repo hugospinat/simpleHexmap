@@ -61,4 +61,40 @@ describe("mapFormat", () => {
 
     expect(reserialized).toEqual(serialized);
   });
+
+  test("parseSavedMap accepts legacy tileId records and normalizes to terrain", () => {
+    const parsed = parseSavedMap({
+      version: 1,
+      tiles: [{ q: 0, r: 0, tileId: "plain" }],
+      features: [],
+      rivers: [],
+      factions: [],
+      factionTerritories: []
+    });
+
+    expect(parsed.tiles).toEqual([{ q: 0, r: 0, terrain: "plain", hidden: false }]);
+  });
+
+  test("parseSavedMap accepts legacy feature type records and normalizes to kind", () => {
+    const parsed = parseSavedMap({
+      version: 1,
+      tiles: [],
+      features: [{
+        id: "feature-1",
+        type: "city",
+        q: 0,
+        r: 0,
+        visibility: "visible",
+        overrideTerrainTile: false,
+        gmLabel: null,
+        playerLabel: null,
+        labelRevealed: false
+      }],
+      rivers: [],
+      factions: [],
+      factionTerritories: []
+    });
+
+    expect(parsed.features[0].kind).toBe("city");
+  });
 });

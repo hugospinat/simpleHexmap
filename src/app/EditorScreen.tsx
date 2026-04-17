@@ -4,14 +4,16 @@ import { FeatureInspector } from "@/ui/components/FeatureInspector/FeatureInspec
 import { MapPane } from "@/ui/components/MapCanvas/MapPane";
 import { Sidebar } from "@/ui/components/Sidebar/Sidebar";
 import { useEditorState } from "@/editor/hooks/useEditorState";
+import { MapAssetsProvider } from "@/editor/context/MapAssetsContext";
+import { SOURCE_LEVEL } from "@/domain/world/mapRules";
 import type { World } from "@/domain/world/world";
-import type { OpenMapRole } from "@/ui/components/MapMenu/MapMenu";
+import type { ViewerRole } from "@/ui/components/MapMenu/MapMenu";
 
 type EditorScreenProps = {
   initialWorld: World;
   mapId: string;
   mapName: string;
-  role: OpenMapRole;
+  role: ViewerRole;
   onBackToMaps: () => void;
 };
 
@@ -24,49 +26,53 @@ export function EditorScreen({ initialWorld, mapId, mapName, role, onBackToMaps 
 
   if (role === "player") {
     return (
-      <AppShell appRef={editor.appRef} playerMode>
-        <MapPane {...editor.canvasProps} />
-      </AppShell>
+      <MapAssetsProvider>
+        <AppShell appRef={editor.appRef} playerMode>
+          <MapPane {...editor.canvasProps} />
+        </AppShell>
+      </MapAssetsProvider>
     );
   }
 
   return (
-    <AppShell appRef={editor.appRef} inspectorOpen={Boolean(editor.selectedFeature)}>
-      <Sidebar
-        activeFactionId={editor.activeFactionId}
-        activeFeatureKind={editor.activeFeatureKind}
-        activeMode={editor.activeMode}
-        activeType={editor.activeType}
-        factions={editor.factions}
-        mapName={mapName}
-        onBackToMaps={onBackToMaps}
-        onCreateFaction={editor.createFaction}
-        onDeleteFaction={editor.deleteFaction}
-        onFeatureKindChange={editor.chooseFeatureKind}
-        onModeChange={editor.setActiveMode}
-        onRecolorFaction={editor.recolorFaction}
-        onRenameFaction={editor.renameFaction}
-        onSelectFaction={editor.selectFaction}
-        syncStatus={editor.syncStatus}
-        onTileTypeChange={editor.setActiveType}
-      />
-      <MapPane {...editor.canvasProps} />
-      {editor.selectedFeature ? (
-        <FeatureInspector
-          canEditStructure={editor.view.level === 3}
-          feature={editor.selectedFeature}
-          onChange={editor.updateSelectedFeature}
-          onClose={editor.clearSelectedFeature}
-          onDelete={editor.deleteSelectedFeature}
+    <MapAssetsProvider>
+      <AppShell appRef={editor.appRef} inspectorOpen={Boolean(editor.selectedFeature)}>
+        <Sidebar
+          activeFactionId={editor.activeFactionId}
+          activeFeatureKind={editor.activeFeatureKind}
+          activeMode={editor.activeMode}
+          activeType={editor.activeType}
+          factions={editor.factions}
+          mapName={mapName}
+          onBackToMaps={onBackToMaps}
+          onCreateFaction={editor.createFaction}
+          onDeleteFaction={editor.deleteFaction}
+          onFeatureKindChange={editor.chooseFeatureKind}
+          onModeChange={editor.setActiveMode}
+          onRecolorFaction={editor.recolorFaction}
+          onRenameFaction={editor.renameFaction}
+          onSelectFaction={editor.selectFaction}
+          syncStatus={editor.syncStatus}
+          onTileTypeChange={editor.setActiveType}
         />
-      ) : null}
-      <BottomBar
-        center={editor.view.center}
-        hoveredHex={editor.hoveredHex}
-        level={editor.view.level}
-        maxLevels={editor.maxLevels}
-        visualZoom={editor.visualZoom}
-      />
-    </AppShell>
+        <MapPane {...editor.canvasProps} />
+        {editor.selectedFeature ? (
+          <FeatureInspector
+            canEditStructure={editor.view.level === SOURCE_LEVEL}
+            feature={editor.selectedFeature}
+            onChange={editor.updateSelectedFeature}
+            onClose={editor.clearSelectedFeature}
+            onDelete={editor.deleteSelectedFeature}
+          />
+        ) : null}
+        <BottomBar
+          center={editor.view.center}
+          hoveredHex={editor.hoveredHex}
+          level={editor.view.level}
+          maxLevels={editor.maxLevels}
+          visualZoom={editor.visualZoom}
+        />
+      </AppShell>
+    </MapAssetsProvider>
   );
 }

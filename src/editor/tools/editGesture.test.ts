@@ -4,7 +4,7 @@ import { applyEditGestureCells, createEditGesture, getFinishedGestureWorld } fro
 
 describe("edit gestures", () => {
   it("paints multiple cells into one finished world and ignores duplicate hexes", () => {
-    const gesture = createEditGesture("paint", createEmptyWorld(), 1, "forest", 2);
+    const gesture = createEditGesture("paint", createEmptyWorld(), 1, "forest");
 
     applyEditGestureCells(gesture, [
       { q: 0, r: 0 },
@@ -21,7 +21,7 @@ describe("edit gestures", () => {
   });
 
   it("does not finish with a changed world when erasing empty hexes", () => {
-    const gesture = createEditGesture("erase", createEmptyWorld(), 1, "plain", 2);
+    const gesture = createEditGesture("erase", createEmptyWorld(), 1, "plain");
 
     applyEditGestureCells(gesture, [{ q: 8, r: -3 }]);
 
@@ -30,13 +30,13 @@ describe("edit gestures", () => {
   });
 
   it("erases dragged tiles and their descendants in one finished world", () => {
-    const paintGesture = createEditGesture("paint", createEmptyWorld(), 1, "forest", 2);
+    const paintGesture = createEditGesture("paint", createEmptyWorld(), 1, "forest");
     applyEditGestureCells(paintGesture, [
       { q: 0, r: 0 },
       { q: 1, r: 0 }
     ]);
 
-    const eraseGesture = createEditGesture("erase", paintGesture.world, 1, "forest", 2);
+    const eraseGesture = createEditGesture("erase", paintGesture.world, 1, "forest");
     applyEditGestureCells(eraseGesture, [
       { q: 0, r: 0 },
       { q: 1, r: 0 }

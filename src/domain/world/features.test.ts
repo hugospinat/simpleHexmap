@@ -81,39 +81,6 @@ describe("features", () => {
     expect(removeFeatureAt(withFeature, 2, { q: 0, r: 0 })).toBe(withFeature);
   });
 
-  it("normalizes legacy feature records and old layer worlds", () => {
-    const legacyFeaturesByLevelKey = ["annot", "ationsByLevel"].join("");
-    const legacyWorld = {
-      ...createEmptyWorld(),
-      [legacyFeaturesByLevelKey]: {
-        3: new Map([
-          [
-            "1,2",
-            [
-              {
-                id: "legacy-1",
-                coord: { q: 1, r: 2 },
-                type: "village",
-                label: "Old label"
-              }
-            ]
-          ]
-        ])
-      }
-    } as unknown as World;
-
-    expect(getFeaturesForLevel(legacyWorld, 3).get("1,2")).toEqual({
-      id: "legacy-1",
-      kind: "village",
-      hexId: "1,2",
-      overrideTerrainTile: true,
-      hidden: false,
-      gmLabel: "Old label",
-      playerLabel: undefined,
-      labelRevealed: undefined
-    });
-  });
-
   it("updates a selected feature by id", () => {
     const world = addFeature(createEmptyWorld(), 3, {
       id: "f1",

@@ -7,9 +7,8 @@ import {
   type Axial
 } from "@/domain/geometry/hex";
 import { TERRAIN_TYPES } from "./terrainTypes";
+import { SOURCE_LEVEL } from "./mapRules";
 import type { LevelMap, RiverLevelMap, RoadLevelMap, TerrainType, World } from "./worldTypes";
-
-const sourceLevel = 3;
 
 export function createEmptyWorld(): World {
   return {
@@ -51,11 +50,11 @@ function getMostCommonTerrainType(cells: { type: TerrainType }[]): TerrainType |
 }
 
 function getDerivedLevelMapFromSource(world: World, level: number): LevelMap {
-  const sourceMap = getStoredLevelMap(world, sourceLevel);
+  const sourceMap = getStoredLevelMap(world, SOURCE_LEVEL);
   const grouped = new Map<string, { hidden: boolean; type: TerrainType }[]>();
 
   for (const [hexId, cell] of sourceMap.entries()) {
-    const parent = getAncestorAtLevel(parseHexKey(hexId), sourceLevel, level);
+    const parent = getAncestorAtLevel(parseHexKey(hexId), SOURCE_LEVEL, level);
     const parentKey = hexKey(parent);
     const cells = grouped.get(parentKey) ?? [];
     cells.push({
@@ -84,7 +83,7 @@ function getDerivedLevelMapFromSource(world: World, level: number): LevelMap {
 }
 
 export function getLevelMap(world: World, level: number): LevelMap {
-  if (level === sourceLevel) {
+  if (level === SOURCE_LEVEL) {
     return getStoredLevelMap(world, level);
   }
 
@@ -123,10 +122,10 @@ export function addTile(world: World, level: number, axial: Axial, type: Terrain
 }
 
 export function setCellHidden(world: World, level: number, axial: Axial, hidden: boolean): World {
-  const sourceLevelMap = getStoredLevelMap(world, sourceLevel);
-  const sourceTargets = level === sourceLevel
+  const sourceLevelMap = getStoredLevelMap(world, SOURCE_LEVEL);
+  const sourceTargets = level === SOURCE_LEVEL
     ? [axial]
-    : getDescendantsAtLevel(axial, level, sourceLevel);
+    : getDescendantsAtLevel(axial, level, SOURCE_LEVEL);
   let nextLevel: LevelMap | null = null;
 
   for (const target of sourceTargets) {
@@ -155,7 +154,7 @@ export function setCellHidden(world: World, level: number, axial: Axial, hidden:
     ...world,
     levels: {
       ...world.levels,
-      [sourceLevel]: nextLevel
+      [SOURCE_LEVEL]: nextLevel
     }
   };
 }
@@ -217,14 +216,14 @@ export function deleteWithDescendants(
   axial: Axial,
   maxLevels: number
 ): World {
-  const descendants = getDescendantsAtLevel(axial, level, sourceLevel);
-  const currentLevel = getStoredLevelMap(world, sourceLevel);
+  const descendants = getDescendantsAtLevel(axial, level, SOURCE_LEVEL);
+  const currentLevel = getStoredLevelMap(world, SOURCE_LEVEL);
 
   if (!descendants.some((descendant) => currentLevel.has(hexKey(descendant)))) {
     return world;
   }
 
-  return removeTiles(world, sourceLevel, descendants);
+  return removeTiles(world, SOURCE_LEVEL, descendants);
 }
 
 export function propagateTileToDeeperLevels(
@@ -236,8 +235,8 @@ export function propagateTileToDeeperLevels(
 ): World {
   let nextWorld = world;
 
-  for (const descendant of getDescendantsAtLevel(axial, level, sourceLevel)) {
-    nextWorld = addTile(nextWorld, sourceLevel, descendant, type);
+  for (const descendant of getDescendantsAtLevel(axial, level, SOURCE_LEVEL)) {
+    nextWorld = addTile(nextWorld, SOURCE_LEVEL, descendant, type);
   }
 
   return nextWorld;

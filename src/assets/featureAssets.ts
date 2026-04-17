@@ -14,7 +14,7 @@ import overRideRuin from "./features/ruin.png";
 import overRideDungeon from "./features/dungeon.png";
 import overRideCity from "./features/city.png";
 
-import type { FeatureKind } from "@/domain/world/features";
+import { canFeatureKindOverrideTerrain, type FeatureKind } from "@/domain/world/features";
 import {
   defineMapImageAsset,
   type MapImageAsset,
@@ -53,9 +53,5 @@ export function getFeatureTerrainOverrideAsset(type: FeatureKind): MapImageAsset
 }
 
 export function canFeatureOverrideTerrain(type: FeatureKind): boolean {
-  if (type === "label" || type === "marker") {
-    return false;
-  }
-
-  return Boolean(getFeatureTerrainOverrideAsset(type));
+  return canFeatureKindOverrideTerrain(type) && Boolean(getFeatureTerrainOverrideAsset(type));
 }

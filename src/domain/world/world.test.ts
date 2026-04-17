@@ -8,8 +8,6 @@ import {
   createEmptyWorld,
   deleteWithDescendants,
   getLevelMap,
-  getRiverEdgePathBetween,
-  getRiverFlowLevelMap,
   getRiverLevelMap,
   removeTile,
   setCellHidden,
@@ -146,12 +144,6 @@ describe("world operations", () => {
     );
 
     expect(getRiverLevelMap(world, 2).size).toBe(0);
-    expect(getRiverFlowLevelMap(world, 2).size).toBe(0);
-  });
-
-  it("fills intermediate parent river edges between entry and exit", () => {
-    expect(getRiverEdgePathBetween(1, 3)).toEqual([1, 2, 3]);
-    expect(getRiverEdgePathBetween(3, 1)).toEqual([3, 2, 1]);
   });
 
   it("does not derive parent rivers even with attached branch at level 3", () => {
@@ -175,7 +167,6 @@ describe("world operations", () => {
     );
 
     expect(getRiverLevelMap(world, 2).size).toBe(0);
-    expect(getRiverFlowLevelMap(world, 2).size).toBe(0);
   });
 
   it("keeps explicit parent edges without any child-level recomputation", () => {
@@ -197,7 +188,6 @@ describe("world operations", () => {
 
     expect(getRiverLevelMap(childOnlyWorld, 2).size).toBe(0);
     expect(Array.from(getRiverLevelMap(withManualParentEdge, 2).get("0,0") ?? [])).toEqual([0]);
-    expect(getRiverFlowLevelMap(withManualParentEdge, 2).size).toBe(0);
   });
 
   it("removes river edges symmetrically from both adjacent cells", () => {

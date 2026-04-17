@@ -1,4 +1,4 @@
-import desert from "./terrain/dessert.png";
+import desert from "./terrain/desert.png";
 import forest from "./terrain/forest.png";
 import tundra from "./terrain/tundra.png";
 import mountain from "./terrain/mountain.png";

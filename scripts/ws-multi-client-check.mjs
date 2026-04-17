@@ -50,7 +50,7 @@ const operations = [
     operationId: `${clientAId}-${now}-1`,
     operation: {
       type: "set_tile",
-      tile: { q: tileQ, r: tileR, tileId: "plain", hidden: false }
+      tile: { q: tileQ, r: tileR, terrain: "plain", hidden: false }
     }
   },
   {
