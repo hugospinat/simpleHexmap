@@ -20,10 +20,15 @@ export function useUndoRedo<T>(initialState: () => T) {
     setHistory(createHistory(nextState));
   }, []);
 
+  const resetFromCurrent = useCallback((deriveNextState: (currentState: T) => T) => {
+    setHistory((previous) => createHistory(deriveNextState(previous.present)));
+  }, []);
+
   return {
     history,
     record,
     reset,
+    resetFromCurrent,
     redo: redoHistory,
     undo: undoHistory
   };

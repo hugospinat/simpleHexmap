@@ -21,6 +21,7 @@ const mapIdPatternSource = "[a-zA-Z0-9_-]{1,64}";
 const mapIdPattern = new RegExp(`^${mapIdPatternSource}$`);
 const maxRequestBodySizeBytes = 5 * 1024 * 1024;
 const persistDebounceMs = 400;
+const maxRememberedOperationIds = 5000;
 
 const defaultMapContent = {
   version: 1,
@@ -109,6 +110,10 @@ function nowIso() {
 
 function createMapId() {
   return randomUUID();
+}
+
+function createOperationId() {
+  return `op-${randomUUID()}`;
 }
 
 function sendJson(response, statusCode, payload) {
@@ -568,6 +573,33 @@ function schedulePersist(session) {
   }, persistDebounceMs);
 }
 
+function rememberAppliedOperation(session, operationId, payload) {
+  if (session.appliedOperationPayloads.has(operationId)) {
+    return;
+  }
+
+  session.appliedOperationPayloads.set(operationId, payload);
+  session.appliedOperationOrder.push(operationId);
+
+  if (session.appliedOperationOrder.length > maxRememberedOperationIds) {
+    const removed = session.appliedOperationOrder.shift();
+
+    if (removed) {
+      session.appliedOperationPayloads.delete(removed);
+    }
+  }
+}
+
+function broadcastPayload(session, payload) {
+  for (const client of session.clients) {
+    if (client.readyState !== WebSocket.OPEN) {
+      continue;
+    }
+
+    client.send(payload);
+  }
+}
+
 async function getOrCreateSession(mapId) {
   const existing = mapSessions.get(mapId);
 
@@ -584,13 +616,19 @@ async function getOrCreateSession(mapId) {
   const session = {
     map,
     clients: new Set(),
-    persistTimer: null
+    persistTimer: null,
+    appliedOperationPayloads: new Map(),
+    appliedOperationOrder: []
   };
   mapSessions.set(mapId, session);
   return session;
 }
 
-async function applyOperationToSession(mapId, operation, sourceClientId) {
+async function applyOperationToSession(mapId, operation, sourceClientId, operationId, sourceSocket = null) {
+  if (typeof operationId !== "string" || !operationId.trim()) {
+    throw new Error("Invalid operation id.");
+  }
+
   const validationError = validateMapOperation(operation);
 
   if (validationError) {
@@ -602,6 +640,32 @@ async function applyOperationToSession(mapId, operation, sourceClientId) {
   if (!session) {
     throw new Error("Map not found.");
   }
+
+  const existingPayload = session.appliedOperationPayloads.get(operationId);
+
+  if (existingPayload) {
+    console.info("[MapSyncServer] operation_duplicate", {
+      mapId,
+      operationId,
+      sourceClientId,
+      operationType: operation.type
+    });
+
+    if (sourceSocket && sourceSocket.readyState === WebSocket.OPEN) {
+      sourceSocket.send(existingPayload);
+    } else {
+      broadcastPayload(session, existingPayload);
+    }
+
+    return session.map;
+  }
+
+  console.info("[MapSyncServer] operation_received", {
+    mapId,
+    operationId,
+    sourceClientId,
+    operationType: operation.type
+  });
 
   if (operation.type === "rename_map") {
     session.map = {
@@ -621,18 +685,23 @@ async function applyOperationToSession(mapId, operation, sourceClientId) {
 
   const payload = JSON.stringify({
     type: "map_operation_applied",
+    operationId,
     operation,
     sourceClientId,
     updatedAt: session.map.updatedAt
   });
 
-  for (const client of session.clients) {
-    if (client.readyState !== WebSocket.OPEN) {
-      continue;
-    }
+  rememberAppliedOperation(session, operationId, payload);
+  broadcastPayload(session, payload);
 
-    client.send(payload);
-  }
+  console.info("[MapSyncServer] operation_broadcast", {
+    mapId,
+    operationId,
+    sourceClientId,
+    operationType: operation.type,
+    clients: session.clients.size,
+    updatedAt: session.map.updatedAt
+  });
 
   return session.map;
 }
@@ -707,7 +776,7 @@ const server = createServer(async (request, response) => {
         type: "rename_map",
         name: sanitizeName(body.name)
       };
-      const updated = await applyOperationToSession(mapId, operation, "http");
+      const updated = await applyOperationToSession(mapId, operation, "http", createOperationId());
       await writeMapToFile(updated);
       sendJson(response, 200, { map: updated });
       return;
@@ -756,11 +825,22 @@ server.on("upgrade", async (request, socket, head) => {
         try {
           const message = JSON.parse(raw.toString("utf8"));
 
-          if (!isObject(message) || message.type !== "map_operation" || !isObject(message.operation) || typeof message.clientId !== "string") {
+          if (
+            !isObject(message)
+            || message.type !== "map_operation"
+            || !isObject(message.operation)
+            || typeof message.clientId !== "string"
+            || typeof message.operationId !== "string"
+            || !message.operationId.trim()
+          ) {
+            console.warn("[MapSyncServer] invalid_operation_message", {
+              mapId,
+              raw: raw.toString("utf8")
+            });
             return;
           }
 
-          await applyOperationToSession(mapId, message.operation, message.clientId);
+          await applyOperationToSession(mapId, message.operation, message.clientId, message.operationId, client);
         } catch (error) {
           const detail = error instanceof Error ? error.message : "Invalid map operation.";
           if (client.readyState === WebSocket.OPEN) {

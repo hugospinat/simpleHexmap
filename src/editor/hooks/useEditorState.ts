@@ -56,6 +56,7 @@ import { tileLabels } from "@/domain/rendering/tileVisuals";
 import { useCamera } from "./useCamera";
 import { useUndoRedo } from "./useUndoRedo";
 import type { Axial } from "@/domain/geometry/hex";
+import { buildWebSocketUrl } from "@/app/io/apiBase";
 
 const defaultFactionColors = [
   "#d94f3d",
@@ -71,10 +72,17 @@ type UseEditorStateOptions = {
   mapId: string;
 };
 
+type OperationEnvelope = {
+  operationId: string;
+  operation: MapOperation;
+};
+
+const maxRememberedOperationIds = 5000;
+
 export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
   const maxLevels = editorConfig.maxLevels;
   const appRef = useRef<HTMLElement | null>(null);
-  const { history, record, redo, reset, undo } = useUndoRedo<World>(() => initialWorld);
+  const { history, record, redo, resetFromCurrent, undo } = useUndoRedo<World>(() => initialWorld);
   const { changeLevelByDelta, changeVisualZoom, setCenter, view, visualZoom } = useCamera();
   const [draftWorld, setDraftWorld] = useState<World | null>(null);
   const [activeMode, setActiveMode] = useState<EditorMode>("terrain");
@@ -97,13 +105,15 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
       ? `client-${crypto.randomUUID()}`
       : `client-${Date.now()}-${Math.random().toString(36).slice(2)}`
   );
-  const pendingAckCountRef = useRef(0);
-  const queuedOperationsRef = useRef<MapOperation[]>([]);
-  const skipSyncRef = useRef(false);
+  const operationCounterRef = useRef(0);
+  const queuedOperationsRef = useRef<OperationEnvelope[]>([]);
+  const inFlightOperationsRef = useRef<Map<string, OperationEnvelope>>(new Map());
+  const suppressNextOutboundSyncRef = useRef(false);
+  const knownOperationIdsRef = useRef<Set<string>>(new Set());
+  const knownOperationOrderRef = useRef<string[]>([]);
   const previousPresentRef = useRef(history.present);
 
   const world = draftWorld ?? history.present;
-  const worldRef = useRef(world);
   const factions = useMemo(() => getFactions(world), [world]);
   const selectedFaction = useMemo(
     () => activeFactionId ? getFactionById(world, activeFactionId) : null,
@@ -114,38 +124,86 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
     [selectedFeatureId, view.level, world]
   );
 
-  useEffect(() => {
-    worldRef.current = world;
-  }, [world]);
-
-  const sendOperations = useCallback((operations: MapOperation[]) => {
-    if (operations.length === 0 && queuedOperationsRef.current.length === 0) {
-      return;
+  const rememberOperationId = useCallback((operationId: string): boolean => {
+    if (knownOperationIdsRef.current.has(operationId)) {
+      return false;
     }
 
+    knownOperationIdsRef.current.add(operationId);
+    knownOperationOrderRef.current.push(operationId);
+
+    if (knownOperationOrderRef.current.length > maxRememberedOperationIds) {
+      const removed = knownOperationOrderRef.current.shift();
+
+      if (removed) {
+        knownOperationIdsRef.current.delete(removed);
+      }
+    }
+
+    return true;
+  }, []);
+
+  const flushOperations = useCallback(() => {
     const socket = websocketRef.current;
 
     if (!socket || socket.readyState !== WebSocket.OPEN) {
-      queuedOperationsRef.current.push(...operations);
       setSyncStatus("connecting");
       return;
     }
 
-    const toSend = [...queuedOperationsRef.current, ...operations];
-    queuedOperationsRef.current = [];
-
-    for (const operation of toSend) {
-      const payload: MapOperationRequest = {
-        type: "map_operation",
-        operation,
-        clientId: clientIdRef.current
-      };
-      socket.send(JSON.stringify(payload));
-      pendingAckCountRef.current += 1;
+    if (queuedOperationsRef.current.length === 0) {
+      setSyncStatus(inFlightOperationsRef.current.size > 0 ? "saving" : "saved");
+      return;
     }
 
-    setSyncStatus("saving");
-  }, []);
+    while (queuedOperationsRef.current.length > 0) {
+      const envelope = queuedOperationsRef.current.shift();
+
+      if (!envelope) {
+        break;
+      }
+
+      const payload: MapOperationRequest = {
+        type: "map_operation",
+        operationId: envelope.operationId,
+        operation: envelope.operation,
+        clientId: clientIdRef.current
+      };
+
+      socket.send(JSON.stringify(payload));
+      inFlightOperationsRef.current.set(envelope.operationId, envelope);
+
+      if (import.meta.env.DEV) {
+        console.info("[MapSync] operation_sent", {
+          mapId,
+          operationId: envelope.operationId,
+          operationType: envelope.operation.type,
+          inFlight: inFlightOperationsRef.current.size,
+          queued: queuedOperationsRef.current.length
+        });
+      }
+    }
+
+    setSyncStatus(inFlightOperationsRef.current.size > 0 ? "saving" : "saved");
+  }, [mapId]);
+
+  const sendOperations = useCallback((operations: MapOperation[]) => {
+    for (const operation of operations) {
+      operationCounterRef.current += 1;
+      const operationId = `${clientIdRef.current}-${Date.now()}-${operationCounterRef.current}`;
+      queuedOperationsRef.current.push({ operationId, operation });
+
+      if (import.meta.env.DEV) {
+        console.info("[MapSync] operation_created", {
+          mapId,
+          operationId,
+          operationType: operation.type
+        });
+      }
+    }
+
+    flushOperations();
+  }, [flushOperations, mapId]);
 
   const createFeatureId = useCallback(() => {
     featureIdRef.current += 1;
@@ -439,71 +497,236 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
   }, [activeFactionId, selectedFaction]);
 
   useEffect(() => {
-    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const socket = new WebSocket(`${protocol}://${window.location.host}/api/maps/${encodeURIComponent(mapId)}/ws`);
-    websocketRef.current = socket;
-    setSyncStatus("connecting");
+    const socketUrl = buildWebSocketUrl(`/api/maps/${encodeURIComponent(mapId)}/ws`);
+    let disposed = false;
+    let reconnectTimer: number | null = null;
+    let reconnectAttempt = 0;
+    let activeSocket: WebSocket | null = null;
 
-    socket.onopen = () => {
-      if (queuedOperationsRef.current.length > 0) {
-        sendOperations([]);
-        return;
+    const clearReconnectTimer = () => {
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
       }
-
-      setSyncStatus(pendingAckCountRef.current > 0 ? "saving" : "saved");
     };
 
-    socket.onmessage = (event) => {
-      let message: unknown;
-
-      try {
-        message = JSON.parse(String(event.data)) as unknown;
-      } catch {
+    const scheduleReconnect = () => {
+      if (disposed) {
         return;
       }
 
-      if (typeof message !== "object" || message === null || !("type" in message)) {
-        return;
+      const delayMs = Math.min(5000, 250 * (2 ** Math.min(reconnectAttempt, 4)));
+      reconnectAttempt += 1;
+      clearReconnectTimer();
+      setSyncStatus("connecting");
+
+      if (import.meta.env.DEV) {
+        console.info("[MapSync] reconnect_scheduled", { mapId, socketUrl, delayMs, reconnectAttempt });
       }
 
-      if ((message as { type?: string }).type === "sync_error") {
-        setSyncStatus("error");
-        return;
-      }
-
-      if ((message as { type?: string }).type !== "map_operation_applied") {
-        return;
-      }
-
-      const payload = message as MapOperationMessage;
-
-      if (payload.sourceClientId === clientIdRef.current) {
-        pendingAckCountRef.current = Math.max(0, pendingAckCountRef.current - 1);
-        setSyncStatus(pendingAckCountRef.current > 0 ? "saving" : "saved");
-        return;
-      }
-
-      skipSyncRef.current = true;
-      setDraftWorld(null);
-      reset(applyMapOperationToWorld(worldRef.current, payload.operation));
-      setSyncStatus(pendingAckCountRef.current > 0 ? "saving" : "saved");
+      reconnectTimer = window.setTimeout(() => {
+        connect();
+      }, delayMs);
     };
 
-    socket.onerror = (event) => {
-      console.error("Map sync WebSocket error", event);
-      setSyncStatus("error");
+    const connect = () => {
+      if (disposed) {
+        return;
+      }
+
+      if (activeSocket && (activeSocket.readyState === WebSocket.CONNECTING || activeSocket.readyState === WebSocket.OPEN)) {
+        return;
+      }
+
+      if (import.meta.env.DEV) {
+        console.info("[MapSync] connecting", { mapId, socketUrl });
+      }
+
+      const socket = new WebSocket(socketUrl);
+      activeSocket = socket;
+      websocketRef.current = socket;
+      setSyncStatus("connecting");
+
+      socket.onopen = () => {
+        if (disposed || websocketRef.current !== socket) {
+          return;
+        }
+
+        reconnectAttempt = 0;
+
+        if (import.meta.env.DEV) {
+          console.info("[MapSync] open", { mapId, socketUrl });
+        }
+
+        if (inFlightOperationsRef.current.size > 0) {
+          const queuedIds = new Set(queuedOperationsRef.current.map((envelope) => envelope.operationId));
+          const retryEnvelopes = Array.from(inFlightOperationsRef.current.values())
+            .filter((envelope) => !queuedIds.has(envelope.operationId));
+
+          if (retryEnvelopes.length > 0) {
+            queuedOperationsRef.current = [...retryEnvelopes, ...queuedOperationsRef.current];
+
+            if (import.meta.env.DEV) {
+              console.info("[MapSync] operation_retry_queued", {
+                mapId,
+                count: retryEnvelopes.length,
+                inFlight: inFlightOperationsRef.current.size
+              });
+            }
+          }
+        }
+
+        flushOperations();
+      };
+
+      socket.onmessage = (event) => {
+        if (disposed || websocketRef.current !== socket) {
+          return;
+        }
+
+        let message: unknown;
+
+        try {
+          message = JSON.parse(String(event.data)) as unknown;
+        } catch {
+          return;
+        }
+
+        if (typeof message !== "object" || message === null || !("type" in message)) {
+          return;
+        }
+
+        if ((message as { type?: string }).type === "sync_error") {
+          console.error("[MapSync] sync_error", message);
+          setSyncStatus("error");
+          return;
+        }
+
+        if ((message as { type?: string }).type !== "map_operation_applied") {
+          return;
+        }
+
+        const payload = message as MapOperationMessage;
+        const operationId = payload.operationId;
+
+        if (typeof operationId !== "string" || !operationId) {
+          console.error("[MapSync] invalid_operation_id", payload);
+          return;
+        }
+
+        if (import.meta.env.DEV) {
+          console.info("[MapSync] operation_received", {
+            mapId,
+            operationId,
+            operationType: payload.operation.type,
+            sourceClientId: payload.sourceClientId
+          });
+        }
+
+        if (payload.sourceClientId === clientIdRef.current) {
+          const wasPending = inFlightOperationsRef.current.delete(operationId);
+          const wasNew = rememberOperationId(operationId);
+
+          if (import.meta.env.DEV) {
+            console.info("[MapSync] operation_ack", {
+              mapId,
+              operationId,
+              operationType: payload.operation.type,
+              wasPending,
+              duplicateAck: !wasNew,
+              inFlight: inFlightOperationsRef.current.size
+            });
+          }
+
+          flushOperations();
+          return;
+        }
+
+        if (!rememberOperationId(operationId)) {
+          if (import.meta.env.DEV) {
+            console.info("[MapSync] operation_ignored_duplicate", {
+              mapId,
+              operationId,
+              operationType: payload.operation.type
+            });
+          }
+          return;
+        }
+
+        if (import.meta.env.DEV) {
+          console.info("[MapSync] operation_applied_remote", {
+            mapId,
+            operationId,
+            operationType: payload.operation.type
+          });
+        }
+
+        suppressNextOutboundSyncRef.current = true;
+        setDraftWorld(null);
+        resetFromCurrent((currentWorld) => applyMapOperationToWorld(currentWorld, payload.operation));
+        setSyncStatus(inFlightOperationsRef.current.size > 0 ? "saving" : "saved");
+      };
+
+      socket.onerror = (event) => {
+        if (disposed || websocketRef.current !== socket) {
+          return;
+        }
+
+        console.error("[MapSync] error", { mapId, socketUrl, event });
+      };
+
+      socket.onclose = (event) => {
+        const isCurrentSocket = websocketRef.current === socket;
+
+        if (isCurrentSocket) {
+          websocketRef.current = null;
+        }
+
+        if (activeSocket === socket) {
+          activeSocket = null;
+        }
+
+        if (disposed || !isCurrentSocket) {
+          if (import.meta.env.DEV) {
+            console.info("[MapSync] close_intentional", {
+              mapId,
+              socketUrl,
+              code: event.code,
+              reason: event.reason,
+              wasClean: event.wasClean
+            });
+          }
+          return;
+        }
+
+        console.warn("[MapSync] close", {
+          mapId,
+          socketUrl,
+          code: event.code,
+          reason: event.reason,
+          wasClean: event.wasClean
+        });
+
+        setSyncStatus("connecting");
+        scheduleReconnect();
+      };
     };
 
-    socket.onclose = () => {
-      websocketRef.current = null;
-      setSyncStatus("error");
-    };
+    reconnectTimer = window.setTimeout(() => {
+      connect();
+    }, 0);
 
     return () => {
+      disposed = true;
+      clearReconnectTimer();
+
+      if (activeSocket && (activeSocket.readyState === WebSocket.CONNECTING || activeSocket.readyState === WebSocket.OPEN)) {
+        activeSocket.close(1000, "client_cleanup");
+      }
+
       websocketRef.current = null;
-      socket.close();
     };
-  }, [mapId, reset, sendOperations]);
+  }, [flushOperations, mapId, rememberOperationId, resetFromCurrent]);
 
   useEffect(() => {
     const previous = previousPresentRef.current;
@@ -515,13 +738,34 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
 
     previousPresentRef.current = current;
 
-    if (skipSyncRef.current) {
-      skipSyncRef.current = false;
+    if (suppressNextOutboundSyncRef.current) {
+      suppressNextOutboundSyncRef.current = false;
+
+      if (import.meta.env.DEV) {
+        console.info("[MapSync] outbound_skipped_remote_apply", {
+          mapId
+        });
+      }
+
       return;
     }
 
-    sendOperations(diffWorldAsOperations(previous, current));
-  }, [history.present, sendOperations]);
+    const operations = diffWorldAsOperations(previous, current);
+
+    if (operations.length === 0) {
+      return;
+    }
+
+    if (import.meta.env.DEV) {
+      console.info("[MapSync] outbound_diff_created", {
+        mapId,
+        count: operations.length,
+        operationTypes: operations.map((operation) => operation.type)
+      });
+    }
+
+    sendOperations(operations);
+  }, [history.present, mapId, sendOperations]);
 
   const toggleCoordinates = useCallback(() => {
     setShowCoordinates((previous) => !previous);

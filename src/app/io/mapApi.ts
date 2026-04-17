@@ -1,6 +1,7 @@
 import type { MapOperation } from "@/app/io/mapOperations";
 import type { SavedMap } from "@/app/io/mapFormat";
 import { parseSavedMap } from "@/app/io/mapFormat";
+import { buildApiUrl } from "@/app/io/apiBase";
 
 export type MapSummary = {
   id: string;
@@ -18,7 +19,7 @@ type CreateMapInput = {
 };
 
 async function requestJson(path: string, init?: RequestInit): Promise<unknown> {
-  const response = await fetch(path, {
+  const response = await fetch(buildApiUrl(path), {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -115,6 +116,7 @@ export async function renameMapById(mapId: string, name: string): Promise<MapRec
 
 export type MapOperationMessage = {
   type: "map_operation_applied";
+  operationId: string;
   operation: MapOperation;
   sourceClientId: string;
   updatedAt: string;
@@ -122,6 +124,7 @@ export type MapOperationMessage = {
 
 export type MapOperationRequest = {
   type: "map_operation";
+  operationId: string;
   operation: MapOperation;
   clientId: string;
 };
