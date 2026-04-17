@@ -3,9 +3,21 @@ import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
-const port = Number(process.env.PORT ?? 8787);
+function resolvePort() {
+  const raw = process.env.PORT;
+
+  if (!raw) {
+    return 8787;
+  }
+
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 8787;
+}
+
+const port = resolvePort();
 const mapsDir = path.resolve(process.cwd(), "data/maps");
-const mapIdPattern = /^[a-zA-Z0-9_-]{1,64}$/;
+const mapIdPatternSource = "[a-zA-Z0-9_-]{1,64}";
+const mapIdPattern = new RegExp(`^${mapIdPatternSource}$`);
 const maxRequestBodySizeBytes = 5 * 1024 * 1024;
 
 const defaultMapContent = {
@@ -76,6 +88,7 @@ async function readBody(request) {
       data += chunk;
 
       if (data.length > maxRequestBodySizeBytes) {
+        request.destroy();
         reject(new Error("Request body too large."));
       }
     });
@@ -210,7 +223,7 @@ const server = createServer(async (request, response) => {
       return;
     }
 
-    const mapMatch = url.pathname.match(/^\/api\/maps\/([a-zA-Z0-9_-]{1,64})$/);
+    const mapMatch = url.pathname.match(new RegExp(`^/api/maps/(${mapIdPatternSource})$`));
 
     if (mapMatch && request.method === "GET") {
       const map = await getMap(mapMatch[1]);
@@ -242,7 +255,9 @@ const server = createServer(async (request, response) => {
 
       const map = {
         id: mapId,
-        name: sanitizeName(body.name ?? existing.name),
+        name: typeof body.name === "string" && body.name.trim()
+          ? sanitizeName(body.name)
+          : existing.name,
         updatedAt: nowIso(),
         content: body.content
       };

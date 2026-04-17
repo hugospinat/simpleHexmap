@@ -16,7 +16,7 @@ type OpenMapState = {
 
 function getDefaultMapName(baseName: string): string {
   const trimmed = baseName.trim();
-  return trimmed ? trimmed : "Untitled map";
+  return trimmed || "Untitled map";
 }
 
 function fileBaseName(fileName: string): string {

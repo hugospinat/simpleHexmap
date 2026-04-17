@@ -266,7 +266,7 @@ export function parseSavedMap(raw: unknown): SavedMap {
     }
 
     if (!isHexColor(faction.color)) {
-      throw new Error(`Invalid faction color at index ${index}.`);
+      throw new Error(`Invalid faction color '${faction.color}' at index ${index}.`);
     }
 
     return {
