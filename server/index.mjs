@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { WebSocket, WebSocketServer } from "ws";
 
 function resolvePort() {
   const raw = process.env.PORT;
@@ -19,15 +20,19 @@ const mapsDir = path.resolve(process.cwd(), "data/maps");
 const mapIdPatternSource = "[a-zA-Z0-9_-]{1,64}";
 const mapIdPattern = new RegExp(`^${mapIdPatternSource}$`);
 const maxRequestBodySizeBytes = 5 * 1024 * 1024;
+const persistDebounceMs = 400;
 
 const defaultMapContent = {
   version: 1,
   tiles: [{ q: 0, r: 0, tileId: "plain" }],
   features: [],
   rivers: [],
+  roads: [],
   factions: [],
   factionTerritories: []
 };
+
+const mapSessions = new Map();
 
 function sanitizeName(value) {
   if (typeof value !== "string") {
@@ -40,6 +45,18 @@ function sanitizeName(value) {
 
 function isObject(value) {
   return typeof value === "object" && value !== null;
+}
+
+function isInteger(value) {
+  return typeof value === "number" && Number.isInteger(value);
+}
+
+function isRoadOrRiverEdge(value) {
+  return isInteger(value) && value >= 0 && value <= 5;
+}
+
+function isHexColor(value) {
+  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value);
 }
 
 function isValidMapContent(value) {
@@ -55,6 +72,27 @@ function isValidMapContent(value) {
     && Array.isArray(value.factions)
     && Array.isArray(value.factionTerritories)
   );
+}
+
+function normalizeMapContent(content) {
+  const roads = Array.isArray(content.roads) ? content.roads : [];
+
+  return {
+    version: content.version,
+    tiles: Array.isArray(content.tiles) ? content.tiles : [],
+    features: Array.isArray(content.features)
+      ? content.features.map((feature, index) => ({
+          ...feature,
+          id: typeof feature.id === "string" && feature.id.trim()
+            ? feature.id
+            : `loaded-feature-${index}-${feature.q}-${feature.r}`
+        }))
+      : [],
+    rivers: Array.isArray(content.rivers) ? content.rivers : [],
+    roads,
+    factions: Array.isArray(content.factions) ? content.factions : [],
+    factionTerritories: Array.isArray(content.factionTerritories) ? content.factionTerritories : []
+  };
 }
 
 function mapPathFromId(mapId) {
@@ -127,7 +165,7 @@ async function readMapFromFile(filePath) {
     id: parsed.id,
     name: parsed.name,
     updatedAt: parsed.updatedAt,
-    content: parsed.content
+    content: normalizeMapContent(parsed.content)
   };
 }
 
@@ -146,7 +184,7 @@ async function listMaps() {
   await ensureStorage();
 
   const entries = await fs.readdir(mapsDir, { withFileTypes: true });
-  const summaries = [];
+  const summariesById = new Map();
 
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(".json")) {
@@ -157,17 +195,32 @@ async function listMaps() {
 
     try {
       const map = await readMapFromFile(fullPath);
-      summaries.push({ id: map.id, name: map.name, updatedAt: map.updatedAt });
+      summariesById.set(map.id, { id: map.id, name: map.name, updatedAt: map.updatedAt });
     } catch {
       // Ignore malformed files.
     }
   }
 
+  for (const session of mapSessions.values()) {
+    summariesById.set(session.map.id, {
+      id: session.map.id,
+      name: session.map.name,
+      updatedAt: session.map.updatedAt
+    });
+  }
+
+  const summaries = Array.from(summariesById.values());
   summaries.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   return summaries;
 }
 
 async function getMap(mapId) {
+  const session = mapSessions.get(mapId);
+
+  if (session) {
+    return session.map;
+  }
+
   const filePath = mapPathFromId(mapId);
 
   if (!filePath) {
@@ -181,9 +234,412 @@ async function getMap(mapId) {
   }
 }
 
+function tileKey(q, r) {
+  return `${q},${r}`;
+}
+
+function riverKey(river) {
+  return `${river.q},${river.r},${river.edge}`;
+}
+
+function roadKey(road) {
+  return `${road.q},${road.r}`;
+}
+
+function cloneContent(content) {
+  return {
+    version: content.version,
+    tiles: [...content.tiles],
+    features: [...content.features],
+    rivers: [...content.rivers],
+    roads: [...content.roads],
+    factions: [...content.factions],
+    factionTerritories: [...content.factionTerritories]
+  };
+}
+
+function validateMapOperation(operation) {
+  if (!isObject(operation) || typeof operation.type !== "string") {
+    return "Invalid operation payload.";
+  }
+
+  if (operation.type === "set_tile") {
+    const tile = operation.tile;
+
+    if (!isObject(tile) || !isInteger(tile.q) || !isInteger(tile.r) || (tile.tileId !== null && typeof tile.tileId !== "string")) {
+      return "Invalid set_tile operation.";
+    }
+
+    return null;
+  }
+
+  if (operation.type === "add_feature") {
+    const feature = operation.feature;
+
+    if (!isObject(feature) || typeof feature.id !== "string" || !isInteger(feature.q) || !isInteger(feature.r) || typeof feature.type !== "string") {
+      return "Invalid add_feature operation.";
+    }
+
+    return null;
+  }
+
+  if (operation.type === "update_feature") {
+    if (typeof operation.featureId !== "string" || !isObject(operation.patch) || Object.keys(sanitizeFeaturePatch(operation.patch)).length === 0) {
+      return "Invalid update_feature operation.";
+    }
+
+    return null;
+  }
+
+  if (operation.type === "remove_feature") {
+    return typeof operation.featureId === "string" ? null : "Invalid remove_feature operation.";
+  }
+
+  if (operation.type === "add_river_data" || operation.type === "remove_river_data") {
+    const river = operation.river;
+
+    if (!isObject(river) || !isInteger(river.q) || !isInteger(river.r) || !isRoadOrRiverEdge(river.edge)) {
+      return `Invalid ${operation.type} operation.`;
+    }
+
+    return null;
+  }
+
+  if (operation.type === "update_river_data") {
+    const from = operation.from;
+    const to = operation.to;
+
+    if (
+      !isObject(from)
+      || !isObject(to)
+      || !isInteger(from.q)
+      || !isInteger(from.r)
+      || !isRoadOrRiverEdge(from.edge)
+      || !isInteger(to.q)
+      || !isInteger(to.r)
+      || !isRoadOrRiverEdge(to.edge)
+    ) {
+      return "Invalid update_river_data operation.";
+    }
+
+    return null;
+  }
+
+  if (operation.type === "add_road_data" || operation.type === "update_road_data") {
+    const road = operation.road;
+
+    if (!isObject(road) || !isInteger(road.q) || !isInteger(road.r) || !Array.isArray(road.edges) || !road.edges.every(isRoadOrRiverEdge)) {
+      return `Invalid ${operation.type} operation.`;
+    }
+
+    return null;
+  }
+
+  if (operation.type === "remove_road_data") {
+    const road = operation.road;
+
+    if (!isObject(road) || !isInteger(road.q) || !isInteger(road.r)) {
+      return "Invalid remove_road_data operation.";
+    }
+
+    return null;
+  }
+
+  if (operation.type === "add_faction") {
+    const faction = operation.faction;
+
+    if (!isObject(faction) || typeof faction.id !== "string" || typeof faction.name !== "string" || typeof faction.color !== "string" || !isHexColor(faction.color)) {
+      return "Invalid add_faction operation.";
+    }
+
+    return null;
+  }
+
+  if (operation.type === "update_faction") {
+    if (typeof operation.factionId !== "string" || !isObject(operation.patch) || Object.keys(sanitizeFactionPatch(operation.patch)).length === 0) {
+      return "Invalid update_faction operation.";
+    }
+
+    return null;
+  }
+
+  if (operation.type === "remove_faction") {
+    return typeof operation.factionId === "string" ? null : "Invalid remove_faction operation.";
+  }
+
+  if (operation.type === "set_faction_territory") {
+    const territory = operation.territory;
+
+    if (!isObject(territory) || !isInteger(territory.q) || !isInteger(territory.r) || (territory.factionId !== null && typeof territory.factionId !== "string")) {
+      return "Invalid set_faction_territory operation.";
+    }
+
+    return null;
+  }
+
+  if (operation.type === "rename_map") {
+    return typeof operation.name === "string" ? null : "Invalid rename_map operation.";
+  }
+
+  return "Unknown operation type.";
+}
+
+function sanitizeFeaturePatch(patch) {
+  const next = {};
+
+  if (typeof patch.type === "string") {
+    next.type = patch.type;
+  }
+  if (patch.visibility === "visible" || patch.visibility === "hidden") {
+    next.visibility = patch.visibility;
+  }
+  if (typeof patch.overrideTerrainTile === "boolean") {
+    next.overrideTerrainTile = patch.overrideTerrainTile;
+  }
+  if (typeof patch.gmLabel === "string" || patch.gmLabel === null) {
+    next.gmLabel = patch.gmLabel;
+  }
+  if (typeof patch.playerLabel === "string" || patch.playerLabel === null) {
+    next.playerLabel = patch.playerLabel;
+  }
+  if (typeof patch.labelRevealed === "boolean") {
+    next.labelRevealed = patch.labelRevealed;
+  }
+
+  return next;
+}
+
+function sanitizeFactionPatch(patch) {
+  const next = {};
+
+  if (typeof patch.name === "string" && patch.name.trim()) {
+    next.name = patch.name.trim();
+  }
+  if (typeof patch.color === "string" && isHexColor(patch.color)) {
+    next.color = patch.color;
+  }
+
+  return next;
+}
+
+function applyOperationToContent(content, operation) {
+  const next = cloneContent(content);
+
+  if (operation.type === "set_tile") {
+    const key = tileKey(operation.tile.q, operation.tile.r);
+    next.tiles = next.tiles.filter((tile) => tileKey(tile.q, tile.r) !== key);
+
+    if (operation.tile.tileId !== null) {
+      next.tiles.push({
+        q: operation.tile.q,
+        r: operation.tile.r,
+        tileId: operation.tile.tileId
+      });
+    } else {
+      next.factionTerritories = next.factionTerritories.filter((territory) => tileKey(territory.q, territory.r) !== key);
+    }
+
+    return next;
+  }
+
+  if (operation.type === "add_feature") {
+    if (!next.features.some((feature) => feature.id === operation.feature.id)) {
+      next.features.push(operation.feature);
+    }
+
+    return next;
+  }
+
+  if (operation.type === "update_feature") {
+    const patch = sanitizeFeaturePatch(operation.patch);
+    next.features = next.features.map((feature) => (
+      feature.id === operation.featureId
+        ? { ...feature, ...patch }
+        : feature
+    ));
+
+    return next;
+  }
+
+  if (operation.type === "remove_feature") {
+    next.features = next.features.filter((feature) => feature.id !== operation.featureId);
+    return next;
+  }
+
+  if (operation.type === "add_river_data") {
+    const key = riverKey(operation.river);
+
+    if (!next.rivers.some((river) => riverKey(river) === key)) {
+      next.rivers.push(operation.river);
+    }
+
+    return next;
+  }
+
+  if (operation.type === "update_river_data") {
+    const fromKey = riverKey(operation.from);
+    next.rivers = next.rivers.filter((river) => riverKey(river) !== fromKey);
+
+    if (!next.rivers.some((river) => riverKey(river) === riverKey(operation.to))) {
+      next.rivers.push(operation.to);
+    }
+
+    return next;
+  }
+
+  if (operation.type === "remove_river_data") {
+    next.rivers = next.rivers.filter((river) => riverKey(river) !== riverKey(operation.river));
+    return next;
+  }
+
+  if (operation.type === "add_road_data" || operation.type === "update_road_data") {
+    const normalizedRoad = {
+      q: operation.road.q,
+      r: operation.road.r,
+      edges: Array.from(new Set(operation.road.edges)).sort((left, right) => left - right)
+    };
+    const key = roadKey(normalizedRoad);
+    next.roads = next.roads.filter((road) => roadKey(road) !== key);
+    next.roads.push(normalizedRoad);
+    return next;
+  }
+
+  if (operation.type === "remove_road_data") {
+    next.roads = next.roads.filter((road) => roadKey(road) !== roadKey(operation.road));
+    return next;
+  }
+
+  if (operation.type === "add_faction") {
+    if (!next.factions.some((faction) => faction.id === operation.faction.id)) {
+      next.factions.push(operation.faction);
+    }
+
+    return next;
+  }
+
+  if (operation.type === "update_faction") {
+    const patch = sanitizeFactionPatch(operation.patch);
+    next.factions = next.factions.map((faction) => (
+      faction.id === operation.factionId
+        ? { ...faction, ...patch }
+        : faction
+    ));
+
+    return next;
+  }
+
+  if (operation.type === "remove_faction") {
+    next.factions = next.factions.filter((faction) => faction.id !== operation.factionId);
+    next.factionTerritories = next.factionTerritories.filter((territory) => territory.factionId !== operation.factionId);
+    return next;
+  }
+
+  if (operation.type === "set_faction_territory") {
+    const key = tileKey(operation.territory.q, operation.territory.r);
+    next.factionTerritories = next.factionTerritories.filter((territory) => tileKey(territory.q, territory.r) !== key);
+
+    if (operation.territory.factionId) {
+      next.factionTerritories.push(operation.territory);
+    }
+
+    return next;
+  }
+
+  if (operation.type === "rename_map") {
+    return next;
+  }
+
+  return next;
+}
+
+function schedulePersist(session) {
+  if (session.persistTimer) {
+    clearTimeout(session.persistTimer);
+  }
+
+  session.persistTimer = setTimeout(async () => {
+    session.persistTimer = null;
+
+    try {
+      await writeMapToFile(session.map);
+    } catch (error) {
+      console.error("Failed to persist map", session.map.id, error);
+    }
+  }, persistDebounceMs);
+}
+
+async function getOrCreateSession(mapId) {
+  const existing = mapSessions.get(mapId);
+
+  if (existing) {
+    return existing;
+  }
+
+  const map = await getMap(mapId);
+
+  if (!map) {
+    return null;
+  }
+
+  const session = {
+    map,
+    clients: new Set(),
+    persistTimer: null
+  };
+  mapSessions.set(mapId, session);
+  return session;
+}
+
+async function applyOperationToSession(mapId, operation, sourceClientId) {
+  const validationError = validateMapOperation(operation);
+
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
+  const session = await getOrCreateSession(mapId);
+
+  if (!session) {
+    throw new Error("Map not found.");
+  }
+
+  if (operation.type === "rename_map") {
+    session.map = {
+      ...session.map,
+      name: sanitizeName(operation.name),
+      updatedAt: nowIso()
+    };
+  } else {
+    session.map = {
+      ...session.map,
+      updatedAt: nowIso(),
+      content: applyOperationToContent(session.map.content, operation)
+    };
+  }
+
+  schedulePersist(session);
+
+  const payload = JSON.stringify({
+    type: "map_operation_applied",
+    operation,
+    sourceClientId,
+    updatedAt: session.map.updatedAt
+  });
+
+  for (const client of session.clients) {
+    if (client.readyState !== WebSocket.OPEN) {
+      continue;
+    }
+
+    client.send(payload);
+  }
+
+  return session.map;
+}
+
 const server = createServer(async (request, response) => {
   response.setHeader("Access-Control-Allow-Origin", "*");
-  response.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS");
+  response.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS");
   response.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (request.method === "OPTIONS") {
@@ -237,33 +693,23 @@ const server = createServer(async (request, response) => {
       return;
     }
 
-    if (mapMatch && request.method === "PUT") {
+    if (mapMatch && request.method === "PATCH") {
       const mapId = mapMatch[1];
-      const existing = await getMap(mapId);
+      const body = await readBody(request);
+      const session = await getOrCreateSession(mapId);
 
-      if (!existing) {
+      if (!session) {
         sendJson(response, 404, { error: "Map not found." });
         return;
       }
 
-      const body = await readBody(request);
-
-      if (!isValidMapContent(body.content)) {
-        sendJson(response, 400, { error: "Invalid map content." });
-        return;
-      }
-
-      const map = {
-        id: mapId,
-        name: typeof body.name === "string" && body.name.trim()
-          ? sanitizeName(body.name)
-          : existing.name,
-        updatedAt: nowIso(),
-        content: body.content
+      const operation = {
+        type: "rename_map",
+        name: sanitizeName(body.name)
       };
-
-      await writeMapToFile(map);
-      sendJson(response, 200, { map });
+      const updated = await applyOperationToSession(mapId, operation, "http");
+      await writeMapToFile(updated);
+      sendJson(response, 200, { map: updated });
       return;
     }
 
@@ -271,6 +717,60 @@ const server = createServer(async (request, response) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error.";
     sendJson(response, 500, { error: message });
+  }
+});
+
+const webSocketServer = new WebSocketServer({ noServer: true });
+
+server.on("upgrade", async (request, socket, head) => {
+  try {
+    if (!request.url) {
+      socket.destroy();
+      return;
+    }
+
+    const url = new URL(request.url, "http://localhost");
+    const match = url.pathname.match(new RegExp(`^/api/maps/(${mapIdPatternSource})/ws$`));
+
+    if (!match) {
+      socket.destroy();
+      return;
+    }
+
+    const mapId = match[1];
+    const session = await getOrCreateSession(mapId);
+
+    if (!session) {
+      socket.destroy();
+      return;
+    }
+
+    webSocketServer.handleUpgrade(request, socket, head, (client) => {
+      session.clients.add(client);
+
+      client.on("close", () => {
+        session.clients.delete(client);
+      });
+
+      client.on("message", async (raw) => {
+        try {
+          const message = JSON.parse(raw.toString("utf8"));
+
+          if (!isObject(message) || message.type !== "map_operation" || !isObject(message.operation) || typeof message.clientId !== "string") {
+            return;
+          }
+
+          await applyOperationToSession(mapId, message.operation, message.clientId);
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : "Invalid map operation.";
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({ type: "sync_error", error: detail }));
+          }
+        }
+      });
+    });
+  } catch {
+    socket.destroy();
   }
 });
 

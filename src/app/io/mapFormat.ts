@@ -2,6 +2,7 @@ import { hexKey, parseHexKey } from "@/domain/geometry/hex";
 import {
   addFaction,
   addFeature,
+  addRoadConnection,
   addRiverEdge,
   addTile,
   assignFactionAt,
@@ -10,8 +11,10 @@ import {
   getCanonicalRiverEdgeRef,
   getFactionLevelMap,
   getFactions,
+  getNeighborForRoadEdge,
   terrainTypes,
   type RiverEdgeIndex,
+  type RoadEdgeIndex,
   type TerrainType,
   type World
 } from "@/domain/world/world";
@@ -26,6 +29,7 @@ export type MapTileRecord = {
 };
 
 export type MapFeatureRecord = {
+  id: string;
   type: string;
   q: number;
   r: number;
@@ -40,6 +44,12 @@ export type MapRiverRecord = {
   q: number;
   r: number;
   edge: RiverEdgeIndex;
+};
+
+export type MapRoadRecord = {
+  q: number;
+  r: number;
+  edges: RoadEdgeIndex[];
 };
 
 export type MapFactionRecord = {
@@ -59,6 +69,7 @@ export type SavedMap = {
   tiles: MapTileRecord[];
   features: MapFeatureRecord[];
   rivers: MapRiverRecord[];
+  roads: MapRoadRecord[];
   factions: MapFactionRecord[];
   factionTerritories: MapFactionTerritoryRecord[];
 };
@@ -72,6 +83,10 @@ function isInteger(value: unknown): value is number {
 }
 
 function isRiverEdgeIndex(value: unknown): value is RiverEdgeIndex {
+  return isInteger(value) && value >= 0 && value <= 5;
+}
+
+function isRoadEdgeIndex(value: unknown): value is RoadEdgeIndex {
   return isInteger(value) && value >= 0 && value <= 5;
 }
 
@@ -107,6 +122,7 @@ function serializeFeatures(world: World): MapFeatureRecord[] {
       const axial = parseHexKey(feature.hexId);
 
       return {
+        id: feature.id,
         type: feature.kind,
         q: axial.q,
         r: axial.r,
@@ -148,6 +164,22 @@ function serializeRivers(world: World): MapRiverRecord[] {
   return serialized.sort((left, right) => (left.q - right.q) || (left.r - right.r) || (left.edge - right.edge));
 }
 
+function serializeRoads(world: World): MapRoadRecord[] {
+  const roads = world.roadsByLevel[sourceLevel] ?? new Map();
+
+  return Array.from(roads.entries())
+    .map(([hexId, edges]) => {
+      const axial = parseHexKey(hexId);
+
+      return {
+        q: axial.q,
+        r: axial.r,
+        edges: Array.from(edges).sort((left, right) => left - right)
+      };
+    })
+    .sort((left, right) => (left.q - right.q) || (left.r - right.r));
+}
+
 function serializeFactions(world: World): MapFactionRecord[] {
   return getFactions(world).map((faction) => ({
     id: faction.id,
@@ -184,6 +216,7 @@ export function parseSavedMap(raw: unknown): SavedMap {
     throw new Error("Map file is missing required arrays.");
   }
 
+  const rawRoads = Array.isArray(raw.roads) ? raw.roads : [];
   const rawFactions = Array.isArray(raw.factions) ? raw.factions : [];
   const rawFactionTerritories = Array.isArray(raw.factionTerritories) ? raw.factionTerritories : [];
 
@@ -232,7 +265,12 @@ export function parseSavedMap(raw: unknown): SavedMap {
       throw new Error(`Invalid labelRevealed at index ${index}.`);
     }
 
+    const id = typeof feature.id === "string" && feature.id.trim()
+      ? feature.id
+      : `loaded-feature-${index}-${feature.q}-${feature.r}`;
+
     return {
+      id,
       type: feature.type,
       q: feature.q,
       r: feature.r,
@@ -253,6 +291,24 @@ export function parseSavedMap(raw: unknown): SavedMap {
       q: river.q,
       r: river.r,
       edge: river.edge
+    };
+  });
+
+  const roads = rawRoads.map((road, index): MapRoadRecord => {
+    if (!isObject(road) || !isInteger(road.q) || !isInteger(road.r) || !Array.isArray(road.edges)) {
+      throw new Error(`Invalid road entry at index ${index}.`);
+    }
+
+    const edges = road.edges.filter((edge): edge is RoadEdgeIndex => isRoadEdgeIndex(edge));
+
+    if (edges.length !== road.edges.length) {
+      throw new Error(`Invalid road edges at index ${index}.`);
+    }
+
+    return {
+      q: road.q,
+      r: road.r,
+      edges: Array.from(new Set(edges)).sort((left, right) => left - right)
     };
   });
 
@@ -293,6 +349,7 @@ export function parseSavedMap(raw: unknown): SavedMap {
     tiles,
     features,
     rivers,
+    roads,
     factions,
     factionTerritories
   };
@@ -317,7 +374,7 @@ export function deserializeWorld(savedMap: SavedMap): World {
     const feature = savedMap.features[index];
 
     world = addFeature(world, sourceLevel, {
-      id: `loaded-feature-${index}-${feature.q}-${feature.r}`,
+      id: feature.id,
       kind: feature.type as (typeof featureKinds)[number],
       hexId: hexKey({ q: feature.q, r: feature.r }),
       hidden: feature.visibility === "hidden",
@@ -335,6 +392,15 @@ export function deserializeWorld(savedMap: SavedMap): World {
     });
   }
 
+  for (const road of savedMap.roads) {
+    const from = { q: road.q, r: road.r };
+
+    for (const edge of road.edges) {
+      const to = getNeighborForRoadEdge(from, edge);
+      world = addRoadConnection(world, sourceLevel, from, to);
+    }
+  }
+
   for (const territory of savedMap.factionTerritories) {
     world = assignFactionAt(world, sourceLevel, { q: territory.q, r: territory.r }, territory.factionId);
   }
@@ -348,6 +414,7 @@ export function serializeWorld(world: World): SavedMap {
     tiles: serializeTiles(world),
     features: serializeFeatures(world),
     rivers: serializeRivers(world),
+    roads: serializeRoads(world),
     factions: serializeFactions(world),
     factionTerritories: serializeFactionTerritories(world)
   };

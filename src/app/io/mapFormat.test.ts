@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   addFaction,
   addFeature,
+  addRoadConnection,
   addRiverEdge,
   addTile,
   assignFactionAt,
@@ -31,6 +32,7 @@ function createSampleWorld(): World {
     axial: { q: 0, r: 0 },
     edge: 1
   });
+  world = addRoadConnection(world, 3, { q: 0, r: 0 }, { q: 1, r: 0 });
 
   return world;
 }

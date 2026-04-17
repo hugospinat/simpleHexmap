@@ -20,8 +20,8 @@ type SidebarProps = {
   onModeChange: (mode: EditorMode) => void;
   onRecolorFaction: (factionId: string, color: string) => void;
   onRenameFaction: (factionId: string, name: string) => void;
-  onSaveMap: () => void;
   onSelectFaction: (factionId: string | null) => void;
+  syncStatus: "connecting" | "saving" | "saved" | "error";
   onTileTypeChange: (type: TerrainType) => void;
 };
 
@@ -39,8 +39,8 @@ export function Sidebar({
   onModeChange,
   onRecolorFaction,
   onRenameFaction,
-  onSaveMap,
   onSelectFaction,
+  syncStatus,
   onTileTypeChange
 }: SidebarProps) {
   const [editingFactionId, setEditingFactionId] = useState<string | null>(null);
@@ -190,9 +190,15 @@ export function Sidebar({
 
       <section className="panel data-panel">
         <h2>Data</h2>
-        <div className="data-actions">
-          <button type="button" className="compact-button" onClick={onSaveMap}>Save</button>
-        </div>
+        <p>
+          {syncStatus === "connecting"
+            ? "Connecting..."
+            : syncStatus === "saving"
+              ? "Saving..."
+              : syncStatus === "error"
+                ? "Sync error"
+                : "Saved"}
+        </p>
       </section>
     </aside>
   );
