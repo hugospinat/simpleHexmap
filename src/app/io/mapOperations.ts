@@ -238,7 +238,8 @@ export function applyMapOperation(snapshot: SavedMap, operation: MapOperation): 
       return snapshot;
     default: {
       const exhaustive: never = operation;
-      return exhaustive;
+      void exhaustive;
+      return snapshot;
     }
   }
 }

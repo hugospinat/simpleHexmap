@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { WebSocketServer } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 
 function resolvePort() {
   const raw = process.env.PORT;
@@ -627,7 +627,7 @@ async function applyOperationToSession(mapId, operation, sourceClientId) {
   });
 
   for (const client of session.clients) {
-    if (client.readyState !== 1) {
+    if (client.readyState !== WebSocket.OPEN) {
       continue;
     }
 
@@ -763,7 +763,7 @@ server.on("upgrade", async (request, socket, head) => {
           await applyOperationToSession(mapId, message.operation, message.clientId);
         } catch (error) {
           const detail = error instanceof Error ? error.message : "Invalid map operation.";
-          if (client.readyState === 1) {
+          if (client.readyState === WebSocket.OPEN) {
             client.send(JSON.stringify({ type: "sync_error", error: detail }));
           }
         }

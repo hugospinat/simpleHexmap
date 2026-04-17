@@ -92,7 +92,11 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
   const featureIdRef = useRef(0);
   const factionIdRef = useRef(0);
   const websocketRef = useRef<WebSocket | null>(null);
-  const clientIdRef = useRef(`client-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const clientIdRef = useRef(
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? `client-${crypto.randomUUID()}`
+      : `client-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
   const pendingAckCountRef = useRef(0);
   const queuedOperationsRef = useRef<MapOperation[]>([]);
   const skipSyncRef = useRef(false);
@@ -485,7 +489,8 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
       setSyncStatus(pendingAckCountRef.current > 0 ? "saving" : "saved");
     };
 
-    socket.onerror = () => {
+    socket.onerror = (event) => {
+      console.error("Map sync WebSocket error", event);
       setSyncStatus("error");
     };
 
@@ -498,7 +503,7 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
       websocketRef.current = null;
       socket.close();
     };
-  }, [mapId, reset]);
+  }, [mapId, reset, sendOperations]);
 
   useEffect(() => {
     const previous = previousPresentRef.current;
