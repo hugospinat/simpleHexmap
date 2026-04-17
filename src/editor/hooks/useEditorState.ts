@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { editorConfig } from "@/config/editorConfig";
 import { applyMapOperationToWorld, diffWorldAsOperations, type MapOperation } from "@/app/io/mapOperations";
-import type { MapOperationMessage, MapOperationRequest } from "@/app/io/mapApi";
+import { deserializeWorld } from "@/app/io/mapFormat";
+import type {
+  MapOperationBatchAppliedMessage,
+  MapOperationBatchRequest,
+  MapOperationMessage,
+  MapOperationRequest,
+  MapSyncSnapshotMessage
+} from "@/app/io/mapApi";
 import type { EditorMode } from "@/editor/tools/editorTypes";
 import type { OpenMapRole } from "@/ui/components/MapMenu/MapMenu";
 import { useKeyboardNavigation } from "@/editor/hooks/useKeyboardNavigation";
@@ -70,6 +77,8 @@ const defaultFactionColors = [
   "#d89f2f",
   "#1fa9a3"
 ];
+// Keep this aligned with server/index.mjs maxOperationsPerBatch.
+const maxOperationsPerBatch = 500;
 
 type UseEditorStateOptions = {
   initialWorld: World;
@@ -80,14 +89,37 @@ type UseEditorStateOptions = {
 type OperationEnvelope = {
   operationId: string;
   operation: MapOperation;
+  sent: boolean;
 };
 
-const maxRememberedOperationIds = 5000;
+function isMapSyncDebugEnabled(): boolean {
+  if (!import.meta.env.DEV) {
+    return false;
+  }
+
+  try {
+    return window.localStorage.getItem("hexmap:sync-debug") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function logMapSync(event: string, payload: Record<string, unknown>): void {
+  if (!isMapSyncDebugEnabled()) {
+    return;
+  }
+
+  console.info(`[MapSync] ${event}`, payload);
+}
+
+function toRoundedMs(durationMs: number): number {
+  return Number(durationMs.toFixed(2));
+}
 
 export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOptions) {
   const maxLevels = editorConfig.maxLevels;
   const appRef = useRef<HTMLElement | null>(null);
-  const { history, record, redo, resetFromCurrent, undo } = useUndoRedo<World>(() => initialWorld);
+  const { history, resetFromCurrent } = useUndoRedo<World>(() => initialWorld);
   const { changeLevelByDelta, changeVisualZoom, setCenter, view, visualZoom } = useCamera();
   const [draftWorld, setDraftWorld] = useState<World | null>(null);
   const [activeMode, setActiveMode] = useState<EditorMode>("terrain");
@@ -113,11 +145,8 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
   );
   const operationCounterRef = useRef(0);
   const queuedOperationsRef = useRef<OperationEnvelope[]>([]);
-  const inFlightOperationsRef = useRef<Map<string, OperationEnvelope>>(new Map());
-  const suppressNextOutboundSyncRef = useRef(false);
-  const knownOperationIdsRef = useRef<Set<string>>(new Set());
-  const knownOperationOrderRef = useRef<string[]>([]);
-  const previousPresentRef = useRef(history.present);
+  const expectedSequenceRef = useRef<number | null>(null);
+  const queuedReceivedOperationsRef = useRef<Map<number, MapOperationMessage>>(new Map());
 
   const world = draftWorld ?? history.present;
   const canEdit = role === "gm";
@@ -130,25 +159,10 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
     () => selectedFeatureId ? getFeatureById(world, view.level, selectedFeatureId) : null,
     [selectedFeatureId, view.level, world]
   );
-
-  const rememberOperationId = useCallback((operationId: string): boolean => {
-    if (knownOperationIdsRef.current.has(operationId)) {
-      return false;
-    }
-
-    knownOperationIdsRef.current.add(operationId);
-    knownOperationOrderRef.current.push(operationId);
-
-    if (knownOperationOrderRef.current.length > maxRememberedOperationIds) {
-      const removed = knownOperationOrderRef.current.shift();
-
-      if (removed) {
-        knownOperationIdsRef.current.delete(removed);
-      }
-    }
-
-    return true;
+  const ignoreHistoryStep = useCallback(() => {
+    // Local undo/redo is disabled in authoritative sync mode.
   }, []);
+
 
   const flushOperations = useCallback(() => {
     const socket = websocketRef.current;
@@ -158,18 +172,25 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
       return;
     }
 
-    if (queuedOperationsRef.current.length === 0) {
-      setSyncStatus(inFlightOperationsRef.current.size > 0 ? "saving" : "saved");
+    if (expectedSequenceRef.current === null) {
+      setSyncStatus("connecting");
       return;
     }
 
-    while (queuedOperationsRef.current.length > 0) {
-      const envelope = queuedOperationsRef.current.shift();
+    if (queuedOperationsRef.current.length === 0) {
+      setSyncStatus("saved");
+      return;
+    }
 
-      if (!envelope) {
-        break;
-      }
+    const unsent = queuedOperationsRef.current.filter((envelope) => !envelope.sent);
 
+    if (unsent.length === 0) {
+      setSyncStatus("saving");
+      return;
+    }
+
+    if (unsent.length === 1) {
+      const envelope = unsent[0];
       const payload: MapOperationRequest = {
         type: "map_operation",
         operationId: envelope.operationId,
@@ -178,39 +199,100 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
       };
 
       socket.send(JSON.stringify(payload));
-      inFlightOperationsRef.current.set(envelope.operationId, envelope);
+      envelope.sent = true;
 
-      if (import.meta.env.DEV) {
-        console.info("[MapSync] operation_sent", {
+      logMapSync("operation_sent", {
+        mapId,
+        operationId: envelope.operationId,
+        operationType: envelope.operation.type,
+        queued: queuedOperationsRef.current.length
+      });
+    } else {
+      const totalBatches = Math.ceil(unsent.length / maxOperationsPerBatch);
+
+      for (let batchIndex = 0; batchIndex < totalBatches; batchIndex += 1) {
+        const start = batchIndex * maxOperationsPerBatch;
+        const batchItems = unsent.slice(start, start + maxOperationsPerBatch);
+        const payload: MapOperationBatchRequest = {
+          type: "map_operation_batch",
+          clientId: clientIdRef.current,
+          operations: batchItems.map((envelope) => ({
+            operationId: envelope.operationId,
+            operation: envelope.operation
+          }))
+        };
+
+        socket.send(JSON.stringify(payload));
+
+        for (const envelope of batchItems) {
+          envelope.sent = true;
+        }
+
+        logMapSync("operation_batch_sent", {
           mapId,
-          operationId: envelope.operationId,
-          operationType: envelope.operation.type,
-          inFlight: inFlightOperationsRef.current.size,
+          batchIndex: batchIndex + 1,
+          totalBatches,
+          operations: batchItems.length,
           queued: queuedOperationsRef.current.length
         });
       }
     }
 
-    setSyncStatus(inFlightOperationsRef.current.size > 0 ? "saving" : "saved");
+    setSyncStatus("saving");
   }, [mapId]);
 
   const sendOperations = useCallback((operations: MapOperation[]) => {
+    let added = 0;
+
     for (const operation of operations) {
       operationCounterRef.current += 1;
       const operationId = `${clientIdRef.current}-${Date.now()}-${operationCounterRef.current}`;
-      queuedOperationsRef.current.push({ operationId, operation });
+      queuedOperationsRef.current.push({ operationId, operation, sent: false });
+      added += 1;
 
-      if (import.meta.env.DEV) {
-        console.info("[MapSync] operation_created", {
-          mapId,
-          operationId,
-          operationType: operation.type
-        });
-      }
+      logMapSync("operation_created", {
+        mapId,
+        operationId,
+        operationType: operation.type
+      });
+    }
+
+    if (added > 0) {
+      setSyncStatus("saving");
     }
 
     flushOperations();
   }, [flushOperations, mapId]);
+
+  const sendWorldDelta = useCallback((nextWorld: World) => {
+    if (nextWorld === history.present) {
+      return;
+    }
+
+    const debugEnabled = isMapSyncDebugEnabled();
+    const diffTimerLabel = `[MapSync] diff_world_delta:${mapId}`;
+
+    if (debugEnabled) {
+      console.time(diffTimerLabel);
+    }
+
+    const operations = diffWorldAsOperations(history.present, nextWorld);
+
+    if (debugEnabled) {
+      console.timeEnd(diffTimerLabel);
+      console.info("[MapSync] diff_world_delta_summary", {
+        mapId,
+        operations: operations.length,
+        queuedLocal: queuedOperationsRef.current.length
+      });
+    }
+
+    if (operations.length === 0) {
+      return;
+    }
+
+    sendOperations(operations);
+  }, [history.present, mapId, sendOperations]);
 
   const createFeatureId = useCallback(() => {
     featureIdRef.current += 1;
@@ -350,7 +432,7 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
         setSelectedFeatureId(result.selectedFeatureId);
 
         if (result.world !== history.present) {
-          record(result.world);
+          sendWorldDelta(result.world);
         }
 
         return;
@@ -412,7 +494,7 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
         });
 
         if (nextWorld !== history.present) {
-          record(nextWorld);
+          sendWorldDelta(nextWorld);
         }
 
         return;
@@ -436,9 +518,9 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
       createFeatureId,
       history.present,
       maxLevels,
-      record,
       canEdit,
       selectedFeatureId,
+      sendWorldDelta,
       view.level
     ]
   );
@@ -485,7 +567,7 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
       const finishedWorld = getFinishedGestureWorld(terrainGesture);
 
       if (finishedWorld) {
-        record(finishedWorld);
+        sendWorldDelta(finishedWorld);
       }
     }
 
@@ -493,7 +575,7 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
       const finishedWorld = getFinishedFactionGestureWorld(factionGesture);
 
       if (finishedWorld) {
-        record(finishedWorld);
+        sendWorldDelta(finishedWorld);
       }
     }
 
@@ -501,7 +583,7 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
       const finishedWorld = getFinishedRiverGestureWorld(riverGesture);
 
       if (finishedWorld) {
-        record(finishedWorld);
+        sendWorldDelta(finishedWorld);
       }
     }
 
@@ -509,14 +591,14 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
       const finishedWorld = getFinishedRoadGestureWorld(roadGesture);
 
       if (finishedWorld) {
-        record(finishedWorld);
+        sendWorldDelta(finishedWorld);
       }
     }
 
     if (fogGesture && fogGesture.world !== history.present) {
-      record(fogGesture.world);
+      sendWorldDelta(fogGesture.world);
     }
-  }, [history.present, record]);
+  }, [history.present, sendWorldDelta]);
 
   const chooseFeatureKind = useCallback((type: FeatureKind) => {
     if (!canEdit) {
@@ -556,10 +638,10 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
       const nextWorld = updateFeature(history.present, view.level, selectedFeatureId, updates);
 
       if (nextWorld !== history.present) {
-        record(nextWorld);
+        sendWorldDelta(nextWorld);
       }
     },
-    [canEdit, history.present, record, selectedFeatureId, view.level]
+    [canEdit, history.present, selectedFeatureId, sendWorldDelta, view.level]
   );
 
   const deleteSelectedFeature = useCallback(() => {
@@ -579,11 +661,11 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
     ).world;
 
     if (nextWorld !== history.present) {
-      record(nextWorld);
+      sendWorldDelta(nextWorld);
     }
 
     setSelectedFeatureId(null);
-  }, [canEdit, history.present, record, selectedFeature, selectedFeatureId, view.level]);
+  }, [canEdit, history.present, selectedFeature, selectedFeatureId, sendWorldDelta, view.level]);
 
   useEffect(() => {
     if (selectedFeatureId && !selectedFeature) {
@@ -596,6 +678,113 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
       setActiveFactionId(null);
     }
   }, [activeFactionId, selectedFaction]);
+
+  const acknowledgeOperation = useCallback((operationId: string) => {
+    const index = queuedOperationsRef.current.findIndex((envelope) => envelope.operationId === operationId);
+
+    if (index >= 0) {
+      queuedOperationsRef.current.splice(index, 1);
+    }
+  }, []);
+
+  const applyQueuedReceivedOperations = useCallback(() => {
+    const debugEnabled = isMapSyncDebugEnabled();
+    const applyDispatchTimerLabel = `[MapSync] apply_queue_dispatch:${mapId}`;
+    const applyQueueStartedAt = performance.now();
+    let appliedCount = 0;
+    let firstAppliedSequence: number | null = null;
+    let lastAppliedSequence: number | null = null;
+
+    if (debugEnabled) {
+      console.time(applyDispatchTimerLabel);
+    }
+
+    // Collect all consecutive operations to apply in order
+    const operationsToApply: Array<{ sequence: number; message: MapOperationMessage }> = [];
+    while (expectedSequenceRef.current !== null) {
+      const expectedSequence = expectedSequenceRef.current;
+      const nextMessage = queuedReceivedOperationsRef.current.get(expectedSequence);
+      if (!nextMessage) break;
+      queuedReceivedOperationsRef.current.delete(expectedSequence);
+      expectedSequenceRef.current = expectedSequence + 1;
+      operationsToApply.push({ sequence: expectedSequence, message: nextMessage });
+      if (nextMessage.sourceClientId === clientIdRef.current) {
+        acknowledgeOperation(nextMessage.operationId);
+      }
+      appliedCount += 1;
+      firstAppliedSequence ??= expectedSequence;
+      lastAppliedSequence = expectedSequence;
+    }
+
+    if (operationsToApply.length > 0) {
+      setDraftWorld(null);
+      resetFromCurrent((currentWorld) => {
+        let world = currentWorld;
+        for (const { sequence, message } of operationsToApply) {
+          const operationTimerBase = `[MapSync] apply_operation:${mapId}:${sequence}:${message.operationId}`;
+          const operationDispatchStartedAt = performance.now();
+          if (debugEnabled) {
+            console.time(`${operationTimerBase}:applyMapOperationToWorld`);
+          }
+          const operationStart = performance.now();
+          world = applyMapOperationToWorld(world, message.operation);
+          const applyDurationMs = performance.now() - operationStart;
+          if (debugEnabled) {
+            console.timeEnd(`${operationTimerBase}:applyMapOperationToWorld`);
+            if (applyDurationMs >= 8) {
+              console.info("[MapSync] apply_operation_slow", {
+                mapId,
+                sequence,
+                operationId: message.operationId,
+                operationType: message.operation.type,
+                durationMs: toRoundedMs(applyDurationMs)
+              });
+            }
+          }
+          logMapSync("operation_applied_sequence", {
+            mapId,
+            sequence,
+            operationId: message.operationId,
+            operationType: message.operation.type,
+            sourceClientId: message.sourceClientId
+          });
+        }
+        return world;
+      });
+    }
+
+    if (debugEnabled) {
+      console.timeEnd(applyDispatchTimerLabel);
+      const applyQueueDispatchMs = performance.now() - applyQueueStartedAt;
+      const bufferedSequences = Array.from(queuedReceivedOperationsRef.current.keys());
+      const nextBufferedSequence = bufferedSequences.length > 0 ? Math.min(...bufferedSequences) : null;
+      console.info("[MapSync] apply_queue_summary", {
+        mapId,
+        appliedCount,
+        firstAppliedSequence,
+        lastAppliedSequence,
+        expectedNextSequence: expectedSequenceRef.current,
+        bufferedWaiting: queuedReceivedOperationsRef.current.size,
+        nextBufferedSequence,
+        queuedLocal: queuedOperationsRef.current.length,
+        dispatchLoopMs: toRoundedMs(applyQueueDispatchMs)
+      });
+      if (appliedCount > 0) {
+        const queueToPaintStartedAt = performance.now();
+        window.requestAnimationFrame(() => {
+          console.info("[MapSync] apply_queue_to_paint_summary", {
+            mapId,
+            appliedCount,
+            durationMs: toRoundedMs(performance.now() - applyQueueStartedAt),
+            toNextPaintMs: toRoundedMs(performance.now() - queueToPaintStartedAt)
+          });
+        });
+      }
+    }
+
+    setSyncStatus(queuedOperationsRef.current.length > 0 ? "saving" : "saved");
+    flushOperations();
+  }, [acknowledgeOperation, flushOperations, mapId, resetFromCurrent]);
 
   useEffect(() => {
     const socketUrl = buildWebSocketUrl(`/api/maps/${encodeURIComponent(mapId)}/ws`);
@@ -621,9 +810,7 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
       clearReconnectTimer();
       setSyncStatus("connecting");
 
-      if (import.meta.env.DEV) {
-        console.info("[MapSync] reconnect_scheduled", { mapId, socketUrl, delayMs, reconnectAttempt });
-      }
+      logMapSync("reconnect_scheduled", { mapId, socketUrl, delayMs, reconnectAttempt });
 
       reconnectTimer = window.setTimeout(() => {
         connect();
@@ -639,9 +826,7 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
         return;
       }
 
-      if (import.meta.env.DEV) {
-        console.info("[MapSync] connecting", { mapId, socketUrl });
-      }
+      logMapSync("connecting", { mapId, socketUrl });
 
       const socket = new WebSocket(socketUrl);
       activeSocket = socket;
@@ -654,30 +839,14 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
         }
 
         reconnectAttempt = 0;
+        expectedSequenceRef.current = null;
+        queuedReceivedOperationsRef.current.clear();
+        queuedOperationsRef.current = queuedOperationsRef.current.map((envelope) => ({
+          ...envelope,
+          sent: false
+        }));
 
-        if (import.meta.env.DEV) {
-          console.info("[MapSync] open", { mapId, socketUrl });
-        }
-
-        if (inFlightOperationsRef.current.size > 0) {
-          const queuedIds = new Set(queuedOperationsRef.current.map((envelope) => envelope.operationId));
-          const retryEnvelopes = Array.from(inFlightOperationsRef.current.values())
-            .filter((envelope) => !queuedIds.has(envelope.operationId));
-
-          if (retryEnvelopes.length > 0) {
-            queuedOperationsRef.current = [...retryEnvelopes, ...queuedOperationsRef.current];
-
-            if (import.meta.env.DEV) {
-              console.info("[MapSync] operation_retry_queued", {
-                mapId,
-                count: retryEnvelopes.length,
-                inFlight: inFlightOperationsRef.current.size
-              });
-            }
-          }
-        }
-
-        flushOperations();
+        logMapSync("open", { mapId, socketUrl });
       };
 
       socket.onmessage = (event) => {
@@ -703,69 +872,122 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
           return;
         }
 
-        if ((message as { type?: string }).type !== "map_operation_applied") {
+        if ((message as { type?: string }).type === "sync_snapshot") {
+          const payload = message as MapSyncSnapshotMessage;
+
+          if (!Number.isInteger(payload.lastSequence) || payload.lastSequence < 0) {
+            console.error("[MapSync] invalid_snapshot_sequence", payload);
+            setSyncStatus("error");
+            return;
+          }
+
+          try {
+            const snapshotWorld = deserializeWorld(payload.content);
+            setDraftWorld(null);
+            resetFromCurrent(() => snapshotWorld);
+            expectedSequenceRef.current = payload.lastSequence + 1;
+            queuedReceivedOperationsRef.current.clear();
+            setSyncStatus(queuedOperationsRef.current.length > 0 ? "saving" : "saved");
+
+            logMapSync("snapshot_loaded", {
+              mapId,
+              lastSequence: payload.lastSequence,
+              nextExpectedSequence: expectedSequenceRef.current,
+              queuedLocal: queuedOperationsRef.current.length
+            });
+
+            flushOperations();
+          } catch (error) {
+            console.error("[MapSync] invalid_snapshot", error);
+            setSyncStatus("error");
+          }
+
           return;
         }
 
-        const payload = message as MapOperationMessage;
-        const operationId = payload.operationId;
+        const enqueueAppliedOperation = (payload: MapOperationMessage) => {
+          const operationId = payload.operationId;
 
-        if (typeof operationId !== "string" || !operationId) {
-          console.error("[MapSync] invalid_operation_id", payload);
-          return;
-        }
+          if (typeof operationId !== "string" || !operationId || !Number.isInteger(payload.sequence) || payload.sequence <= 0) {
+            console.error("[MapSync] invalid_operation_id", payload);
+            return;
+          }
 
-        if (import.meta.env.DEV) {
-          console.info("[MapSync] operation_received", {
+          if (expectedSequenceRef.current === null) {
+            logMapSync("operation_waiting_snapshot", {
+              mapId,
+              operationId,
+              sequence: payload.sequence,
+              operationType: payload.operation.type
+            });
+            return;
+          }
+
+          logMapSync("operation_received", {
             mapId,
+            sequence: payload.sequence,
             operationId,
             operationType: payload.operation.type,
             sourceClientId: payload.sourceClientId
           });
-        }
 
-        if (payload.sourceClientId === clientIdRef.current) {
-          const wasPending = inFlightOperationsRef.current.delete(operationId);
-          const wasNew = rememberOperationId(operationId);
+          if (payload.sequence < expectedSequenceRef.current) {
+            if (payload.sourceClientId === clientIdRef.current) {
+              acknowledgeOperation(operationId);
+            }
 
-          if (import.meta.env.DEV) {
-            console.info("[MapSync] operation_ack", {
+            logMapSync("operation_ignored_past_sequence", {
               mapId,
               operationId,
-              operationType: payload.operation.type,
-              wasPending,
-              duplicateAck: !wasNew,
-              inFlight: inFlightOperationsRef.current.size
-            });
-          }
-
-          flushOperations();
-          return;
-        }
-
-        if (!rememberOperationId(operationId)) {
-          if (import.meta.env.DEV) {
-            console.info("[MapSync] operation_ignored_duplicate", {
-              mapId,
-              operationId,
+              sequence: payload.sequence,
+              expectedSequence: expectedSequenceRef.current,
               operationType: payload.operation.type
             });
+
+            return;
           }
+
+          if (!queuedReceivedOperationsRef.current.has(payload.sequence)) {
+            queuedReceivedOperationsRef.current.set(payload.sequence, payload);
+          }
+
+          if (payload.sequence > expectedSequenceRef.current) {
+            logMapSync("operation_gap_detected", {
+              mapId,
+              expectedSequence: expectedSequenceRef.current,
+              receivedSequence: payload.sequence,
+              bufferedWaiting: queuedReceivedOperationsRef.current.size
+            });
+          }
+        };
+
+        const messageType = (message as { type?: string }).type;
+
+        if (messageType === "map_operation_applied") {
+          enqueueAppliedOperation(message as MapOperationMessage);
+          applyQueuedReceivedOperations();
           return;
         }
 
-        if (import.meta.env.DEV) {
-          console.info("[MapSync] operation_applied_remote", {
-            mapId,
-            operationId,
-            operationType: payload.operation.type
-          });
-        }
+        if (messageType === "map_operation_batch_applied") {
+          const batch = message as MapOperationBatchAppliedMessage;
 
-        suppressNextOutboundSyncRef.current = true;
-        setDraftWorld(null);
-        resetFromCurrent((currentWorld) => applyMapOperationToWorld(currentWorld, payload.operation));
-        setSyncStatus(inFlightOperationsRef.current.size > 0 ? "saving" : "saved");
+          if (!Array.isArray(batch.operations)) {
+            console.error("[MapSync] invalid_operation_batch", batch);
+            return;
+          }
+
+          logMapSync("operation_batch_received", {
+            mapId,
+            operations: batch.operations.length
+          });
+
+          for (const operation of batch.operations) {
+            enqueueAppliedOperation({ type: "map_operation_applied", ...operation });
+          }
+
+          applyQueuedReceivedOperations();
+        }
       };
 
       socket.onerror = (event) => {
@@ -788,15 +1010,13 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
         }
 
         if (disposed || !isCurrentSocket) {
-          if (import.meta.env.DEV) {
-            console.info("[MapSync] close_intentional", {
-              mapId,
-              socketUrl,
-              code: event.code,
-              reason: event.reason,
-              wasClean: event.wasClean
-            });
-          }
+          logMapSync("close_intentional", {
+            mapId,
+            socketUrl,
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean
+          });
           return;
         }
 
@@ -820,6 +1040,8 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
     return () => {
       disposed = true;
       clearReconnectTimer();
+      expectedSequenceRef.current = null;
+      queuedReceivedOperationsRef.current.clear();
 
       if (activeSocket && (activeSocket.readyState === WebSocket.CONNECTING || activeSocket.readyState === WebSocket.OPEN)) {
         activeSocket.close(1000, "client_cleanup");
@@ -827,46 +1049,7 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
 
       websocketRef.current = null;
     };
-  }, [flushOperations, mapId, rememberOperationId, resetFromCurrent]);
-
-  useEffect(() => {
-    const previous = previousPresentRef.current;
-    const current = history.present;
-
-    if (previous === current) {
-      return;
-    }
-
-    previousPresentRef.current = current;
-
-    if (suppressNextOutboundSyncRef.current) {
-      suppressNextOutboundSyncRef.current = false;
-
-      if (import.meta.env.DEV) {
-        console.info("[MapSync] outbound_skipped_remote_apply", {
-          mapId
-        });
-      }
-
-      return;
-    }
-
-    const operations = diffWorldAsOperations(previous, current);
-
-    if (operations.length === 0) {
-      return;
-    }
-
-    if (import.meta.env.DEV) {
-      console.info("[MapSync] outbound_diff_created", {
-        mapId,
-        count: operations.length,
-        operationTypes: operations.map((operation) => operation.type)
-      });
-    }
-
-    sendOperations(operations);
-  }, [history.present, mapId, sendOperations]);
+  }, [acknowledgeOperation, applyQueuedReceivedOperations, flushOperations, mapId, resetFromCurrent]);
 
   const toggleCoordinates = useCallback(() => {
     setShowCoordinates((previous) => !previous);
@@ -886,11 +1069,11 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
     const nextWorld = addFaction(history.present, nextFaction);
 
     if (nextWorld !== history.present) {
-      record(nextWorld);
+      sendWorldDelta(nextWorld);
       setActiveFactionId(nextFaction.id);
       setActiveMode("faction");
     }
-  }, [canEdit, createFactionId, factions.length, history.present, record]);
+  }, [canEdit, createFactionId, factions.length, history.present, sendWorldDelta]);
 
   const renameFaction = useCallback((factionId: string, name: string) => {
     if (!canEdit) {
@@ -906,9 +1089,9 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
     const nextWorld = updateFaction(history.present, factionId, { name: trimmed });
 
     if (nextWorld !== history.present) {
-      record(nextWorld);
+      sendWorldDelta(nextWorld);
     }
-  }, [canEdit, history.present, record]);
+  }, [canEdit, history.present, sendWorldDelta]);
 
   const recolorFaction = useCallback((factionId: string, color: string) => {
     if (!canEdit) {
@@ -918,9 +1101,9 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
     const nextWorld = updateFaction(history.present, factionId, { color });
 
     if (nextWorld !== history.present) {
-      record(nextWorld);
+      sendWorldDelta(nextWorld);
     }
-  }, [canEdit, history.present, record]);
+  }, [canEdit, history.present, sendWorldDelta]);
 
   const deleteFactionById = useCallback((factionId: string) => {
     if (!canEdit) {
@@ -930,13 +1113,13 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
     const nextWorld = removeFaction(history.present, factionId);
 
     if (nextWorld !== history.present) {
-      record(nextWorld);
+      sendWorldDelta(nextWorld);
     }
 
     if (activeFactionId === factionId) {
       setActiveFactionId(null);
     }
-  }, [activeFactionId, canEdit, history.present, record]);
+  }, [activeFactionId, canEdit, history.present, sendWorldDelta]);
 
   useKeyboardNavigation({
     center: view.center,
@@ -946,9 +1129,9 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
     visualZoom,
     onCenterChange: setCenter,
     onLevelStep: changeLevelByDelta,
-    onRedo: redo,
+    onRedo: ignoreHistoryStep,
     onToggleCoordinates: toggleCoordinates,
-    onUndo: undo
+    onUndo: ignoreHistoryStep
   });
 
   const interactionLabel = useMemo(() => {

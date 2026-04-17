@@ -116,10 +116,26 @@ export async function renameMapById(mapId: string, name: string): Promise<MapRec
 
 export type MapOperationMessage = {
   type: "map_operation_applied";
+  sequence: number;
   operationId: string;
   operation: MapOperation;
   sourceClientId: string;
   updatedAt: string;
+};
+
+export type MapAppliedOperationEntry = Omit<MapOperationMessage, "type">;
+
+export type MapOperationBatchAppliedMessage = {
+  type: "map_operation_batch_applied";
+  operations: MapAppliedOperationEntry[];
+  updatedAt: string;
+};
+
+export type MapSyncSnapshotMessage = {
+  type: "sync_snapshot";
+  lastSequence: number;
+  updatedAt: string;
+  content: SavedMap;
 };
 
 export type MapOperationRequest = {
@@ -127,4 +143,15 @@ export type MapOperationRequest = {
   operationId: string;
   operation: MapOperation;
   clientId: string;
+};
+
+export type MapOperationBatchItem = {
+  operationId: string;
+  operation: MapOperation;
+};
+
+export type MapOperationBatchRequest = {
+  type: "map_operation_batch";
+  clientId: string;
+  operations: MapOperationBatchItem[];
 };

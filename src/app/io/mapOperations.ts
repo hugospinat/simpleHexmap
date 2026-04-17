@@ -1,10 +1,35 @@
-import { deserializeWorld, serializeWorld, type MapFactionRecord, type MapFeatureRecord, type MapRiverRecord, type MapRoadRecord, type MapTileRecord, type SavedMap } from "@/app/io/mapFormat";
-import type { World } from "@/domain/world/world";
+import { serializeWorld, type MapFactionRecord, type MapFeatureRecord, type MapRiverRecord, type MapRoadRecord, type MapTileRecord, type SavedMap } from "@/app/io/mapFormat";
+import {
+  addRoadConnection,
+  addFaction,
+  addFeature,
+  addRiverEdge,
+  addTile,
+  assignFactionAt,
+  clearFactionAt,
+  featureHexIdToAxial,
+  getFeatureById,
+  getCanonicalRiverEdgeRef,
+  getNeighborForRoadEdge,
+  getRoadLevelMap,
+  removeFaction,
+  removeFeatureAt,
+  removeRiverEdge,
+  removeTile,
+  roadHexIdToAxial,
+  setCellHidden,
+  updateFaction,
+  updateFeature,
+  type FeatureKind,
+  type TerrainType,
+  type World
+} from "@/domain/world/world";
 
 type TileKey = `${number},${number}`;
 type RiverKey = `${number},${number},${number}`;
 type FeaturePatch = Partial<Pick<MapFeatureRecord, "gmLabel" | "labelRevealed" | "overrideTerrainTile" | "playerLabel" | "type" | "visibility">>;
 type FactionPatch = Partial<Pick<MapFactionRecord, "color" | "name">>;
+const sourceLevel = 3;
 
 export type MapOperation =
   | { type: "set_tile"; tile: Omit<MapTileRecord, "tileId"> & { tileId: string | null } }
@@ -85,6 +110,130 @@ function sanitizeFactionPatch(patch: FactionPatch): FactionPatch {
   }
 
   return next;
+}
+
+function applySetTileToWorld(world: World, tile: Omit<MapTileRecord, "tileId"> & { tileId: string | null }): World {
+  const axial = { q: tile.q, r: tile.r };
+
+  if (tile.tileId === null) {
+    // Keep map-operation parity: deleting a tile also clears source-level faction ownership on that cell.
+    const withoutFaction = clearFactionAt(world, sourceLevel, axial);
+    return removeTile(withoutFaction, sourceLevel, axial);
+  }
+
+  const withTile = addTile(world, sourceLevel, axial, tile.tileId as TerrainType);
+  return setCellHidden(withTile, sourceLevel, axial, tile.hidden ?? false);
+}
+
+function applyFeatureRecordToWorld(world: World, feature: MapFeatureRecord): World {
+  if (getFeatureById(world, sourceLevel, feature.id)) {
+    return world;
+  }
+
+  return addFeature(world, sourceLevel, {
+    id: feature.id,
+    kind: feature.type as FeatureKind,
+    hexId: `${feature.q},${feature.r}`,
+    hidden: feature.visibility === "hidden",
+    overrideTerrainTile: feature.overrideTerrainTile,
+    gmLabel: feature.gmLabel ?? undefined,
+    playerLabel: feature.playerLabel ?? undefined,
+    labelRevealed: feature.labelRevealed
+  });
+}
+
+function isCanonicalRiverRecord(river: MapRiverRecord): boolean {
+  const canonical = getCanonicalRiverEdgeRef({
+    axial: { q: river.q, r: river.r },
+    edge: river.edge
+  });
+
+  return canonical.axial.q === river.q
+    && canonical.axial.r === river.r
+    && canonical.edge === river.edge;
+}
+
+function applyFeaturePatchToWorld(world: World, featureId: string, patch: FeaturePatch): World {
+  const sanitized = sanitizeFeaturePatch(patch);
+  const updates: Parameters<typeof updateFeature>[3] = {};
+
+  if (typeof sanitized.type === "string") {
+    updates.kind = sanitized.type as FeatureKind;
+  }
+  if (sanitized.visibility === "hidden" || sanitized.visibility === "visible") {
+    updates.hidden = sanitized.visibility === "hidden";
+  }
+  if (typeof sanitized.overrideTerrainTile === "boolean") {
+    updates.overrideTerrainTile = sanitized.overrideTerrainTile;
+  }
+  if (typeof sanitized.gmLabel === "string" || sanitized.gmLabel === null) {
+    updates.gmLabel = sanitized.gmLabel ?? undefined;
+  }
+  if (typeof sanitized.playerLabel === "string" || sanitized.playerLabel === null) {
+    updates.playerLabel = sanitized.playerLabel ?? undefined;
+  }
+  if (typeof sanitized.labelRevealed === "boolean") {
+    updates.labelRevealed = sanitized.labelRevealed;
+  }
+
+  return updateFeature(world, sourceLevel, featureId, updates);
+}
+
+function applyRemoveFeatureToWorld(world: World, featureId: string): World {
+  const feature = getFeatureById(world, sourceLevel, featureId);
+
+  if (!feature) {
+    return world;
+  }
+
+  return removeFeatureAt(world, sourceLevel, featureHexIdToAxial(feature.hexId));
+}
+
+function getRoadRecordsFromWorld(world: World): MapRoadRecord[] {
+  const roads = getRoadLevelMap(world, sourceLevel);
+
+  return Array.from(roads.entries()).map(([hexId, edges]) => {
+    const axial = roadHexIdToAxial(hexId);
+
+    return {
+      q: axial.q,
+      r: axial.r,
+      edges: Array.from(edges)
+    };
+  });
+}
+
+function applyRoadOperationToRecords(roads: MapRoadRecord[], operation: Extract<MapOperation, { type: "add_road_data" | "update_road_data" | "remove_road_data" }>): MapRoadRecord[] {
+  if (operation.type === "remove_road_data") {
+    return roads.filter((road) => roadKey(road) !== roadKey(operation.road));
+  }
+
+  const normalized = normalizeRoad(operation.road);
+  const next = roads.filter((road) => roadKey(road) !== roadKey(normalized));
+  next.push(normalized);
+  return next;
+}
+
+function applyRoadOperationToWorld(world: World, operation: Extract<MapOperation, { type: "add_road_data" | "update_road_data" | "remove_road_data" }>): World {
+  const updatedRoadRecords = applyRoadOperationToRecords(getRoadRecordsFromWorld(world), operation);
+  let nextWorld: World = {
+    ...world,
+    roadsByLevel: {
+      ...world.roadsByLevel,
+      [sourceLevel]: new Map()
+    }
+  };
+
+  for (const road of updatedRoadRecords) {
+    const from = { q: road.q, r: road.r };
+
+    for (const edge of road.edges) {
+      const to = getNeighborForRoadEdge(from, edge);
+      nextWorld = addRoadConnection(nextWorld, sourceLevel, from, to);
+    }
+  }
+
+  return nextWorld;
 }
 
 export function applyMapOperation(snapshot: SavedMap, operation: MapOperation): SavedMap {
@@ -520,5 +669,75 @@ export function diffWorldAsOperations(previousWorld: World, nextWorld: World): M
 }
 
 export function applyMapOperationToWorld(world: World, operation: MapOperation): World {
-  return deserializeWorld(applyMapOperation(serializeWorld(world), operation));
+  switch (operation.type) {
+    case "set_tile":
+      return applySetTileToWorld(world, operation.tile);
+    case "set_cell_hidden":
+      return setCellHidden(world, sourceLevel, { q: operation.cell.q, r: operation.cell.r }, operation.cell.hidden);
+    case "add_feature":
+      return applyFeatureRecordToWorld(world, operation.feature);
+    case "set_feature_hidden":
+      return updateFeature(world, sourceLevel, operation.featureId, { hidden: operation.hidden });
+    case "update_feature":
+      return applyFeaturePatchToWorld(world, operation.featureId, operation.patch);
+    case "remove_feature":
+      return applyRemoveFeatureToWorld(world, operation.featureId);
+    case "add_river_data":
+      return addRiverEdge(world, sourceLevel, {
+        axial: { q: operation.river.q, r: operation.river.r },
+        edge: operation.river.edge
+      });
+    case "update_river_data": {
+      const withoutPrevious = isCanonicalRiverRecord(operation.from)
+        ? removeRiverEdge(world, sourceLevel, {
+          axial: { q: operation.from.q, r: operation.from.r },
+          edge: operation.from.edge
+        })
+        : world;
+
+      return addRiverEdge(withoutPrevious, sourceLevel, {
+        axial: { q: operation.to.q, r: operation.to.r },
+        edge: operation.to.edge
+      });
+    }
+    case "remove_river_data":
+      if (!isCanonicalRiverRecord(operation.river)) {
+        return world;
+      }
+
+      return removeRiverEdge(world, sourceLevel, {
+        axial: { q: operation.river.q, r: operation.river.r },
+        edge: operation.river.edge
+      });
+    case "add_road_data":
+      return applyRoadOperationToWorld(world, operation);
+    case "update_road_data":
+      return applyRoadOperationToWorld(world, operation);
+    case "remove_road_data":
+      return applyRoadOperationToWorld(world, operation);
+    case "add_faction":
+      return addFaction(world, operation.faction);
+    case "update_faction": {
+      const patch = sanitizeFactionPatch(operation.patch);
+      return updateFaction(world, operation.factionId, patch);
+    }
+    case "remove_faction":
+      return removeFaction(world, operation.factionId);
+    case "set_faction_territory": {
+      const axial = { q: operation.territory.q, r: operation.territory.r };
+
+      if (operation.territory.factionId === null) {
+        return clearFactionAt(world, sourceLevel, axial);
+      }
+
+      return assignFactionAt(world, sourceLevel, axial, operation.territory.factionId);
+    }
+    case "rename_map":
+      return world;
+    default: {
+      const exhaustive: never = operation;
+      void exhaustive;
+      return world;
+    }
+  }
 }

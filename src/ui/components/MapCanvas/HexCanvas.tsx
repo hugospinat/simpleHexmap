@@ -7,6 +7,18 @@ import { useMapAssetsVersion } from "@/editor/hooks/useMapAssetsVersion";
 import { useMapInteraction } from "@/editor/hooks/useMapInteraction";
 import type { HexCanvasProps } from "@/ui/components/MapCanvas/types";
 
+function isMapSyncDebugEnabled(): boolean {
+  if (!import.meta.env.DEV) {
+    return false;
+  }
+
+  try {
+    return window.localStorage.getItem("hexmap:sync-debug") === "1";
+  } catch {
+    return false;
+  }
+}
+
 export default function HexCanvas({
   world,
   canEdit,
@@ -32,6 +44,7 @@ export default function HexCanvas({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const assetVersion = useMapAssetsVersion();
   const lastPerformanceLogAtRef = useRef(0);
+  const renderDebugBatchRef = useRef({ frames: 0, lastLogAt: 0 });
   const viewport = useCanvasViewport(canvasRef);
 
   useCanvasWheelZoom(canvasRef, visualZoom, onVisualZoomChange);
@@ -75,6 +88,41 @@ export default function HexCanvas({
       visualZoom,
       world
     });
+    const frameDurationMs = performance.now() - frameStart;
+
+    if (isMapSyncDebugEnabled() && frameDurationMs >= 16) {
+      console.info("[MapRender] frame_slow", {
+        frameTimeMs: Number(frameDurationMs.toFixed(2)),
+        level,
+        editMode,
+        visualZoom: Number(visualZoom.toFixed(2)),
+        tileCountLevel3: world.levels[3]?.size ?? 0
+      });
+    }
+
+    if (isMapSyncDebugEnabled()) {
+      const now = performance.now();
+      const batch = renderDebugBatchRef.current;
+      batch.frames += 1;
+
+      if (now - batch.lastLogAt >= 500) {
+        console.info("[MapRender] frame_batch", {
+          editMode,
+          featureVisibilityMode,
+          fogEditingActive,
+          frames: batch.frames,
+          frameTimeMs: Number(frameDurationMs.toFixed(2)),
+          hasHoverRiverEdge: Boolean(hoverRiverEdge),
+          level,
+          sourceTileCount: world.levels[3]?.size ?? 0,
+          visualZoom: Number(visualZoom.toFixed(2)),
+          viewport
+        });
+
+        batch.frames = 0;
+        batch.lastLogAt = now;
+      }
+    }
 
     if (!stats || !editorConfig.performanceDebugLogs) {
       return;
@@ -88,7 +136,7 @@ export default function HexCanvas({
 
     lastPerformanceLogAtRef.current = now;
     console.debug("[hexmap] frame", {
-      frameTimeMs: Number((now - frameStart).toFixed(2)),
+      frameTimeMs: Number(frameDurationMs.toFixed(2)),
       level,
       zoom: Number(visualZoom.toFixed(2)),
       ...stats

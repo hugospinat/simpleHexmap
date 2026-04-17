@@ -22,6 +22,7 @@ const mapIdPattern = new RegExp(`^${mapIdPatternSource}$`);
 const maxRequestBodySizeBytes = 5 * 1024 * 1024;
 const persistDebounceMs = 400;
 const maxRememberedOperationIds = 5000;
+const maxOperationsPerBatch = 500;
 
 const defaultMapContent = {
   version: 1,
@@ -119,6 +120,13 @@ function createMapId() {
 
 function createOperationId() {
   return `op-${randomUUID()}`;
+}
+
+function isValidOperationEnvelope(value) {
+  return isObject(value)
+    && typeof value.operationId === "string"
+    && value.operationId.trim().length > 0
+    && isObject(value.operation);
 }
 
 function sendJson(response, statusCode, payload) {
@@ -638,6 +646,30 @@ function rememberAppliedOperation(session, operationId, payload) {
   }
 }
 
+function parseAppliedOperationPayload(payload) {
+  try {
+    const parsed = JSON.parse(payload);
+
+    if (!isObject(parsed) || parsed.type !== "map_operation_applied") {
+      return null;
+    }
+
+    if (
+      !Number.isInteger(parsed.sequence)
+      || typeof parsed.operationId !== "string"
+      || !isObject(parsed.operation)
+      || typeof parsed.sourceClientId !== "string"
+      || typeof parsed.updatedAt !== "string"
+    ) {
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 function broadcastPayload(session, payload) {
   for (const client of session.clients) {
     if (client.readyState !== WebSocket.OPEN) {
@@ -666,7 +698,8 @@ async function getOrCreateSession(mapId) {
     clients: new Set(),
     persistTimer: null,
     appliedOperationPayloads: new Map(),
-    appliedOperationOrder: []
+    appliedOperationOrder: [],
+    nextSequence: 1
   };
   mapSessions.set(mapId, session);
   return session;
@@ -733,11 +766,14 @@ async function applyOperationToSession(mapId, operation, sourceClientId, operati
 
   const payload = JSON.stringify({
     type: "map_operation_applied",
+    sequence: session.nextSequence,
     operationId,
     operation,
     sourceClientId,
     updatedAt: session.map.updatedAt
   });
+
+  session.nextSequence += 1;
 
   rememberAppliedOperation(session, operationId, payload);
   broadcastPayload(session, payload);
@@ -750,6 +786,116 @@ async function applyOperationToSession(mapId, operation, sourceClientId, operati
     clients: session.clients.size,
     updatedAt: session.map.updatedAt
   });
+
+  return session.map;
+}
+
+async function applyOperationBatchToSession(mapId, envelopes, sourceClientId, sourceSocket = null) {
+  const session = await getOrCreateSession(mapId);
+
+  if (!session) {
+    throw new Error("Map not found.");
+  }
+
+  const resolvedMessages = [];
+  const newMessages = [];
+  let mutated = false;
+  let batchUpdatedAt = session.map.updatedAt;
+
+  for (const envelope of envelopes) {
+    const operationId = envelope.operationId;
+    const operation = envelope.operation;
+
+    if (typeof operationId !== "string" || !operationId.trim()) {
+      throw new Error("Invalid operation id.");
+    }
+
+    const validationError = validateMapOperation(operation);
+
+    if (validationError) {
+      throw new Error(validationError);
+    }
+
+    const existingPayload = session.appliedOperationPayloads.get(operationId);
+
+    if (existingPayload) {
+      const existingMessage = parseAppliedOperationPayload(existingPayload);
+
+      if (existingMessage) {
+        resolvedMessages.push(existingMessage);
+      }
+
+      continue;
+    }
+
+    if (!mutated) {
+      batchUpdatedAt = nowIso();
+      mutated = true;
+    }
+
+    if (operation.type === "rename_map") {
+      session.map = {
+        ...session.map,
+        name: sanitizeName(operation.name),
+        updatedAt: batchUpdatedAt
+      };
+    } else {
+      session.map = {
+        ...session.map,
+        updatedAt: batchUpdatedAt,
+        content: applyOperationToContent(session.map.content, operation)
+      };
+    }
+
+    const appliedMessage = {
+      type: "map_operation_applied",
+      sequence: session.nextSequence,
+      operationId,
+      operation,
+      sourceClientId,
+      updatedAt: batchUpdatedAt
+    };
+
+    session.nextSequence += 1;
+
+    const payload = JSON.stringify(appliedMessage);
+    rememberAppliedOperation(session, operationId, payload);
+    resolvedMessages.push(appliedMessage);
+    newMessages.push(appliedMessage);
+  }
+
+  if (mutated) {
+    schedulePersist(session);
+  }
+
+  if (newMessages.length === 1) {
+    broadcastPayload(session, JSON.stringify(newMessages[0]));
+  } else if (newMessages.length > 1) {
+    const payload = JSON.stringify({
+      type: "map_operation_batch_applied",
+      operations: newMessages.map(({ type, ...entry }) => entry),
+      updatedAt: session.map.updatedAt
+    });
+
+    broadcastPayload(session, payload);
+  }
+
+  // Duplicates are not rebroadcast to every client. Return them only to the source so
+  // it can clear local pending state after reconnect/retry.
+  if (sourceSocket && sourceSocket.readyState === WebSocket.OPEN) {
+    const newIds = new Set(newMessages.map((message) => message.operationId));
+    const duplicateMessages = resolvedMessages.filter((message) => !newIds.has(message.operationId));
+
+    if (duplicateMessages.length === 1) {
+      sourceSocket.send(JSON.stringify(duplicateMessages[0]));
+    } else if (duplicateMessages.length > 1) {
+      sourceSocket.send(JSON.stringify({
+        type: "map_operation_batch_applied",
+        operations: duplicateMessages.map(({ type, ...entry }) => entry),
+        updatedAt: session.map.updatedAt
+      }));
+    }
+  }
 
   return session.map;
 }
@@ -865,6 +1011,15 @@ server.on("upgrade", async (request, socket, head) => {
     webSocketServer.handleUpgrade(request, socket, head, (client) => {
       session.clients.add(client);
 
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({
+          type: "sync_snapshot",
+          lastSequence: session.nextSequence - 1,
+          updatedAt: session.map.updatedAt,
+          content: session.map.content
+        }));
+      }
+
       client.on("close", () => {
         session.clients.delete(client);
       });
@@ -872,6 +1027,33 @@ server.on("upgrade", async (request, socket, head) => {
       client.on("message", async (raw) => {
         try {
           const message = JSON.parse(raw.toString("utf8"));
+
+          if (
+            isObject(message)
+            && message.type === "map_operation_batch"
+            && typeof message.clientId === "string"
+            && Array.isArray(message.operations)
+          ) {
+            if (message.operations.length === 0 || message.operations.length > maxOperationsPerBatch) {
+              console.warn("[MapSyncServer] invalid_operation_batch_size", {
+                mapId,
+                operations: message.operations.length
+              });
+              return;
+            }
+
+            if (!message.operations.every(isValidOperationEnvelope)) {
+              console.warn("[MapSyncServer] invalid_operation_batch_payload", {
+                mapId,
+                raw: raw.toString("utf8")
+              });
+              return;
+            }
+
+            await applyOperationBatchToSession(mapId, message.operations, message.clientId, client);
+
+            return;
+          }
 
           if (
             !isObject(message)

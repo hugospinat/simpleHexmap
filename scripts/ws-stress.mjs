@@ -13,7 +13,7 @@ const wsUrl = `ws://localhost:8787/api/maps/${mapId}/ws`;
 const clientAId = "stress-client-a";
 const clientBId = "stress-client-b";
 const operationId = `${clientAId}-${Date.now()}-1`;
-const operation = { type: "set_tile", tile: { q: 321, r: 654, tileId: "plain" } };
+const operation = { type: "set_tile", tile: { q: 321, r: 654, tileId: "plain", hidden: false } };
 const events = [];
 
 const connect = () => new Promise((resolve, reject) => {
