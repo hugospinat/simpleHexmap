@@ -59,7 +59,7 @@ function getDerivedLevelMapFromSource(world: World, level: number): LevelMap {
     const parentKey = hexKey(parent);
     const cells = grouped.get(parentKey) ?? [];
     cells.push({
-      hidden: cell.hidden ?? false,
+      hidden: cell.hidden,
       type: cell.type
     });
     grouped.set(parentKey, cells);

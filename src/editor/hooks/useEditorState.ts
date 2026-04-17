@@ -270,38 +270,36 @@ export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOpti
 
       const fogGesture = fogGestureRef.current;
 
-      if (!fogGesture) {
-        return;
-      }
+      if (fogGesture) {
+        let nextFogWorld = fogGesture.world;
+        let changed = false;
 
-      let nextFogWorld = fogGesture.world;
-      let changed = false;
+        for (const axial of axials) {
+          const key = `${axial.q},${axial.r}`;
 
-      for (const axial of axials) {
-        const key = `${axial.q},${axial.r}`;
+          if (fogGesture.touchedKeys.has(key)) {
+            continue;
+          }
 
-        if (fogGesture.touchedKeys.has(key)) {
-          continue;
+          fogGesture.touchedKeys.add(key);
+          const cell = getLevelMap(nextFogWorld, view.level).get(key);
+
+          if (!cell) {
+            continue;
+          }
+
+          const nextWorldForCell = setCellHidden(nextFogWorld, view.level, axial, !cell.hidden);
+
+          if (nextWorldForCell !== nextFogWorld) {
+            nextFogWorld = nextWorldForCell;
+            changed = true;
+          }
         }
 
-        fogGesture.touchedKeys.add(key);
-        const cell = getLevelMap(nextFogWorld, view.level).get(key);
-
-        if (!cell) {
-          continue;
+        if (changed) {
+          fogGesture.world = nextFogWorld;
+          setDraftWorld(nextFogWorld);
         }
-
-        const nextWorldForCell = setCellHidden(nextFogWorld, view.level, axial, !cell.hidden);
-
-        if (nextWorldForCell !== nextFogWorld) {
-          nextFogWorld = nextWorldForCell;
-          changed = true;
-        }
-      }
-
-      if (changed) {
-        fogGesture.world = nextFogWorld;
-        setDraftWorld(nextFogWorld);
       }
     },
     [applyTerrainGestureCells, view.level]

@@ -111,7 +111,7 @@ function serializeTiles(world: World): MapTileRecord[] {
         q: axial.q,
         r: axial.r,
         tileId: cell.type,
-        hidden: cell.hidden ?? false
+        hidden: cell.hidden
       };
     })
     .sort((left, right) => (left.q - right.q) || (left.r - right.r) || left.tileId.localeCompare(right.tileId));
