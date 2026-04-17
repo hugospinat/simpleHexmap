@@ -3,14 +3,14 @@ import { BottomBar } from "@/ui/components/BottomBar/BottomBar";
 import { FeatureInspector } from "@/ui/components/FeatureInspector/FeatureInspector";
 import { MapPane } from "@/ui/components/MapCanvas/MapPane";
 import { Sidebar } from "@/ui/components/Sidebar/Sidebar";
-import { useEditorState } from "@/editor/hooks/useEditorState";
+import { useEditorController } from "@/editor/hooks/useEditorController";
 import { MapAssetsProvider } from "@/editor/context/MapAssetsContext";
-import { SOURCE_LEVEL } from "@/domain/world/mapRules";
-import type { World } from "@/domain/world/world";
+import { SOURCE_LEVEL } from "@/core/map/mapRules";
+import type { MapState } from "@/core/map/world";
 import type { ViewerRole } from "@/ui/components/MapMenu/MapMenu";
 
 type EditorScreenProps = {
-  initialWorld: World;
+  initialWorld: MapState;
   mapId: string;
   mapName: string;
   role: ViewerRole;
@@ -18,7 +18,7 @@ type EditorScreenProps = {
 };
 
 export function EditorScreen({ initialWorld, mapId, mapName, role, onBackToMaps }: EditorScreenProps) {
-  const editor = useEditorState({
+  const editor = useEditorController({
     initialWorld,
     mapId,
     role

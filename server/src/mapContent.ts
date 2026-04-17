@@ -1,5 +1,6 @@
 export {
   applyMapOperation as applyOperationToContent,
+  applyMapOperations as applyOperationsToContent,
   validateMapOperation
-} from "../../src/shared/mapProtocol/index.js";
+} from "../../src/core/protocol/index.js";
 

@@ -1,8 +1,8 @@
-import { hexKey, type Axial } from "@/domain/geometry/hex";
-import type { TerrainType, World } from "@/domain/world/world";
+import { hexKey, type Axial } from "@/core/geometry/hex";
+import type { TerrainType, MapState } from "@/core/map/world";
 import {
-  executeMapCommand
-} from "@/editor/commands/mapEditCommands";
+  executeMapEditCommand
+} from "@/core/map/commands/mapEditCommands";
 import {
   applyGestureUpdate,
   createGestureSession,
@@ -18,7 +18,7 @@ export type EditGesture = GestureSession<EditGestureAction> & {
 
 export function createEditGesture(
   action: EditGestureAction,
-  world: World,
+  world: MapState,
   level: number,
   type: TerrainType
 ): EditGesture {
@@ -28,7 +28,7 @@ export function createEditGesture(
   };
 }
 
-export function applyEditGestureCells(gesture: EditGesture, axials: Axial[]): World {
+export function applyEditGestureCells(gesture: EditGesture, axials: Axial[]): MapState {
   for (const axial of axials) {
     const key = hexKey(axial);
 
@@ -40,7 +40,7 @@ export function applyEditGestureCells(gesture: EditGesture, axials: Axial[]): Wo
 
     applyGestureUpdate(
       gesture,
-      executeMapCommand(
+      executeMapEditCommand(
         gesture.world,
         gesture.action === "paint"
           ? { type: "paintTerrain", level: gesture.level, axial, terrainType: gesture.type }
@@ -52,6 +52,6 @@ export function applyEditGestureCells(gesture: EditGesture, axials: Axial[]): Wo
   return gesture.world;
 }
 
-export function getFinishedGestureWorld(gesture: EditGesture): World | null {
+export function getFinishedGestureWorld(gesture: EditGesture): MapState | null {
   return finishGestureSession(gesture).previewWorld;
 }

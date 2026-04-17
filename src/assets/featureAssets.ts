@@ -14,7 +14,7 @@ import overRideRuin from "./features/ruin.png";
 import overRideDungeon from "./features/dungeon.png";
 import overRideCity from "./features/city.png";
 
-import { canFeatureKindOverrideTerrain, type FeatureKind } from "@/domain/world/features";
+import { canFeatureKindOverrideTerrain, type FeatureKind } from "@/core/map/features";
 import {
   defineMapImageAsset,
   type MapImageAsset,

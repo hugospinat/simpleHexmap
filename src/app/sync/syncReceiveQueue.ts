@@ -1,4 +1,4 @@
-import type { MapOperationMessage } from "@/app/io/mapApi";
+import type { MapOperationMessage } from "@/app/api/mapApi";
 
 export type SyncReceiveQueue = {
   expectedSequence: number | null;

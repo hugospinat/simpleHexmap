@@ -1,9 +1,9 @@
 import {
   getCanonicalRiverEdgeKey,
   type RiverEdgeRef,
-  type World
-} from "@/domain/world/world";
-import { executeMapCommand } from "@/editor/commands/mapEditCommands";
+  type MapState
+} from "@/core/map/world";
+import { executeMapEditCommand } from "@/core/map/commands/mapEditCommands";
 import {
   applyGestureUpdate,
   createGestureSession,
@@ -17,14 +17,14 @@ export type RiverGesture = GestureSession<RiverGestureAction> & {
   touchedEdgeKeys: Set<string>;
 };
 
-export function createRiverGesture(action: RiverGestureAction, world: World, level: number): RiverGesture {
+export function createRiverGesture(action: RiverGestureAction, world: MapState, level: number): RiverGesture {
   return {
     ...createGestureSession(action, world, level),
     touchedEdgeKeys: new Set(),
   };
 }
 
-export function applyRiverGestureEdges(gesture: RiverGesture, edges: RiverEdgeRef[]): World {
+export function applyRiverGestureEdges(gesture: RiverGesture, edges: RiverEdgeRef[]): MapState {
   for (const edge of edges) {
     const key = getCanonicalRiverEdgeKey(edge);
 
@@ -36,7 +36,7 @@ export function applyRiverGestureEdges(gesture: RiverGesture, edges: RiverEdgeRe
 
     applyGestureUpdate(
       gesture,
-      executeMapCommand(gesture.world, {
+      executeMapEditCommand(gesture.world, {
         type: "setRiverEdge",
         level: gesture.level,
         ref: edge,
@@ -48,6 +48,6 @@ export function applyRiverGestureEdges(gesture: RiverGesture, edges: RiverEdgeRe
   return gesture.world;
 }
 
-export function getFinishedRiverGestureWorld(gesture: RiverGesture): World | null {
+export function getFinishedRiverGestureWorld(gesture: RiverGesture): MapState | null {
   return finishGestureSession(gesture).previewWorld;
 }

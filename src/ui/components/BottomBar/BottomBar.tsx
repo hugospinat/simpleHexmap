@@ -1,4 +1,4 @@
-import type { Axial } from "@/domain/geometry/hex";
+import type { Axial } from "@/core/geometry/hex";
 
 type BottomBarProps = {
   center: Axial;

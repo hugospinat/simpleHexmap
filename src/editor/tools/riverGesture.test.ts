@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createEmptyWorld, getRiverLevelMap } from "@/domain/world/world";
+import { createEmptyWorld, getRiverLevelMap } from "@/core/map/world";
 import {
   applyRiverGestureEdges,
   createRiverGesture,

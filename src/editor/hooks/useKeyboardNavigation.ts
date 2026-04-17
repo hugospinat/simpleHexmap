@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react";
-import { panCenterByScreenDelta, type Axial } from "@/domain/geometry/hex";
+import { panCenterByScreenDelta, type Axial } from "@/core/geometry/hex";
 
 type KeyboardNavigationOptions = {
   center: Axial;

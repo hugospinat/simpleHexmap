@@ -1,10 +1,10 @@
-import type { Axial } from "@/domain/geometry/hex";
+import type { Axial } from "@/core/geometry/hex";
 import type { EditGestureAction } from "@/editor/tools/editGesture";
 import type { EditorMode } from "@/editor/tools/editorTypes";
-import type { RiverEdgeRef, World } from "@/domain/world/world";
+import type { RiverEdgeRef, MapState } from "@/core/map/world";
 
 export type HexCanvasProps = {
-  world: World;
+  world: MapState;
   canEdit: boolean;
   fogEditingActive: boolean;
   level: number;

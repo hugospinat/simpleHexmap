@@ -1,6 +1,6 @@
-import { hexKey, type Axial } from "@/domain/geometry/hex";
-import type { World } from "@/domain/world/world";
-import { executeMapCommand } from "@/editor/commands/mapEditCommands";
+import { hexKey, type Axial } from "@/core/geometry/hex";
+import type { MapState } from "@/core/map/world";
+import { executeMapEditCommand } from "@/core/map/commands/mapEditCommands";
 import {
   applyGestureUpdate,
   createGestureSession,
@@ -16,7 +16,7 @@ export type FactionGesture = GestureSession<FactionGestureAction> & {
 
 export function createFactionGesture(
   action: FactionGestureAction,
-  world: World,
+  world: MapState,
   level: number,
   factionId: string | null
 ): FactionGesture {
@@ -26,7 +26,7 @@ export function createFactionGesture(
   };
 }
 
-export function applyFactionGestureCells(gesture: FactionGesture, axials: Axial[]): World {
+export function applyFactionGestureCells(gesture: FactionGesture, axials: Axial[]): MapState {
   for (const axial of axials) {
     const key = hexKey(axial);
 
@@ -42,7 +42,7 @@ export function applyFactionGestureCells(gesture: FactionGesture, axials: Axial[
 
     applyGestureUpdate(
       gesture,
-      executeMapCommand(
+      executeMapEditCommand(
         gesture.world,
         gesture.action === "assign"
           ? { type: "assignFaction", level: gesture.level, axial, factionId: gesture.factionId! }
@@ -54,6 +54,6 @@ export function applyFactionGestureCells(gesture: FactionGesture, axials: Axial[
   return gesture.world;
 }
 
-export function getFinishedFactionGestureWorld(gesture: FactionGesture): World | null {
+export function getFinishedFactionGestureWorld(gesture: FactionGesture): MapState | null {
   return finishGestureSession(gesture).previewWorld;
 }

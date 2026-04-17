@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { editorConfig } from "@/config/editorConfig";
-import { renderMapFrame } from "@/domain/rendering/mapRenderer";
+import { renderMapFrame } from "@/render/mapRenderer";
 import { useCanvasViewport } from "@/editor/hooks/useCanvasViewport";
 import { useCanvasWheelZoom } from "@/editor/hooks/useCanvasWheelZoom";
 import { useMapAssetsVersion } from "@/editor/hooks/useMapAssetsVersion";
@@ -111,6 +111,8 @@ export default function HexCanvas({
           featureVisibilityMode,
           fogEditingActive,
           frames: batch.frames,
+          buildFrameMs: stats?.timings.buildFrameMs ?? null,
+          drawMs: stats?.timings.drawMs ?? null,
           frameTimeMs: Number(frameDurationMs.toFixed(2)),
           hasHoverRiverEdge: Boolean(hoverRiverEdge),
           level,
@@ -139,6 +141,8 @@ export default function HexCanvas({
       frameTimeMs: Number(frameDurationMs.toFixed(2)),
       level,
       zoom: Number(visualZoom.toFixed(2)),
+      buildFrameMs: stats.timings.buildFrameMs,
+      drawMs: stats.timings.drawMs,
       ...stats
     });
   }, [

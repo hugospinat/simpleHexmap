@@ -11,8 +11,8 @@ import {
   getNearestRiverEdgeAtPoint,
   getRiverEdgesAlongPointerMove,
   riverEdgesEqual
-} from "@/domain/geometry/edgeDetection";
-import type { Viewport } from "@/domain/rendering/renderTypes";
+} from "@/core/geometry/edgeDetection";
+import type { Viewport } from "@/render/renderTypes";
 import {
   getAxialLine,
   panCenterByScreenDelta,
@@ -20,23 +20,12 @@ import {
   screenPixelToAxial,
   type Axial,
   type Pixel
-} from "@/domain/geometry/hex";
+} from "@/core/geometry/hex";
 import type { EditGestureAction } from "@/editor/tools/editGesture";
 import type { EditorMode } from "@/editor/tools/editorTypes";
-import type { RiverEdgeRef } from "@/domain/world/world";
+import type { RiverEdgeRef } from "@/core/map/world";
 import { useLatestRef } from "./useLatestRef";
-
-type PointerAction = EditGestureAction | "pan";
-
-type PointerSession = {
-  action: PointerAction;
-  target: "cells" | "river";
-  lastAxial: Axial | null;
-  lastRiverEdge: RiverEdgeRef | null;
-  moved: boolean;
-  x: number;
-  y: number;
-};
+import { getPointerAction, getPointerTarget, type PointerSession } from "./mapPointerIntent";
 
 type UseMapInteractionOptions = {
   canEdit: boolean;
@@ -285,7 +274,9 @@ export function useMapInteraction({
 
   const handlePointerDown = useCallback(
     (event: PointerEvent<HTMLCanvasElement>) => {
-      if (![0, 1, 2].includes(event.button)) {
+      const pointerAction = getPointerAction(event.button);
+
+      if (!pointerAction) {
         return;
       }
 
@@ -295,7 +286,7 @@ export function useMapInteraction({
       event.currentTarget.setPointerCapture(event.pointerId);
       const point = getCanvasPoint(event);
 
-      if (event.button === 1) {
+      if (pointerAction === "pan") {
         pointerRef.current = {
           ...point,
           action: "pan",
@@ -314,9 +305,10 @@ export function useMapInteraction({
         return;
       }
 
-      const action: EditGestureAction = event.button === 0 ? "paint" : "erase";
+      const action: EditGestureAction = pointerAction;
+      const target = getPointerTarget(editModeRef.current, action);
 
-      if (editModeRef.current === "river") {
+      if (target === "river") {
         const riverEdge = getNearestRiverEdgeAtPoint(
           point,
           centerRef.current,

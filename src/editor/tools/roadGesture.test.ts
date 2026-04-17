@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createEmptyWorld, getRoadEdgesAt, getRoadLevelMap } from "@/domain/world/world";
+import { createEmptyWorld, getRoadEdgesAt, getRoadLevelMap } from "@/core/map/world";
 import {
   applyRoadGestureCells,
   createRoadGesture,

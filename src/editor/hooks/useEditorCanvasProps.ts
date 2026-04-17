@@ -1,7 +1,7 @@
 import { useMemo } from "react";
-import type { Axial } from "@/domain/geometry/hex";
-import type { RiverEdgeRef, World } from "@/domain/world/world";
-import type { FeatureVisibilityMode } from "@/domain/world/features";
+import type { Axial } from "@/core/geometry/hex";
+import type { RiverEdgeRef, MapState } from "@/core/map/world";
+import type { FeatureVisibilityMode } from "@/core/map/features";
 import type { EditGestureAction } from "@/editor/tools/editGesture";
 import type { EditorMode } from "@/editor/tools/editorTypes";
 import type { HexCanvasProps } from "@/ui/components/MapCanvas/types";
@@ -25,7 +25,7 @@ type UseEditorCanvasPropsOptions = {
   startEditGesture: (action: EditGestureAction, axials: Axial[]) => void;
   startRiverGesture: (action: EditGestureAction, edges: RiverEdgeRef[]) => void;
   visualZoom: number;
-  world: World;
+  world: MapState;
 };
 
 export function useEditorCanvasProps({

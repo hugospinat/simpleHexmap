@@ -10,5 +10,5 @@
     "esModuleInterop": true,
     "types": ["node"]
   },
-  "include": ["server/src/**/*.ts", "src/shared/**/*.ts"]
+  "include": ["server/src/**/*.ts", "src/core/protocol/**/*.ts"]
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { drawFeaturePreview } from "@/domain/rendering/featurePreview";
-import type { FeatureKind } from "@/domain/world/features";
+import { drawFeaturePreview } from "@/render/featurePreview";
+import type { FeatureKind } from "@/core/map/features";
 import { useMapAssetsVersion } from "@/editor/hooks/useMapAssetsVersion";
 
 type FeatureKindPreviewProps = {

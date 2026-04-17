@@ -3,7 +3,7 @@ import { editorConfig } from "@/config/editorConfig";
 import {
   convertAxialBetweenLevels,
   type Axial
-} from "@/domain/geometry/hex";
+} from "@/core/geometry/hex";
 
 type LevelView = {
   level: number;

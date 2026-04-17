@@ -1,8 +1,8 @@
-import { hexKey, type Axial } from "@/domain/geometry/hex";
-import type { World } from "@/domain/world/world";
+import { hexKey, type Axial } from "@/core/geometry/hex";
+import type { MapState } from "@/core/map/world";
 import {
-  executeMapCommand
-} from "@/editor/commands/mapEditCommands";
+  executeMapEditCommand
+} from "@/core/map/commands/mapEditCommands";
 import {
   applyGestureUpdate,
   createGestureSession,
@@ -18,7 +18,7 @@ export type RoadGesture = GestureSession<RoadGestureAction> & {
 
 export function createRoadGesture(
   action: RoadGestureAction,
-  world: World,
+  world: MapState,
   level: number
 ): RoadGesture {
   return {
@@ -27,7 +27,7 @@ export function createRoadGesture(
   };
 }
 
-export function applyRoadGestureCells(gesture: RoadGesture, axials: Axial[]): World {
+export function applyRoadGestureCells(gesture: RoadGesture, axials: Axial[]): MapState {
   for (const axial of axials) {
     const key = hexKey(axial);
 
@@ -39,7 +39,7 @@ export function applyRoadGestureCells(gesture: RoadGesture, axials: Axial[]): Wo
       gesture.touchedKeys.add(key);
       applyGestureUpdate(
         gesture,
-        executeMapCommand(gesture.world, {
+        executeMapEditCommand(gesture.world, {
           type: "removeRoadConnectionsAt",
           level: gesture.level,
           axial
@@ -61,7 +61,7 @@ export function applyRoadGestureCells(gesture: RoadGesture, axials: Axial[]): Wo
 
     applyGestureUpdate(
       gesture,
-      executeMapCommand(gesture.world, {
+      executeMapEditCommand(gesture.world, {
         type: "addRoadConnection",
         level: gesture.level,
         from: gesture.lastAxial,
@@ -75,6 +75,6 @@ export function applyRoadGestureCells(gesture: RoadGesture, axials: Axial[]): Wo
   return gesture.world;
 }
 
-export function getFinishedRoadGestureWorld(gesture: RoadGesture): World | null {
+export function getFinishedRoadGestureWorld(gesture: RoadGesture): MapState | null {
   return finishGestureSession(gesture).previewWorld;
 }

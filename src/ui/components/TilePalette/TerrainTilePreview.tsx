@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { drawTilePreview } from "@/domain/rendering/tileVisuals";
-import type { TerrainType } from "@/domain/world/world";
+import { drawTilePreview } from "@/render/tileVisuals";
+import type { TerrainType } from "@/core/map/world";
 import { useMapAssetsVersion } from "@/editor/hooks/useMapAssetsVersion";
 
 type TerrainTilePreviewProps = {

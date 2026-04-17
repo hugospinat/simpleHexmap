@@ -1,7 +1,7 @@
-import { tileLabels } from "@/domain/rendering/tileVisuals";
-import { featureKindLabels, type FeatureKind } from "@/domain/world/features";
-import type { Faction, TerrainType } from "@/domain/world/world";
-import { SOURCE_LEVEL } from "@/domain/world/mapRules";
+import { tileLabels } from "@/render/tileVisuals";
+import { featureKindLabels, type FeatureKind } from "@/core/map/features";
+import type { Faction, TerrainType } from "@/core/map/world";
+import { SOURCE_LEVEL } from "@/core/map/mapRules";
 import type { EditorMode } from "@/editor/tools/editorTypes";
 
 type InteractionLabelOptions = {

@@ -4,6 +4,11 @@ export type MapImageAsset = {
 
 export type MapImageAssetRegistry<Key extends string> = Partial<Record<Key, MapImageAsset>>;
 
+export type AssetCatalog<TTerrain extends string, TFeature extends string> = {
+  features: MapImageAssetRegistry<TFeature>;
+  terrain: MapImageAssetRegistry<TTerrain>;
+};
+
 export function defineMapImageAsset(src: string): MapImageAsset {
   return { src };
 }

@@ -8,7 +8,7 @@ import wasteland from "./terrain/wasteland.png";
 import water from "./terrain/water.png";
 import swamp from "./terrain/swamp.png";
 import hill from "./terrain/hill.png";
-import type { TerrainType } from "@/domain/world/world";
+import type { TerrainType } from "@/core/map/world";
 import {
   defineMapImageAsset,
   type MapImageAsset,

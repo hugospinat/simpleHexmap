@@ -2,9 +2,11 @@ import { WebSocket, WebSocketServer } from "ws";
 import { isObject, mapIdPatternSource } from "./mapStorage.js";
 import {
   applyOperationBatchToSession,
-  applyOperationToSession,
+  applyOperationToSession
+} from "./operationService.js";
+import {
   getOrCreateSession
-} from "./mapSessions.js";
+} from "./sessionStore.js";
 
 const maxOperationsPerBatch = 500;
 const mapSocketPattern = new RegExp(`^/api/maps/(${mapIdPatternSource})/ws$`);

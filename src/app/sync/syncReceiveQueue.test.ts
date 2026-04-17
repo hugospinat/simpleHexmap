@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MapOperationMessage } from "@/app/io/mapApi";
+import type { MapOperationMessage } from "@/app/api/mapApi";
 import {
   clearSyncReceiveQueue,
   createSyncReceiveQueue,

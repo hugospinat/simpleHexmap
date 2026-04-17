@@ -1,8 +1,6 @@
-import type { MapOperation } from "@/app/io/mapOperations";
+import type { MapOperationEnvelope } from "@/core/protocol";
 
-export type PendingOperationEnvelope = {
-  operationId: string;
-  operation: MapOperation;
+export type PendingOperationEnvelope = MapOperationEnvelope & {
   sent: boolean;
 };
 

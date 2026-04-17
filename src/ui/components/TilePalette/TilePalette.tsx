@@ -1,6 +1,6 @@
-import { terrainTypes, type TerrainType } from "@/domain/world/world";
+import { terrainTypes, type TerrainType } from "@/core/map/world";
 import { TerrainTilePreview } from "@/ui/components/TilePalette/TerrainTilePreview";
-import { tileLabels } from "@/domain/rendering/tileVisuals";
+import { tileLabels } from "@/render/tileVisuals";
 
 type TilePaletteProps = {
   activeType: TerrainType;

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { getAllMapAssetSources } from "@/assets/allAssets";
-import { preloadImages } from "@/domain/rendering/assetImages";
+import { preloadImages } from "@/render/assetImages";
 
 type MapAssetsContextValue = {
   version: number;

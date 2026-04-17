@@ -2,7 +2,7 @@ import {
   featureKindLabels,
   featureKinds,
   type FeatureKind
-} from "@/domain/world/features";
+} from "@/core/map/features";
 import { FeatureKindPreview } from "@/ui/components/FeaturePalette/FeatureKindPreview";
 
 type FeaturePaletteProps = {

@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { editorConfig } from "@/config/editorConfig";
-import { createInitialWorld, type World } from "@/domain/world/world";
+import { createInitialWorld, type MapState } from "@/core/map/world";
 import { EditorScreen } from "@/app/EditorScreen";
 import { MapMenu, type ViewerRole } from "@/ui/components/MapMenu/MapMenu";
-import { createMap, listMaps, loadMapById, renameMapById as renameMapRecordById, type MapRecord, type MapSummary } from "@/app/io/mapApi";
-import { downloadSavedMapFile, readSavedMapFile } from "@/app/io/mapFile";
-import { deserializeWorld, serializeWorld } from "@/app/io/mapFormat";
+import { createMap, listMaps, loadMapById, renameMapById as renameMapRecordById, type MapRecord, type MapSummary } from "@/app/api/mapApi";
+import { downloadSavedMapContentFile, readSavedMapContentFile } from "@/app/document/mapFile";
+import { deserializeWorld, serializeWorld } from "@/app/document/worldMapCodec";
 
 type OpenMapState = {
   id: string;
   name: string;
   role: ViewerRole;
   updatedAt: string;
-  world: World;
+  world: MapState;
 };
 
 function getDefaultMapName(baseName: string): string {
@@ -101,7 +101,7 @@ export default function App() {
 
   const importMapFile = useCallback(async (file: File) => {
     await withBusyState("Importing map...", async () => {
-      const map = await readSavedMapFile(file);
+      const map = await readSavedMapContentFile(file);
       const created = await createMap({
         name: getDefaultMapName(fileBaseName(file.name)),
         content: map
@@ -115,7 +115,7 @@ export default function App() {
   const exportMapById = useCallback(async (mapId: string) => {
     await withBusyState("Exporting map...", async () => {
       const map = await loadMapById(mapId);
-      downloadSavedMapFile(map.name, map.content);
+      downloadSavedMapContentFile(map.name, map.content);
     });
   }, [withBusyState]);
 

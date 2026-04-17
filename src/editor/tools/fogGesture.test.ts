@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addTile, createEmptyWorld, getLevelMap } from "@/domain/world/world";
+import { addTile, createEmptyWorld, getLevelMap } from "@/core/map/world";
 import { applyFogGestureCells, createFogGesture, finishFogGesture } from "./fogGesture";
 
 describe("fog gestures", () => {

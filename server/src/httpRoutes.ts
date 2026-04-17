@@ -10,10 +10,12 @@ import {
 } from "./mapStorage.js";
 import {
   applyOperationToSession,
+} from "./operationService.js";
+import {
   getMap,
   getOrCreateSession,
   listMaps
-} from "./mapSessions.js";
+} from "./sessionStore.js";
 
 const maxRequestBodySizeBytes = 5 * 1024 * 1024;
 const mapPathPattern = new RegExp(`^/api/maps/(${mapIdPatternSource})$`);

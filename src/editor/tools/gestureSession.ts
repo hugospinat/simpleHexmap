@@ -1,5 +1,5 @@
-import type { MapOperation } from "@/shared/mapProtocol";
-import type { World } from "@/domain/world/world";
+import type { MapOperation } from "@/core/protocol";
+import type { MapState } from "@/core/map/world";
 
 export type GestureSession<TAction extends string> = {
   action: TAction;
@@ -7,23 +7,23 @@ export type GestureSession<TAction extends string> = {
   level: number;
   operations: MapOperation[];
   touchedKeys: Set<string>;
-  world: World;
+  world: MapState;
 };
 
 export type GestureUpdate = {
+  mapState: MapState;
   operations: MapOperation[];
-  world: World;
 };
 
 export type GestureCommit = {
   changed: boolean;
   operations: MapOperation[];
-  previewWorld: World | null;
+  previewWorld: MapState | null;
 };
 
 export function createGestureSession<TAction extends string>(
   action: TAction,
-  world: World,
+  world: MapState,
   level: number
 ): GestureSession<TAction> {
   return {
@@ -40,11 +40,11 @@ export function applyGestureUpdate<TAction extends string>(
   session: GestureSession<TAction>,
   update: GestureUpdate
 ): boolean {
-  if (update.world === session.world) {
+  if (update.mapState === session.world) {
     return false;
   }
 
-  session.world = update.world;
+  session.world = update.mapState;
   session.operations.push(...update.operations);
   session.changed = true;
   return true;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createEmptyWorld, getLevelMap } from "@/domain/world/world";
+import { createEmptyWorld, getLevelMap } from "@/core/map/world";
 import { applyEditGestureCells, createEditGesture, getFinishedGestureWorld } from "./editGesture";
 
 describe("edit gestures", () => {

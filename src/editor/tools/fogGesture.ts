@@ -1,6 +1,6 @@
-import { hexKey, type Axial } from "@/domain/geometry/hex";
-import { getLevelMap, type World } from "@/domain/world/world";
-import { executeMapCommand } from "@/editor/commands/mapEditCommands";
+import { hexKey, type Axial } from "@/core/geometry/hex";
+import { getLevelMap, type MapState } from "@/core/map/world";
+import { executeMapEditCommand } from "@/core/map/commands/mapEditCommands";
 import {
   applyGestureUpdate,
   createGestureSession,
@@ -11,11 +11,11 @@ import {
 
 export type FogGesture = GestureSession<"toggle">;
 
-export function createFogGesture(world: World, level: number): FogGesture {
+export function createFogGesture(world: MapState, level: number): FogGesture {
   return createGestureSession("toggle", world, level);
 }
 
-export function applyFogGestureCells(gesture: FogGesture, axials: Axial[]): World {
+export function applyFogGestureCells(gesture: FogGesture, axials: Axial[]): MapState {
   for (const axial of axials) {
     const key = hexKey(axial);
 
@@ -32,7 +32,7 @@ export function applyFogGestureCells(gesture: FogGesture, axials: Axial[]): Worl
 
     applyGestureUpdate(
       gesture,
-      executeMapCommand(gesture.world, {
+      executeMapEditCommand(gesture.world, {
         type: "setCellHidden",
         level: gesture.level,
         axial,

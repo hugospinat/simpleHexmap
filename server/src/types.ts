@@ -1,5 +1,5 @@
 import type { WebSocket } from "ws";
-import type { MapOperation, SavedMapContent } from "../../src/shared/mapProtocol/index.js";
+import type { MapOperation, SavedMapContent } from "../../src/core/protocol/index.js";
 
 export type MapRecord = {
   id: string;

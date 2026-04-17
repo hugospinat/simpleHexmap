@@ -1,5 +1,5 @@
 import { useEffect, useState, type RefObject } from "react";
-import type { Viewport } from "@/domain/rendering/renderTypes";
+import type { Viewport } from "@/render/renderTypes";
 
 export function useCanvasViewport(canvasRef: RefObject<HTMLCanvasElement | null>) {
   const [viewport, setViewport] = useState<Viewport>({ width: 800, height: 600 });

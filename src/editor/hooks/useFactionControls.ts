@@ -1,12 +1,12 @@
 import { useCallback, useRef } from "react";
-import type { MapOperation } from "@/app/io/mapOperations";
+import type { MapOperation } from "@/app/document/mapOperations";
 import {
   commandAddFaction,
   commandRemoveFaction,
   commandUpdateFaction
-} from "@/editor/commands/mapEditCommands";
+} from "@/core/map/commands/mapEditCommands";
 import type { EditorMode } from "@/editor/tools/editorTypes";
-import type { Faction, World } from "@/domain/world/world";
+import type { Faction, MapState } from "@/core/map/world";
 
 const defaultFactionColors = [
   "#d94f3d",
@@ -21,7 +21,7 @@ type UseFactionControlsOptions = {
   activeFactionId: string | null;
   canEdit: boolean;
   factionCount: number;
-  presentWorld: World;
+  presentWorld: MapState;
   sendOperations: (operations: MapOperation[]) => void;
   setActiveFactionId: (factionId: string | null) => void;
   setActiveMode: (mode: EditorMode) => void;

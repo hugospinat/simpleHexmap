@@ -1,6 +1,6 @@
 import { useState } from "react";
-import type { FeatureKind } from "@/domain/world/features";
-import type { Faction, TerrainType } from "@/domain/world/world";
+import type { FeatureKind } from "@/core/map/features";
+import type { Faction, TerrainType } from "@/core/map/world";
 import type { EditorMode } from "@/editor/tools/editorTypes";
 import { FeaturePalette } from "../FeaturePalette/FeaturePalette";
 import { TilePalette } from "../TilePalette/TilePalette";

@@ -4,7 +4,7 @@ import {
   featureKindLabels,
   featureKinds,
   type Feature
-} from "@/domain/world/features";
+} from "@/core/map/features";
 
 type FeatureInspectorProps = {
   canEditStructure: boolean;

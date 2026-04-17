@@ -1,5 +1,5 @@
 import { useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
-import type { MapSummary } from "@/app/io/mapApi";
+import type { MapSummary } from "@/app/api/mapApi";
 
 export type ViewerRole = "gm" | "player";
 
