@@ -10,7 +10,8 @@ const tabs: { label: string; mode: EditorMode }[] = [
   { label: "Features", mode: "feature" },
   { label: "Rivers", mode: "river" },
   { label: "Roads", mode: "road" },
-  { label: "Factions", mode: "faction" }
+  { label: "Factions", mode: "faction" },
+  { label: "FOG", mode: "fog" }
 ];
 
 export function ToolTabs({ activeMode, onModeChange }: ToolTabsProps) {

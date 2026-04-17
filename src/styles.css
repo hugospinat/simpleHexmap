@@ -85,6 +85,11 @@ input::placeholder {
   grid-template-columns: 380px minmax(0, 1fr) 320px;
 }
 
+.app-shell.is-player-mode {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .sidebar {
   grid-column: 1;
   grid-row: 1;
@@ -172,12 +177,13 @@ input::placeholder {
 
 .tool-tabs {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
 }
 
 .river-panel p,
 .road-panel p,
+.fog-panel p,
 .faction-panel p {
   margin: 0;
   color: #5b5b5b;
@@ -351,6 +357,11 @@ input::placeholder {
   height: 100%;
   overflow: hidden;
   background: #ffffff;
+}
+
+.app-shell.is-player-mode .map-pane {
+  grid-column: 1;
+  grid-row: 1;
 }
 
 .feature-inspector {
@@ -539,7 +550,7 @@ input::placeholder {
 
 .map-list-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: 8px;
   border: 1px solid #d6d6d6;

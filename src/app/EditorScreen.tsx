@@ -5,19 +5,30 @@ import { MapPane } from "@/ui/components/MapCanvas/MapPane";
 import { Sidebar } from "@/ui/components/Sidebar/Sidebar";
 import { useEditorState } from "@/editor/hooks/useEditorState";
 import type { World } from "@/domain/world/world";
+import type { OpenMapRole } from "@/ui/components/MapMenu/MapMenu";
 
 type EditorScreenProps = {
   initialWorld: World;
   mapId: string;
   mapName: string;
+  role: OpenMapRole;
   onBackToMaps: () => void;
 };
 
-export function EditorScreen({ initialWorld, mapId, mapName, onBackToMaps }: EditorScreenProps) {
+export function EditorScreen({ initialWorld, mapId, mapName, role, onBackToMaps }: EditorScreenProps) {
   const editor = useEditorState({
     initialWorld,
-    mapId
+    mapId,
+    role
   });
+
+  if (role === "player") {
+    return (
+      <AppShell appRef={editor.appRef} playerMode>
+        <MapPane {...editor.canvasProps} />
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell appRef={editor.appRef} inspectorOpen={Boolean(editor.selectedFeature)}>

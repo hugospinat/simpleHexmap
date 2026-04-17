@@ -25,7 +25,7 @@ const maxRememberedOperationIds = 5000;
 
 const defaultMapContent = {
   version: 1,
-  tiles: [{ q: 0, r: 0, tileId: "plain" }],
+  tiles: [{ q: 0, r: 0, tileId: "plain", hidden: false }],
   features: [],
   rivers: [],
   roads: [],
@@ -80,7 +80,12 @@ function normalizeMapContent(content) {
 
   return {
     version: content.version,
-    tiles: Array.isArray(content.tiles) ? content.tiles : [],
+    tiles: Array.isArray(content.tiles)
+      ? content.tiles.map((tile) => ({
+          ...tile,
+          hidden: typeof tile.hidden === "boolean" ? tile.hidden : false
+        }))
+      : [],
     features: Array.isArray(content.features)
       ? content.features.map((feature, index) => ({
           ...feature,
@@ -271,8 +276,24 @@ function validateMapOperation(operation) {
   if (operation.type === "set_tile") {
     const tile = operation.tile;
 
-    if (!isObject(tile) || !isInteger(tile.q) || !isInteger(tile.r) || (tile.tileId !== null && typeof tile.tileId !== "string")) {
+    if (
+      !isObject(tile)
+      || !isInteger(tile.q)
+      || !isInteger(tile.r)
+      || typeof tile.hidden !== "boolean"
+      || (tile.tileId !== null && typeof tile.tileId !== "string")
+    ) {
       return "Invalid set_tile operation.";
+    }
+
+    return null;
+  }
+
+  if (operation.type === "set_cell_hidden") {
+    const cell = operation.cell;
+
+    if (!isObject(cell) || !isInteger(cell.q) || !isInteger(cell.r) || typeof cell.hidden !== "boolean") {
+      return "Invalid set_cell_hidden operation.";
     }
 
     return null;
@@ -291,6 +312,14 @@ function validateMapOperation(operation) {
   if (operation.type === "update_feature") {
     if (typeof operation.featureId !== "string" || !isObject(operation.patch) || Object.keys(sanitizeFeaturePatch(operation.patch)).length === 0) {
       return "Invalid update_feature operation.";
+    }
+
+    return null;
+  }
+
+  if (operation.type === "set_feature_hidden") {
+    if (typeof operation.featureId !== "string" || typeof operation.hidden !== "boolean") {
+      return "Invalid set_feature_hidden operation.";
     }
 
     return null;
@@ -436,6 +465,7 @@ function applyOperationToContent(content, operation) {
 
     if (operation.tile.tileId !== null) {
       next.tiles.push({
+        hidden: operation.tile.hidden,
         q: operation.tile.q,
         r: operation.tile.r,
         tileId: operation.tile.tileId
@@ -444,6 +474,15 @@ function applyOperationToContent(content, operation) {
       next.factionTerritories = next.factionTerritories.filter((territory) => tileKey(territory.q, territory.r) !== key);
     }
 
+    return next;
+  }
+
+  if (operation.type === "set_cell_hidden") {
+    next.tiles = next.tiles.map((tile) => (
+      tile.q === operation.cell.q && tile.r === operation.cell.r
+        ? { ...tile, hidden: operation.cell.hidden }
+        : tile
+    ));
     return next;
   }
 
@@ -463,6 +502,15 @@ function applyOperationToContent(content, operation) {
         : feature
     ));
 
+    return next;
+  }
+
+  if (operation.type === "set_feature_hidden") {
+    next.features = next.features.map((feature) => (
+      feature.id === operation.featureId
+        ? { ...feature, visibility: operation.hidden ? "hidden" : "visible" }
+        : feature
+    ));
     return next;
   }
 

@@ -8,7 +8,9 @@ type FactionPatch = Partial<Pick<MapFactionRecord, "color" | "name">>;
 
 export type MapOperation =
   | { type: "set_tile"; tile: Omit<MapTileRecord, "tileId"> & { tileId: string | null } }
+  | { type: "set_cell_hidden"; cell: { q: number; r: number; hidden: boolean } }
   | { type: "add_feature"; feature: MapFeatureRecord }
+  | { type: "set_feature_hidden"; featureId: string; hidden: boolean }
   | { type: "update_feature"; featureId: string; patch: FeaturePatch }
   | { type: "remove_feature"; featureId: string }
   | { type: "add_river_data"; river: MapRiverRecord }
@@ -100,6 +102,7 @@ export function applyMapOperation(snapshot: SavedMap, operation: MapOperation): 
       }
 
       const tile: MapTileRecord = {
+        hidden: operation.tile.hidden ?? false,
         q: operation.tile.q,
         r: operation.tile.r,
         tileId: operation.tile.tileId
@@ -110,6 +113,22 @@ export function applyMapOperation(snapshot: SavedMap, operation: MapOperation): 
         tiles: [...filteredTiles, tile]
       };
     }
+    case "set_cell_hidden": {
+      let changed = false;
+      const tiles = snapshot.tiles.map((tile) => {
+        if (tile.q !== operation.cell.q || tile.r !== operation.cell.r || tile.hidden === operation.cell.hidden) {
+          return tile;
+        }
+
+        changed = true;
+        return {
+          ...tile,
+          hidden: operation.cell.hidden
+        };
+      });
+
+      return changed ? { ...snapshot, tiles } : snapshot;
+    }
     case "add_feature": {
       if (snapshot.features.some((feature) => feature.id === operation.feature.id)) {
         return snapshot;
@@ -119,6 +138,23 @@ export function applyMapOperation(snapshot: SavedMap, operation: MapOperation): 
         ...snapshot,
         features: [...snapshot.features, operation.feature]
       };
+    }
+    case "set_feature_hidden": {
+      const visibility = operation.hidden ? "hidden" : "visible";
+      let changed = false;
+      const features = snapshot.features.map((feature) => {
+        if (feature.id !== operation.featureId || feature.visibility === visibility) {
+          return feature;
+        }
+
+        changed = true;
+        return {
+          ...feature,
+          visibility
+        };
+      });
+
+      return changed ? { ...snapshot, features } : snapshot;
     }
     case "update_feature": {
       const patch = sanitizeFeaturePatch(operation.patch);
@@ -278,6 +314,18 @@ export function diffWorldAsOperations(previousWorld: World, nextWorld: World): M
 
     if (!current || current.tileId !== tile.tileId) {
       operations.push({ type: "set_tile", tile });
+      continue;
+    }
+
+    if (current.hidden !== tile.hidden) {
+      operations.push({
+        type: "set_cell_hidden",
+        cell: {
+          q: tile.q,
+          r: tile.r,
+          hidden: tile.hidden
+        }
+      });
     }
   }
 
@@ -286,6 +334,7 @@ export function diffWorldAsOperations(previousWorld: World, nextWorld: World): M
       operations.push({
         type: "set_tile",
         tile: {
+          hidden: false,
           q: tile.q,
           r: tile.r,
           tileId: null
@@ -313,8 +362,11 @@ export function diffWorldAsOperations(previousWorld: World, nextWorld: World): M
       hasPatch = true;
     }
     if (current.visibility !== feature.visibility) {
-      patch.visibility = feature.visibility;
-      hasPatch = true;
+      operations.push({
+        type: "set_feature_hidden",
+        featureId: id,
+        hidden: feature.visibility === "hidden"
+      });
     }
     if (current.overrideTerrainTile !== feature.overrideTerrainTile) {
       patch.overrideTerrainTile = feature.overrideTerrainTile;

@@ -1,6 +1,8 @@
 import { useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
 import type { MapSummary } from "@/app/io/mapApi";
 
+export type OpenMapRole = "gm" | "player";
+
 type MapMenuProps = {
   errorMessage: string | null;
   isBusy: boolean;
@@ -9,7 +11,7 @@ type MapMenuProps = {
   onCreateMap: (name: string) => Promise<void>;
   onExportMap: (mapId: string) => Promise<void>;
   onImportMap: (file: File) => Promise<void>;
-  onOpenMap: (mapId: string) => Promise<void>;
+  onOpenMap: (mapId: string, role: OpenMapRole) => Promise<void>;
   onRenameMap: (mapId: string, name: string) => Promise<void>;
   onRefresh: () => Promise<void>;
   onSelectMap: (mapId: string) => void;
@@ -126,10 +128,18 @@ export function MapMenu({
           <button
             type="button"
             className="compact-button"
-            onClick={() => selectedMap ? void onOpenMap(selectedMap.id) : undefined}
+            onClick={() => selectedMap ? void onOpenMap(selectedMap.id, "player") : undefined}
             disabled={isBusy || !selectedMap}
           >
             Open selected
+          </button>
+          <button
+            type="button"
+            className="compact-button"
+            onClick={() => selectedMap ? void onOpenMap(selectedMap.id, "gm") : undefined}
+            disabled={isBusy || !selectedMap}
+          >
+            Open selected as GM
           </button>
           <button
             type="button"
@@ -208,11 +218,22 @@ export function MapMenu({
                       className="compact-button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        void onOpenMap(map.id);
+                        void onOpenMap(map.id, "player");
                       }}
                       disabled={isBusy}
                     >
                       Open
+                    </button>
+                    <button
+                      type="button"
+                      className="compact-button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void onOpenMap(map.id, "gm");
+                      }}
+                      disabled={isBusy}
+                    >
+                      Open as GM
                     </button>
                   </li>
                 );

@@ -10,6 +10,7 @@ export type { TerrainType };
 
 export type HexCell = {
   type: TerrainType;
+  hidden: boolean;
 };
 
 export type LevelMap = Map<string, HexCell>;

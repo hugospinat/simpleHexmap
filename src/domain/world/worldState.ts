@@ -30,14 +30,14 @@ function getStoredLevelMap(world: World, level: number): LevelMap {
   return world.levels[level] ?? new Map();
 }
 
-function getMostCommonTerrainType(types: TerrainType[]): TerrainType | null {
-  if (types.length === 0) {
+function getMostCommonTerrainType(cells: { type: TerrainType }[]): TerrainType | null {
+  if (cells.length === 0) {
     return null;
   }
 
   const counts = new Map<TerrainType, number>();
 
-  for (const type of types) {
+  for (const { type } of cells) {
     counts.set(type, (counts.get(type) ?? 0) + 1);
   }
 
@@ -52,23 +52,29 @@ function getMostCommonTerrainType(types: TerrainType[]): TerrainType | null {
 
 function getDerivedLevelMapFromSource(world: World, level: number): LevelMap {
   const sourceMap = getStoredLevelMap(world, sourceLevel);
-  const grouped = new Map<string, TerrainType[]>();
+  const grouped = new Map<string, { hidden: boolean; type: TerrainType }[]>();
 
   for (const [hexId, cell] of sourceMap.entries()) {
     const parent = getAncestorAtLevel(parseHexKey(hexId), sourceLevel, level);
     const parentKey = hexKey(parent);
-    const terrains = grouped.get(parentKey) ?? [];
-    terrains.push(cell.type);
-    grouped.set(parentKey, terrains);
+    const cells = grouped.get(parentKey) ?? [];
+    cells.push({
+      hidden: cell.hidden ?? false,
+      type: cell.type
+    });
+    grouped.set(parentKey, cells);
   }
 
-  const derived = new Map<string, { type: TerrainType }>();
+  const derived = new Map<string, { hidden: boolean; type: TerrainType }>();
 
-  for (const [parentKey, terrains] of grouped.entries()) {
-    const type = getMostCommonTerrainType(terrains);
+  for (const [parentKey, cells] of grouped.entries()) {
+    const type = getMostCommonTerrainType(cells);
 
     if (type) {
-      derived.set(parentKey, { type });
+      derived.set(parentKey, {
+        hidden: cells.every((cell) => cell.hidden),
+        type
+      });
     }
   }
 
@@ -100,13 +106,55 @@ export function addTile(world: World, level: number, axial: Axial, type: Terrain
   }
 
   const nextLevel = new Map(getStoredLevelMap(world, level));
-  nextLevel.set(key, { type });
+  nextLevel.set(key, {
+    hidden: current?.hidden ?? false,
+    type
+  });
 
   return {
     ...world,
     levels: {
       ...world.levels,
       [level]: nextLevel
+    }
+  };
+}
+
+export function setCellHidden(world: World, level: number, axial: Axial, hidden: boolean): World {
+  const key = hexKey(axial);
+  const sourceLevelMap = getStoredLevelMap(world, sourceLevel);
+  const sourceTargets = level === sourceLevel
+    ? [axial]
+    : getDescendantsAtLevel(axial, level, sourceLevel);
+  let nextLevel: LevelMap | null = null;
+
+  for (const target of sourceTargets) {
+    const targetKey = hexKey(target);
+    const current = sourceLevelMap.get(targetKey);
+
+    if (!current || current.hidden === hidden) {
+      continue;
+    }
+
+    if (!nextLevel) {
+      nextLevel = new Map(sourceLevelMap);
+    }
+
+    nextLevel.set(targetKey, {
+      ...current,
+      hidden
+    });
+  }
+
+  if (!nextLevel) {
+    return world;
+  }
+
+  return {
+    ...world,
+    levels: {
+      ...world.levels,
+      [sourceLevel]: nextLevel
     }
   };
 }

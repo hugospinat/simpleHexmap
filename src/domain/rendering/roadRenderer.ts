@@ -23,12 +23,17 @@ function getMidpoint(a: Pixel, b: Pixel): Pixel {
 
 function getEdgeStamps(
   roadLevelMap: RoadLevelMap,
-  transform: MapRenderTransform
+  transform: MapRenderTransform,
+  visibleKeys?: ReadonlySet<string>
 ): RoadEdgeStamp[] {
   const stamps: RoadEdgeStamp[] = [];
   const seenEdges = new Set<string>();
 
   for (const [hexId, edgeSet] of roadLevelMap.entries()) {
+    if (visibleKeys && !visibleKeys.has(hexId)) {
+      continue;
+    }
+
     if (edgeSet.size === 0) {
       continue;
     }
@@ -80,13 +85,14 @@ function drawRoadEdgeStamp(
 export function drawRoadOverlays(
   context: CanvasRenderingContext2D,
   roadLevelMap: RoadLevelMap,
-  transform: MapRenderTransform
+  transform: MapRenderTransform,
+  visibleKeys?: ReadonlySet<string>
 ): number {
   if (roadLevelMap.size === 0) {
     return 0;
   }
 
-  const stamps = getEdgeStamps(roadLevelMap, transform);
+  const stamps = getEdgeStamps(roadLevelMap, transform, visibleKeys);
 
   if (stamps.length === 0) {
     return 0;

@@ -39,6 +39,7 @@ type PointerSession = {
 };
 
 type UseMapInteractionOptions = {
+  canEdit: boolean;
   canvasRef: RefObject<HTMLCanvasElement | null>;
   center: Axial;
   editMode: EditorMode;
@@ -56,6 +57,7 @@ type UseMapInteractionOptions = {
 };
 
 export function useMapInteraction({
+  canEdit,
   canvasRef,
   center,
   editMode,
@@ -305,6 +307,13 @@ export function useMapInteraction({
         return;
       }
 
+      if (!canEdit) {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+        return;
+      }
+
       const action: EditGestureAction = event.button === 0 ? "paint" : "erase";
 
       if (editModeRef.current === "river") {
@@ -349,6 +358,7 @@ export function useMapInteraction({
       onEditGestureStart(action, [axial]);
     },
     [
+      canEdit,
       centerRef,
       editModeRef,
       getCanvasPoint,

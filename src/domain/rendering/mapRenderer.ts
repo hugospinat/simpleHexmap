@@ -15,13 +15,14 @@ import { drawFactionOverlays } from "./factionRenderer";
 import { createMapRenderTransform } from "./mapTransform";
 import { drawRoadOverlays } from "./roadRenderer";
 import { drawHoveredRiverEdge, drawRiverOverlays } from "./riverRenderer";
-import { drawTerrainBaseLayer, drawTerrainDetailLayer } from "./terrainRenderer";
+import { drawHiddenCellOverlay, drawTerrainBaseLayer, drawTerrainDetailLayer } from "./terrainRenderer";
 import { collectVisibleCells } from "./visibleCells";
 import type { RenderStats, Viewport } from "./renderTypes";
 
 type RenderMapFrameOptions = {
   canvas: HTMLCanvasElement;
   center: Axial;
+  fogEditingActive?: boolean;
   hoverRiverEdge: RiverEdgeRef | null;
   featureVisibilityMode?: FeatureVisibilityMode;
   highlightedHex: Axial | null;
@@ -35,6 +36,7 @@ type RenderMapFrameOptions = {
 export function renderMapFrame({
   canvas,
   center,
+  fogEditingActive = false,
   featureVisibilityMode = "gm",
   highlightedHex,
   hoverRiverEdge,
@@ -66,25 +68,31 @@ export function renderMapFrame({
   const riverLevelMap = getRiverLevelMap(world, level);
   const transform = createMapRenderTransform(center, level, visualZoom, viewport);
   const visible = collectVisibleCells(levelMap, center, level, visualZoom, viewport);
+  const hiddenCells = visible.cells.filter(({ cell }) => cell.hidden);
+  const visibleTerrainCells = featureVisibilityMode === "player"
+    ? visible.cells.filter(({ cell }) => !cell.hidden)
+    : visible.cells;
+  const visibleTerrainKeys = new Set(visibleTerrainCells.map((cell) => cell.key));
   const tileCount = drawTerrainBaseLayer(
     context,
     visible.cells,
-    transform
+    transform,
+    featureVisibilityMode === "player"
   );
   const boundaryCount = drawBoundaryOverlays(
     context,
-    visible.cells,
+    visibleTerrainCells,
     transform
   );
   const riverCount = drawRiverOverlays(
     context,
-    visible.cells,
+    visibleTerrainCells,
     riverLevelMap,
     transform
   );
   const cellStats = drawTerrainDetailLayer(
     context,
-    visible.cells,
+    visibleTerrainCells,
     featuresByHex,
     highlightedHex,
     transform,
@@ -92,15 +100,20 @@ export function renderMapFrame({
   );
   const factionCount = drawFactionOverlays(
     context,
-    visible.cells,
+    visibleTerrainCells,
     factionOverlayColorMap,
     transform
   );
   const roadCount = drawRoadOverlays(
     context,
     getRoadLevelMap(world, level),
-    transform
+    transform,
+    featureVisibilityMode === "player" ? visibleTerrainKeys : undefined
   );
+
+  if (fogEditingActive) {
+    drawHiddenCellOverlay(context, hiddenCells, transform, 0.4);
+  }
 
   if (hoverRiverEdge) {
     drawHoveredRiverEdge(context, hoverRiverEdge, transform);
@@ -110,9 +123,10 @@ export function renderMapFrame({
     context,
     featuresByHex,
     transform,
-    visible.keys,
+    featureVisibilityMode === "player" ? visibleTerrainKeys : visible.keys,
     cellStats.terrainOverriddenHexes,
-    featureVisibilityMode
+    featureVisibilityMode,
+    fogEditingActive && featureVisibilityMode === "gm"
   );
 
   return {

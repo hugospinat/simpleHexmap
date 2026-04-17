@@ -23,7 +23,7 @@ describe("features", () => {
       gmLabel: "Blackford"
     });
 
-    expect(getLevelMap(world, 3).get("2,-1")).toEqual({ type: "forest" });
+    expect(getLevelMap(world, 3).get("2,-1")).toEqual({ hidden: false, type: "forest" });
     expect(getFeatureAt(world, 3, { q: 2, r: -1 })).toEqual({
       id: "f1",
       kind: "city",

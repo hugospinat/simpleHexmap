@@ -3,6 +3,7 @@ import { editorConfig } from "@/config/editorConfig";
 import { applyMapOperationToWorld, diffWorldAsOperations, type MapOperation } from "@/app/io/mapOperations";
 import type { MapOperationMessage, MapOperationRequest } from "@/app/io/mapApi";
 import type { EditorMode } from "@/editor/tools/editorTypes";
+import type { OpenMapRole } from "@/ui/components/MapMenu/MapMenu";
 import { useKeyboardNavigation } from "@/editor/hooks/useKeyboardNavigation";
 import {
   placeOrSelectFeature,
@@ -35,6 +36,7 @@ import {
 } from "@/editor/tools/factionGesture";
 import {
   featureHexIdToAxial,
+  getFeatureAt,
   getFeatureById,
   updateFeature,
   featureKindLabels,
@@ -43,9 +45,11 @@ import {
 } from "@/domain/world/features";
 import {
   addFaction,
+  getLevelMap,
   getFactionById,
   getFactions,
   removeFaction,
+  setCellHidden,
   updateFaction,
   type Faction,
   type RiverEdgeRef,
@@ -70,6 +74,7 @@ const defaultFactionColors = [
 type UseEditorStateOptions = {
   initialWorld: World;
   mapId: string;
+  role: OpenMapRole;
 };
 
 type OperationEnvelope = {
@@ -79,7 +84,7 @@ type OperationEnvelope = {
 
 const maxRememberedOperationIds = 5000;
 
-export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
+export function useEditorState({ initialWorld, mapId, role }: UseEditorStateOptions) {
   const maxLevels = editorConfig.maxLevels;
   const appRef = useRef<HTMLElement | null>(null);
   const { history, record, redo, resetFromCurrent, undo } = useUndoRedo<World>(() => initialWorld);
@@ -97,6 +102,7 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
   const factionGestureRef = useRef<FactionGesture | null>(null);
   const riverGestureRef = useRef<RiverGesture | null>(null);
   const roadGestureRef = useRef<RoadGesture | null>(null);
+  const fogGestureRef = useRef<{ touchedKeys: Set<string>; world: World } | null>(null);
   const featureIdRef = useRef(0);
   const factionIdRef = useRef(0);
   const websocketRef = useRef<WebSocket | null>(null);
@@ -114,6 +120,7 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
   const previousPresentRef = useRef(history.present);
 
   const world = draftWorld ?? history.present;
+  const canEdit = role === "gm";
   const factions = useMemo(() => getFactions(world), [world]);
   const selectedFaction = useMemo(
     () => activeFactionId ? getFactionById(world, activeFactionId) : null,
@@ -252,18 +259,52 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
 
       const roadGesture = roadGestureRef.current;
 
-      if (!roadGesture) {
+      if (roadGesture) {
+        const beforeWorld = roadGesture.world;
+        const nextWorld = applyRoadGestureCells(roadGesture, axials);
+
+        if (nextWorld !== beforeWorld) {
+          setDraftWorld(nextWorld);
+        }
+      }
+
+      const fogGesture = fogGestureRef.current;
+
+      if (!fogGesture) {
         return;
       }
 
-      const beforeWorld = roadGesture.world;
-      const nextWorld = applyRoadGestureCells(roadGesture, axials);
+      let nextFogWorld = fogGesture.world;
+      let changed = false;
 
-      if (nextWorld !== beforeWorld) {
-        setDraftWorld(nextWorld);
+      for (const axial of axials) {
+        const key = `${axial.q},${axial.r}`;
+
+        if (fogGesture.touchedKeys.has(key)) {
+          continue;
+        }
+
+        fogGesture.touchedKeys.add(key);
+        const cell = getLevelMap(nextFogWorld, view.level).get(key);
+
+        if (!cell) {
+          continue;
+        }
+
+        const nextWorldForCell = setCellHidden(nextFogWorld, view.level, axial, !cell.hidden);
+
+        if (nextWorldForCell !== nextFogWorld) {
+          nextFogWorld = nextWorldForCell;
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        fogGesture.world = nextFogWorld;
+        setDraftWorld(nextFogWorld);
       }
     },
-    [applyTerrainGestureCells]
+    [applyTerrainGestureCells, view.level]
   );
 
   const applyActiveRiverGestureEdges = useCallback(
@@ -286,10 +327,15 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
 
   const startEditGesture = useCallback(
     (action: EditGestureAction, axials: Axial[]) => {
+      if (!canEdit) {
+        return;
+      }
+
       editGestureRef.current = null;
       factionGestureRef.current = null;
       riverGestureRef.current = null;
       roadGestureRef.current = null;
+      fogGestureRef.current = null;
 
       if (activeMode === "feature") {
         const axial = axials[0];
@@ -341,6 +387,39 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
         return;
       }
 
+      if (activeMode === "fog") {
+        if (action === "paint") {
+          fogGestureRef.current = {
+            touchedKeys: new Set(),
+            world: history.present
+          };
+          applyActiveGestureCells(axials);
+          return;
+        }
+
+        const axial = axials[0];
+
+        if (!axial) {
+          return;
+        }
+
+        const feature = getFeatureAt(history.present, view.level, axial);
+
+        if (!feature) {
+          return;
+        }
+
+        const nextWorld = updateFeature(history.present, view.level, feature.id, {
+          hidden: !feature.hidden
+        });
+
+        if (nextWorld !== history.present) {
+          record(nextWorld);
+        }
+
+        return;
+      }
+
       editGestureRef.current = createEditGesture(
         action,
         history.present,
@@ -360,6 +439,7 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
       history.present,
       maxLevels,
       record,
+      canEdit,
       selectedFeatureId,
       view.level
     ]
@@ -367,9 +447,14 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
 
   const startRiverGesture = useCallback(
     (action: EditGestureAction, edges: RiverEdgeRef[]) => {
+      if (!canEdit) {
+        return;
+      }
+
       editGestureRef.current = null;
       factionGestureRef.current = null;
       roadGestureRef.current = null;
+      fogGestureRef.current = null;
 
       if (view.level !== 3) {
         return;
@@ -382,7 +467,7 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
       );
       applyActiveRiverGestureEdges(edges);
     },
-    [applyActiveRiverGestureEdges, history.present, view.level]
+    [applyActiveRiverGestureEdges, canEdit, history.present, view.level]
   );
 
   const finishEditGesture = useCallback(() => {
@@ -390,10 +475,12 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
     const factionGesture = factionGestureRef.current;
     const riverGesture = riverGestureRef.current;
     const roadGesture = roadGestureRef.current;
+    const fogGesture = fogGestureRef.current;
     editGestureRef.current = null;
     factionGestureRef.current = null;
     riverGestureRef.current = null;
     roadGestureRef.current = null;
+    fogGestureRef.current = null;
     setDraftWorld(null);
 
     if (terrainGesture) {
@@ -427,20 +514,32 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
         record(finishedWorld);
       }
     }
-  }, [record]);
+
+    if (fogGesture && fogGesture.world !== history.present) {
+      record(fogGesture.world);
+    }
+  }, [history.present, record]);
 
   const chooseFeatureKind = useCallback((type: FeatureKind) => {
+    if (!canEdit) {
+      return;
+    }
+
     setActiveFeatureKind(type);
     setActiveMode("feature");
-  }, []);
+  }, [canEdit]);
 
   const changeMode = useCallback((mode: EditorMode) => {
+    if (!canEdit) {
+      return;
+    }
+
     setActiveMode(mode);
 
     if (mode !== "feature") {
       setSelectedFeatureId(null);
     }
-  }, []);
+  }, [canEdit]);
 
   const clearSelectedFeature = useCallback(() => {
     setSelectedFeatureId(null);
@@ -452,7 +551,7 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
         Pick<Feature, "gmLabel" | "hidden" | "kind" | "labelRevealed" | "overrideTerrainTile" | "playerLabel">
       >
     ) => {
-      if (!selectedFeatureId) {
+      if (!canEdit || !selectedFeatureId) {
         return;
       }
 
@@ -462,10 +561,14 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
         record(nextWorld);
       }
     },
-    [history.present, record, selectedFeatureId, view.level]
+    [canEdit, history.present, record, selectedFeatureId, view.level]
   );
 
   const deleteSelectedFeature = useCallback(() => {
+    if (!canEdit) {
+      return;
+    }
+
     if (!selectedFeature) {
       return;
     }
@@ -482,7 +585,7 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
     }
 
     setSelectedFeatureId(null);
-  }, [history.present, record, selectedFeature, selectedFeatureId, view.level]);
+  }, [canEdit, history.present, record, selectedFeature, selectedFeatureId, view.level]);
 
   useEffect(() => {
     if (selectedFeatureId && !selectedFeature) {
@@ -772,6 +875,10 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
   }, []);
 
   const createNewFaction = useCallback(() => {
+    if (!canEdit) {
+      return;
+    }
+
     const factionNumber = factions.length + 1;
     const nextFaction: Faction = {
       id: createFactionId(),
@@ -785,9 +892,13 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
       setActiveFactionId(nextFaction.id);
       setActiveMode("faction");
     }
-  }, [createFactionId, factions.length, history.present, record]);
+  }, [canEdit, createFactionId, factions.length, history.present, record]);
 
   const renameFaction = useCallback((factionId: string, name: string) => {
+    if (!canEdit) {
+      return;
+    }
+
     const trimmed = name.trim();
 
     if (!trimmed) {
@@ -799,17 +910,25 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
     if (nextWorld !== history.present) {
       record(nextWorld);
     }
-  }, [history.present, record]);
+  }, [canEdit, history.present, record]);
 
   const recolorFaction = useCallback((factionId: string, color: string) => {
+    if (!canEdit) {
+      return;
+    }
+
     const nextWorld = updateFaction(history.present, factionId, { color });
 
     if (nextWorld !== history.present) {
       record(nextWorld);
     }
-  }, [history.present, record]);
+  }, [canEdit, history.present, record]);
 
   const deleteFactionById = useCallback((factionId: string) => {
+    if (!canEdit) {
+      return;
+    }
+
     const nextWorld = removeFaction(history.present, factionId);
 
     if (nextWorld !== history.present) {
@@ -819,7 +938,7 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
     if (activeFactionId === factionId) {
       setActiveFactionId(null);
     }
-  }, [activeFactionId, history.present, record]);
+  }, [activeFactionId, canEdit, history.present, record]);
 
   useKeyboardNavigation({
     center: view.center,
@@ -835,6 +954,10 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
   });
 
   const interactionLabel = useMemo(() => {
+    if (!canEdit) {
+      return "Read-only map view.";
+    }
+
     if (activeMode === "terrain") {
       return `Left paints ${tileLabels[activeType]}, right erases terrain, middle drag pans.`;
     }
@@ -864,17 +987,24 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
       return "Left click and drag to draw roads, right click a road to remove it, middle drag pans.";
     }
 
+    if (activeMode === "fog") {
+      return "Left toggles terrain fog, right toggles feature hidden state, middle drag pans.";
+    }
+
     if (view.level !== 3) {
       return "Rivers are derived here. Use A/E to switch to level 3 and edit river edges.";
     }
 
     return "Left paints river edges, right erases river edges, middle drag pans.";
-  }, [activeFactionId, activeFeatureKind, activeMode, activeType, selectedFaction, view.level]);
+  }, [activeFactionId, activeFeatureKind, activeMode, activeType, canEdit, selectedFaction, view.level]);
 
   const canvasProps = useMemo(
     () => ({
       center: view.center,
+      canEdit,
       editMode: activeMode,
+      featureVisibilityMode: role === "player" ? "player" : "gm",
+      fogEditingActive: role === "gm" && activeMode === "fog",
       interactionLabel,
       level: view.level,
       onCenterChange: setCenter,
@@ -893,6 +1023,7 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
     }),
     [
       activeMode,
+      canEdit,
       applyActiveGestureCells,
       applyActiveRiverGestureEdges,
       changeVisualZoom,
@@ -906,7 +1037,8 @@ export function useEditorState({ initialWorld, mapId }: UseEditorStateOptions) {
       view.center,
       view.level,
       visualZoom,
-      world
+      world,
+      role
     ]
   );
 

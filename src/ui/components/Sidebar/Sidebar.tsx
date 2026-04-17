@@ -107,6 +107,15 @@ export function Sidebar({
           </div>
           <p>Left click and drag across neighboring hexes to place road edges. Right click a road hex to remove it.</p>
         </section>
+      ) : activeMode === "fog" ? (
+        <section className="panel fog-panel">
+          <h2>Fog</h2>
+          <div className="active-tile">
+            <span>Brush</span>
+            <strong>Visibility</strong>
+          </div>
+          <p>Left click toggles terrain fog for a cell. Right click toggles hidden state on features in the cell.</p>
+        </section>
       ) : (
         <section className="panel faction-panel">
           <h2>Factions</h2>
