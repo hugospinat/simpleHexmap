@@ -17,6 +17,16 @@ function normalizeName(name: string | undefined, fallback = "Nouvelle map"): str
   return trimmed ? trimmed : fallback;
 }
 
+function normalizeMapId(mapId: string): string {
+  const trimmed = mapId.trim();
+
+  if (!/^[a-f0-9-]{8,}$/i.test(trimmed)) {
+    throw new Error("Invalid map id.");
+  }
+
+  return trimmed;
+}
+
 export class FileMapStore {
   private readonly mapsDirectory: string;
 
@@ -25,7 +35,7 @@ export class FileMapStore {
   }
 
   private getFilePath(mapId: string): string {
-    return join(this.mapsDirectory, `${mapId}.json`);
+    return join(this.mapsDirectory, `${normalizeMapId(mapId)}.json`);
   }
 
   async init() {

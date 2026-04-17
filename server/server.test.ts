@@ -32,6 +32,12 @@ async function startServer() {
 }
 
 describe("map server", () => {
+  it("rejects invalid map ids", async () => {
+    const server = await startServer();
+    const response = await fetch(`${server.origin}/maps/not-a-valid-id`);
+    expect(response.status).toBe(404);
+  });
+
   it("creates and loads a map", async () => {
     const server = await startServer();
     const createResponse = await fetch(`${server.origin}/maps`, {
