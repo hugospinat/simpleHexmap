@@ -9,11 +9,14 @@ import type { HexCanvasProps } from "@/ui/components/MapCanvas/types";
 
 export default function HexCanvas({
   world,
+  canEdit,
+  fogEditingActive,
   level,
   center,
   visualZoom,
   hoveredHex,
   editMode,
+  featureVisibilityMode,
   interactionLabel,
   showCoordinates,
   onCenterChange,
@@ -34,6 +37,7 @@ export default function HexCanvas({
   useCanvasWheelZoom(canvasRef, visualZoom, onVisualZoomChange);
 
   const { handlers, hoverRiverEdge } = useMapInteraction({
+    canEdit,
     canvasRef,
     center,
     editMode,
@@ -61,8 +65,10 @@ export default function HexCanvas({
     const stats = renderMapFrame({
       canvas,
       center,
+      fogEditingActive,
+      featureVisibilityMode,
       hoverRiverEdge,
-      highlightedHex: editMode === "river" ? null : hoveredHex,
+      highlightedHex: !canEdit || editMode === "river" ? null : hoveredHex,
       level,
       showCoordinates,
       viewport,
@@ -89,6 +95,9 @@ export default function HexCanvas({
     });
   }, [
     assetVersion,
+    canEdit,
+    fogEditingActive,
+    featureVisibilityMode,
     world,
     level,
     center,

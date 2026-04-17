@@ -5,11 +5,14 @@ import type { RiverEdgeRef, World } from "@/domain/world/world";
 
 export type HexCanvasProps = {
   world: World;
+  canEdit: boolean;
+  fogEditingActive: boolean;
   level: number;
   center: Axial;
   visualZoom: number;
   hoveredHex: Axial | null;
   editMode: EditorMode;
+  featureVisibilityMode: "gm" | "player";
   interactionLabel: string;
   showCoordinates: boolean;
   onCenterChange: (center: Axial) => void;

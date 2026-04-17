@@ -1,1 +1,1 @@
-export type EditorMode = "terrain" | "feature" | "river" | "road" | "faction";
+export type EditorMode = "terrain" | "feature" | "river" | "road" | "faction" | "fog";

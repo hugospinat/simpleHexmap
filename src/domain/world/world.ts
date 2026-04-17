@@ -77,6 +77,7 @@ export {
   deleteWithDescendants,
   getLevelMap,
   propagateTileToDeeperLevels,
+  setCellHidden,
   removeTile
 } from "@/domain/world/worldState";
 export {

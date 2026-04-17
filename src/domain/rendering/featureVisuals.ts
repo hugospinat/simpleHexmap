@@ -151,7 +151,8 @@ export function renderFeature(
   feature: Feature,
   origin: Pixel,
   scale: number,
-  visibilityMode: FeatureVisibilityMode
+  visibilityMode: FeatureVisibilityMode,
+  emphasizeHidden = false
 ) {
   const center = { x: 0, y: 0 };
   const label = getFeatureLabel(feature, visibilityMode);
@@ -159,7 +160,7 @@ export function renderFeature(
   context.save();
   context.translate(origin.x, origin.y);
   context.scale(scale, scale);
-  if (visibilityMode === "gm" && feature.hidden) {
+  if (visibilityMode === "gm" && emphasizeHidden && feature.hidden) {
     context.globalAlpha = 0.5;
   }
   context.strokeStyle = "#111111";
@@ -428,7 +429,8 @@ export function renderFeaturesForLevel(
   transform: MapRenderTransform,
   visibleKeys?: ReadonlySet<string>,
   excludedHexes?: ReadonlySet<string>,
-  visibilityMode: FeatureVisibilityMode = "gm"
+  visibilityMode: FeatureVisibilityMode = "gm",
+  emphasizeHidden = false
 ) {
   return renderFeaturesForLevelWithStats(
     context,
@@ -436,7 +438,8 @@ export function renderFeaturesForLevel(
     transform,
     visibleKeys,
     excludedHexes,
-    visibilityMode
+    visibilityMode,
+    emphasizeHidden
   );
 }
 
@@ -446,7 +449,8 @@ export function renderFeaturesForLevelWithStats(
   transform: MapRenderTransform,
   visibleKeys?: ReadonlySet<string>,
   excludedHexes?: ReadonlySet<string>,
-  visibilityMode: FeatureVisibilityMode = "gm"
+  visibilityMode: FeatureVisibilityMode = "gm",
+  emphasizeHidden = false
 ): FeatureRenderStats {
   const featureScale = transform.mapScale;
   let visibleHexes = 0;
@@ -475,7 +479,8 @@ export function renderFeaturesForLevelWithStats(
       feature,
       origin,
       featureScale,
-      visibilityMode
+      visibilityMode,
+      emphasizeHidden
     );
   }
 
@@ -490,7 +495,9 @@ export function getFeatureTitle(type: FeatureKind): string {
 }
 
 export function featureCanOverrideTerrainTile(feature: Feature): boolean {
-  return feature.overrideTerrainTile && canFeatureOverrideTerrain(feature.kind);
+  // Hidden features must never override terrain visuals to avoid leaking
+  // unrevealed information through the rendered tile appearance.
+  return !feature.hidden && feature.overrideTerrainTile && canFeatureOverrideTerrain(feature.kind);
 }
 
 export function drawFeaturePreview(

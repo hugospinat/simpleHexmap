@@ -4,6 +4,7 @@ import {
   addFeature,
   addRoadConnection,
   addRiverEdge,
+  setCellHidden,
   addTile,
   assignFactionAt,
   createEmptyWorld,
@@ -26,6 +27,7 @@ export type MapTileRecord = {
   q: number;
   r: number;
   tileId: string;
+  hidden: boolean;
 };
 
 export type MapFeatureRecord = {
@@ -108,7 +110,8 @@ function serializeTiles(world: World): MapTileRecord[] {
       return {
         q: axial.q,
         r: axial.r,
-        tileId: cell.type
+        tileId: cell.type,
+        hidden: cell.hidden
       };
     })
     .sort((left, right) => (left.q - right.q) || (left.r - right.r) || left.tileId.localeCompare(right.tileId));
@@ -232,7 +235,8 @@ export function parseSavedMap(raw: unknown): SavedMap {
     return {
       q: tile.q,
       r: tile.r,
-      tileId: tile.tileId
+      tileId: tile.tileId,
+      hidden: typeof tile.hidden === "boolean" ? tile.hidden : false
     };
   });
 
@@ -364,6 +368,7 @@ export function deserializeWorld(savedMap: SavedMap): World {
 
   for (const tile of savedMap.tiles) {
     world = addTile(world, sourceLevel, { q: tile.q, r: tile.r }, tile.tileId as TerrainType);
+    world = setCellHidden(world, sourceLevel, { q: tile.q, r: tile.r }, tile.hidden);
   }
 
   for (const faction of savedMap.factions) {

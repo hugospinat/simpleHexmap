@@ -10,16 +10,43 @@ import { fillPolygon, strokePolygon } from "./canvasPrimitives";
 import type { MapRenderTransform } from "./mapTransform";
 import type { VisibleCell } from "./renderTypes";
 
+const hiddenCellFillColor = "#0f0f0f"; // Slightly lighter than pure black to keep hex boundaries readable.
+
 export function drawTerrainBaseLayer(
   context: CanvasRenderingContext2D,
   visibleCells: VisibleCell[],
-  transform: MapRenderTransform
+  transform: MapRenderTransform,
+  hideHiddenCells: boolean
 ): number {
   for (const { axial, cell } of visibleCells) {
-    fillPolygon(context, transform.hexCorners(axial), tileColors[cell.type]);
+    fillPolygon(
+      context,
+      transform.hexCorners(axial),
+      hideHiddenCells && cell.hidden ? hiddenCellFillColor : tileColors[cell.type]
+    );
   }
 
   return visibleCells.length;
+}
+
+export function drawHiddenCellOverlay(
+  context: CanvasRenderingContext2D,
+  hiddenCells: VisibleCell[],
+  transform: MapRenderTransform,
+  opacity = 0.4
+): void {
+  if (hiddenCells.length === 0) {
+    return;
+  }
+
+  context.save();
+  context.globalAlpha = opacity;
+
+  for (const { axial } of hiddenCells) {
+    fillPolygon(context, transform.hexCorners(axial), "#000000");
+  }
+
+  context.restore();
 }
 
 export function drawTerrainDetailLayer(
