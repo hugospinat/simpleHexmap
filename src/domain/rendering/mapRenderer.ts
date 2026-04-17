@@ -77,9 +77,8 @@ export function renderMapFrame({
   const visibleTerrainKeys = new Set(visibleTerrainCells.map((cell) => cell.key));
   const tileCount = drawTerrainBaseLayer(
     context,
-    visible.cells,
-    transform,
-    featureVisibilityMode === "player"
+    visibleTerrainCells,
+    transform
   );
   const boundaryCount = drawBoundaryOverlays(
     context,
@@ -113,7 +112,7 @@ export function renderMapFrame({
     featureVisibilityMode === "player" ? visibleTerrainKeys : undefined
   );
 
-  if (fogEditingActive) {
+  if (fogEditingActive && featureVisibilityMode === "gm") {
     drawHiddenCellOverlay(context, hiddenCells, transform, fogOverlayOpacity);
   }
 
