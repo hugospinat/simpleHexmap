@@ -32,3 +32,6 @@ npm-debug.log*
 # Temporary files
 *.tmp
 .cache/
+
+# Local map storage
+data/maps/

@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent } from "react";
+import { useState } from "react";
 import type { FeatureKind } from "@/domain/world/features";
 import type { Faction, TerrainType } from "@/domain/world/world";
 import type { EditorMode } from "@/editor/tools/editorTypes";
@@ -12,10 +12,11 @@ type SidebarProps = {
   activeMode: EditorMode;
   activeType: TerrainType;
   factions: Faction[];
+  mapName: string;
+  onBackToMaps: () => void;
   onCreateFaction: () => void;
   onDeleteFaction: (factionId: string) => void;
   onFeatureKindChange: (type: FeatureKind) => void;
-  onLoadMap: (file: File) => void | Promise<void>;
   onModeChange: (mode: EditorMode) => void;
   onRecolorFaction: (factionId: string, color: string) => void;
   onRenameFaction: (factionId: string, name: string) => void;
@@ -30,10 +31,11 @@ export function Sidebar({
   activeMode,
   activeType,
   factions,
+  mapName,
+  onBackToMaps,
   onCreateFaction,
   onDeleteFaction,
   onFeatureKindChange,
-  onLoadMap,
   onModeChange,
   onRecolorFaction,
   onRenameFaction,
@@ -41,24 +43,8 @@ export function Sidebar({
   onSelectFaction,
   onTileTypeChange
 }: SidebarProps) {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [editingFactionId, setEditingFactionId] = useState<string | null>(null);
   const [editingFactionName, setEditingFactionName] = useState("");
-
-  const triggerLoad = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileInputChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-
-    if (!file) {
-      return;
-    }
-
-    await onLoadMap(file);
-    event.currentTarget.value = "";
-  };
 
   const startFactionNameEdit = (factionId: string, currentName: string) => {
     setEditingFactionId(factionId);
@@ -87,7 +73,8 @@ export function Sidebar({
       <div className="brand">
         <span className="eyebrow">OSR CARTOGRAPHY</span>
         <h1>Hex Map</h1>
-        <p>Ink terrain and notes onto sparse nested levels.</p>
+        <p>{mapName}</p>
+        <button type="button" className="compact-button" onClick={onBackToMaps}>Back to maps</button>
       </div>
 
       <section className="panel tool-panel">
@@ -205,14 +192,6 @@ export function Sidebar({
         <h2>Data</h2>
         <div className="data-actions">
           <button type="button" className="compact-button" onClick={onSaveMap}>Save</button>
-          <button type="button" className="compact-button" onClick={triggerLoad}>Load</button>
-          <input
-            ref={fileInputRef}
-            className="file-input-hidden"
-            type="file"
-            accept="application/json,.json"
-            onChange={handleFileInputChange}
-          />
         </div>
       </section>
     </aside>

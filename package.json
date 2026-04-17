@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "server": "node server/index.mjs",
     "build": "tsc && vite build",
+    "build:server": "node --check server/index.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
