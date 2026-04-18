@@ -26,6 +26,7 @@ type SidebarProps = {
   onRecolorFaction: (factionId: string, color: string) => void;
   onRedo: () => void;
   onRenameFaction: (factionId: string, name: string) => void;
+  onClearMapTokenSelection: () => void;
   onSelectFaction: (factionId: string | null) => void;
   onSelectMapToken: (token: MapTokenRecord) => void;
   onTileTypeChange: (type: TerrainType) => void;
@@ -50,6 +51,7 @@ export function Sidebar({
   onRecolorFaction,
   onRedo,
   onRenameFaction,
+  onClearMapTokenSelection,
   onSelectFaction,
   onSelectMapToken,
   onTileTypeChange,
@@ -138,6 +140,9 @@ export function Sidebar({
               <div className="active-tile">
                 <span>Selected token</span>
                 <strong>{getTokenDisplayName(activeTokenProfileId)}</strong>
+              </div>
+              <div className="faction-actions">
+                <button type="button" className="compact-button" onClick={onClearMapTokenSelection}>Clear selection</button>
               </div>
               <p>Token selected: left click places it on level 3, right click removes the clicked visible token. Click the same token in the list to deselect.</p>
             </>

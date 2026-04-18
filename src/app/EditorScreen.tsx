@@ -65,6 +65,7 @@ export function EditorScreen({ initialWorld, mapId, mapName, profiles, profile, 
           onRedo={editor.redoLastOperationBatch}
           onRenameFaction={editor.renameFaction}
           onSelectFaction={editor.selectFaction}
+          onClearMapTokenSelection={editor.clearMapTokenSelection}
           onSelectMapToken={editor.selectMapToken}
           onTileTypeChange={editor.setActiveType}
           onUndo={editor.undoLastOperationBatch}

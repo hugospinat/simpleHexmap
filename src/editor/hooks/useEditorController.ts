@@ -214,6 +214,14 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
     setActiveTokenColor(token.color);
   }, [activeTokenProfileId, canEdit]);
 
+  const clearMapTokenSelection = useCallback(() => {
+    if (!canEdit) {
+      return;
+    }
+
+    setActiveTokenProfileId(null);
+  }, [canEdit]);
+
   const placeSelectedMapToken = useCallback((axial: Axial) => {
     if (!canEdit || !activeTokenProfileId) {
       return;
@@ -712,6 +720,7 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
     renameFaction,
     recolorFaction,
     selectFaction: setActiveFactionId,
+    clearMapTokenSelection,
     selectMapToken,
     setPlayerTokenColor,
     setActiveMode: changeMode,
