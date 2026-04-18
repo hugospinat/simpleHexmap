@@ -2,9 +2,14 @@ import type { Axial } from "@/core/geometry/hex";
 import type { EditGestureAction } from "@/editor/tools/editGesture";
 import type { EditorMode } from "@/editor/tools/editorTypes";
 import type { RiverEdgeRef, MapState } from "@/core/map/world";
+import type { MapOperation } from "@/core/protocol";
+import type { RenderWorldPatch } from "@/render/renderWorldPatch";
 
 export type HexCanvasProps = {
   world: MapState;
+  renderWorldPatch?: RenderWorldPatch;
+  onRenderWorldPatchApplied?: (revision: number) => void;
+  previewOperations: MapOperation[];
   canEdit: boolean;
   fogEditingActive: boolean;
   level: number;

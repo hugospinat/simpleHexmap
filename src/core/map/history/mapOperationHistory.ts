@@ -19,6 +19,11 @@ import type {
   MapOperation,
   MapRoadRecord
 } from "@/core/protocol";
+import { getTileOperationTerrain } from "@/core/protocol";
+
+type SetTileOperation = Extract<MapOperation, { type: "set_tile" }>;
+type SetCellHiddenOperation = Extract<MapOperation, { type: "set_cell_hidden" }>;
+type SetFactionTerritoryOperation = Extract<MapOperation, { type: "set_faction_territory" }>;
 
 export type OperationHistoryEntry = {
   redoOperations: MapOperation[];
@@ -334,7 +339,167 @@ function inverseForOperation(worldBefore: MapState, operation: MapOperation): Ma
   }
 }
 
+function operationTargetKey(operation: SetTileOperation | SetCellHiddenOperation | SetFactionTerritoryOperation): string {
+  switch (operation.type) {
+    case "set_tile":
+      return hexKey({ q: operation.tile.q, r: operation.tile.r });
+    case "set_cell_hidden":
+      return hexKey({ q: operation.cell.q, r: operation.cell.r });
+    case "set_faction_territory":
+      return hexKey({ q: operation.territory.q, r: operation.territory.r });
+    default: {
+      const exhaustive: never = operation;
+      void exhaustive;
+      return "";
+    }
+  }
+}
+
+function hasUniqueOperationTargets(
+  operations: readonly (SetTileOperation | SetCellHiddenOperation | SetFactionTerritoryOperation)[]
+): boolean {
+  const seen = new Set<string>();
+
+  for (const operation of operations) {
+    const key = operationTargetKey(operation);
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+  }
+
+  return true;
+}
+
+function invertSetTileBatch(worldBefore: MapState, operations: readonly SetTileOperation[]): MapOperation[] {
+  const sourceMap = worldBefore.levels[SOURCE_LEVEL] ?? new Map();
+  const sourceFactions = getFactionLevelMap(worldBefore, SOURCE_LEVEL);
+  const inverse: MapOperation[] = [];
+
+  for (let index = operations.length - 1; index >= 0; index -= 1) {
+    const operation = operations[index];
+    const axial = { q: operation.tile.q, r: operation.tile.r };
+    const key = hexKey(axial);
+    const previousTile = sourceMap.get(key);
+
+    if (previousTile) {
+      inverse.push({
+        type: "set_tile",
+        tile: {
+          q: axial.q,
+          r: axial.r,
+          terrain: previousTile.type,
+          hidden: previousTile.hidden
+        }
+      });
+
+      const previousFactionId = sourceFactions.get(key);
+
+      if (previousFactionId) {
+        inverse.push({
+          type: "set_faction_territory",
+          territory: {
+            q: axial.q,
+            r: axial.r,
+            factionId: previousFactionId
+          }
+        });
+      }
+      continue;
+    }
+
+    if (getTileOperationTerrain(operation.tile) !== null) {
+      inverse.push({
+        type: "set_tile",
+        tile: {
+          q: axial.q,
+          r: axial.r,
+          terrain: null,
+          hidden: false
+        }
+      });
+    }
+  }
+
+  return inverse;
+}
+
+function invertCellHiddenBatch(worldBefore: MapState, operations: readonly SetCellHiddenOperation[]): MapOperation[] {
+  const sourceMap = worldBefore.levels[SOURCE_LEVEL] ?? new Map();
+  const inverse: MapOperation[] = [];
+
+  for (let index = operations.length - 1; index >= 0; index -= 1) {
+    const operation = operations[index];
+    const previousTile = sourceMap.get(hexKey({ q: operation.cell.q, r: operation.cell.r }));
+
+    if (!previousTile) {
+      continue;
+    }
+
+    inverse.push({
+      type: "set_cell_hidden",
+      cell: {
+        q: operation.cell.q,
+        r: operation.cell.r,
+        hidden: previousTile.hidden
+      }
+    });
+  }
+
+  return inverse;
+}
+
+function invertFactionTerritoryBatch(
+  worldBefore: MapState,
+  operations: readonly SetFactionTerritoryOperation[]
+): MapOperation[] {
+  const sourceFactions = getFactionLevelMap(worldBefore, SOURCE_LEVEL);
+  const inverse: MapOperation[] = [];
+
+  for (let index = operations.length - 1; index >= 0; index -= 1) {
+    const operation = operations[index];
+    inverse.push({
+      type: "set_faction_territory",
+      territory: {
+        q: operation.territory.q,
+        r: operation.territory.r,
+        factionId: sourceFactions.get(hexKey({ q: operation.territory.q, r: operation.territory.r })) ?? null
+      }
+    });
+  }
+
+  return inverse;
+}
+
+function invertOperationBatchFastPath(worldBefore: MapState, operations: MapOperation[]): MapOperation[] | null {
+  if (operations.length === 0) {
+    return [];
+  }
+
+  if (operations.every((operation): operation is SetTileOperation => operation.type === "set_tile")) {
+    return hasUniqueOperationTargets(operations) ? invertSetTileBatch(worldBefore, operations) : null;
+  }
+
+  if (operations.every((operation): operation is SetCellHiddenOperation => operation.type === "set_cell_hidden")) {
+    return hasUniqueOperationTargets(operations) ? invertCellHiddenBatch(worldBefore, operations) : null;
+  }
+
+  if (operations.every((operation): operation is SetFactionTerritoryOperation => operation.type === "set_faction_territory")) {
+    return hasUniqueOperationTargets(operations) ? invertFactionTerritoryBatch(worldBefore, operations) : null;
+  }
+
+  return null;
+}
+
 export function invertOperationBatch(worldBefore: MapState, operations: MapOperation[]): MapOperation[] {
+  const fastPath = invertOperationBatchFastPath(worldBefore, operations);
+
+  if (fastPath) {
+    return fastPath;
+  }
+
   const inverseByForwardOperation: MapOperation[][] = [];
   let currentWorld = worldBefore;
 

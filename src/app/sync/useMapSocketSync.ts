@@ -26,18 +26,22 @@ import {
 } from "@/app/sync/mapSyncSession";
 import { parseMapSyncSocketMessage } from "@/app/sync/mapSyncMessages";
 import { createMapSocketTransport, type MapSocketTransport } from "@/app/sync/mapSocketTransport";
+import { mergeRenderWorldPatch, type RenderWorldPatchInput } from "@/app/sync/renderWorldPatchState";
+import type { RenderWorldPatch } from "@/render/renderWorldPatch";
 
 export type MapSyncStatus = MapSyncSessionStatus;
 
 type UseMapSyncOptions = {
-  clearPreviewWorld: () => void;
+  clearPreview: () => void;
   initialWorld: MapState;
   mapId: string;
 };
 
 export type UseMapSocketSyncResult = {
+  acknowledgeRenderWorldPatch: (revision: number) => void;
   commitLocalOperations: (operations: MapOperation[]) => void;
   confirmedWorld: MapState;
+  renderWorldPatch: RenderWorldPatch;
   syncStatus: MapSyncStatus;
   visibleWorld: MapState;
 };
@@ -68,13 +72,37 @@ function logMapSync(event: string, payload: Record<string, unknown>): void {
   }
 }
 
-export function useMapSocketSync({ clearPreviewWorld, initialWorld, mapId }: UseMapSyncOptions): UseMapSocketSyncResult {
+export function useMapSocketSync({ clearPreview, initialWorld, mapId }: UseMapSyncOptions): UseMapSocketSyncResult {
   const clientIdRef = useRef(createClientId());
   const sessionRef = useRef(createMapSyncSession(clientIdRef.current, initialWorld));
   const transportRef = useRef<MapSocketTransport | null>(null);
   const [confirmedWorld, setConfirmedWorld] = useState(initialWorld);
+  const renderWorldPatchRevisionRef = useRef(0);
+  const acknowledgedRenderWorldPatchRevisionRef = useRef(0);
+  const [renderWorldPatch, setRenderWorldPatch] = useState<RenderWorldPatch>({
+    revision: 0,
+    type: "snapshot"
+  });
   const [visibleWorld, setVisibleWorld] = useState(initialWorld);
   const [syncStatus, setSyncStatus] = useState<MapSyncStatus>("connecting");
+
+  const publishRenderWorldPatch = useCallback((patch: RenderWorldPatchInput) => {
+    renderWorldPatchRevisionRef.current += 1;
+    const revision = renderWorldPatchRevisionRef.current;
+    setRenderWorldPatch((previous) => mergeRenderWorldPatch(
+      previous,
+      acknowledgedRenderWorldPatchRevisionRef.current,
+      patch,
+      revision
+    ));
+  }, []);
+
+  const acknowledgeRenderWorldPatch = useCallback((revision: number) => {
+    acknowledgedRenderWorldPatchRevisionRef.current = Math.max(
+      acknowledgedRenderWorldPatchRevisionRef.current,
+      revision
+    );
+  }, []);
 
   const publishSessionState = useCallback(() => {
     const session = sessionRef.current;
@@ -162,18 +190,33 @@ export function useMapSocketSync({ clearPreviewWorld, initialWorld, mapId }: Use
     }
 
     if (envelopes.length > 0) {
-      clearPreviewWorld();
+      publishRenderWorldPatch({
+        operations: envelopes.map((envelope) => envelope.operation),
+        type: "operations"
+      });
+      clearPreview();
       publishSessionState();
     }
 
     flushOperations();
-  }, [clearPreviewWorld, flushOperations, mapId, publishSessionState]);
+  }, [clearPreview, flushOperations, mapId, publishRenderWorldPatch, publishSessionState]);
 
   const applyQueuedReceivedOperations = useCallback(() => {
     const appliedOperations = applyReadySessionOperations(sessionRef.current);
 
     if (appliedOperations.length > 0) {
-      clearPreviewWorld();
+      const remoteOperations = appliedOperations
+        .filter(({ acknowledgedLocal }) => !acknowledgedLocal)
+        .map(({ message }) => message.operation);
+
+      if (remoteOperations.length > 0) {
+        publishRenderWorldPatch({
+          operations: remoteOperations,
+          type: "operations"
+        });
+      }
+
+      clearPreview();
       publishSessionState();
     } else {
       setSyncStatus(sessionRef.current.status);
@@ -191,7 +234,7 @@ export function useMapSocketSync({ clearPreviewWorld, initialWorld, mapId }: Use
     }
 
     flushOperations();
-  }, [clearPreviewWorld, flushOperations, mapId, publishSessionState]);
+  }, [clearPreview, flushOperations, mapId, publishRenderWorldPatch, publishSessionState]);
 
   const enqueueAppliedOperation = useCallback((payload: MapOperationMessage) => {
     const result = enqueueSessionOperation(sessionRef.current, payload);
@@ -309,7 +352,8 @@ export function useMapSocketSync({ clearPreviewWorld, initialWorld, mapId }: Use
           try {
             const snapshotWorld = deserializeWorld(payload.content);
             resetSessionFromSnapshot(sessionRef.current, snapshotWorld, payload.lastSequence);
-            clearPreviewWorld();
+            publishRenderWorldPatch({ type: "snapshot" });
+            clearPreview();
             publishSessionState();
             logMapSync("snapshot_loaded", {
               lastSequence: payload.lastSequence,
@@ -392,16 +436,19 @@ export function useMapSocketSync({ clearPreviewWorld, initialWorld, mapId }: Use
     };
   }, [
     applyQueuedReceivedOperations,
-    clearPreviewWorld,
+    clearPreview,
     enqueueAppliedOperation,
     flushOperations,
     mapId,
+    publishRenderWorldPatch,
     publishSessionState
   ]);
 
   return {
+    acknowledgeRenderWorldPatch,
     commitLocalOperations,
     confirmedWorld,
+    renderWorldPatch,
     syncStatus,
     visibleWorld
   };

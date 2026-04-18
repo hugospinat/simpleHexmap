@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { addRoadConnection, createEmptyWorld, getRoadLevelMap } from "@/core/map/world";
-import type { Axial } from "@/core/geometry/hex";
+import {
+  axialToWorldPixel,
+  HEX_BASE_SIZE,
+  getLevelRotation,
+  getLevelScale,
+  type Axial,
+  type Pixel
+} from "@/core/geometry/hex";
 import { createMapRenderTransform } from "./mapTransform";
 import { drawRoadOverlays } from "./roadRenderer";
 import type { MapRenderTransform } from "./mapTransform";
@@ -25,9 +32,22 @@ function createContextStub() {
 
 function createRoadRenderCell(world: ReturnType<typeof createEmptyWorld>, transform: MapRenderTransform, axial: Axial): RenderCell {
   const key = `${axial.q},${axial.r}`;
+  const worldCenter = axialToWorldPixel(axial, transform.level);
+  const worldRadius = HEX_BASE_SIZE * getLevelScale(transform.level);
+  const worldRotation = getLevelRotation(transform.level);
+  const worldCorners: Pixel[] = Array.from({ length: 6 }, (_, index) => {
+    const angle = worldRotation + Math.PI / 6 + (Math.PI / 3) * index;
+
+    return {
+      x: worldCenter.x + worldRadius * Math.cos(angle),
+      y: worldCenter.y + worldRadius * Math.sin(angle)
+    };
+  });
 
   return {
     axial,
+    boundsHeight: Math.max(...worldCorners.map((point) => point.y)) - Math.min(...worldCorners.map((point) => point.y)),
+    boundsWidth: Math.max(...worldCorners.map((point) => point.x)) - Math.min(...worldCorners.map((point) => point.x)),
     cell: { hidden: false, type: "plain" },
     center: transform.axialToScreen(axial),
     corners: transform.hexCorners(axial),
@@ -38,7 +58,9 @@ function createRoadRenderCell(world: ReturnType<typeof createEmptyWorld>, transf
     key,
     riverEdges: new Set(),
     roadEdges: getRoadLevelMap(world, 3).get(key) ?? new Set(),
-    terrainImage: null
+    terrainImage: null,
+    worldCenter,
+    worldCorners
   };
 }
 

@@ -488,6 +488,23 @@ input::placeholder {
   cursor: crosshair;
 }
 
+.pixi-hex-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.pixi-hex-canvas {
+  pointer-events: none;
+}
+
+.pixi-hex-input {
+  background: transparent;
+}
+
 .hex-canvas-base {
   pointer-events: none;
 }

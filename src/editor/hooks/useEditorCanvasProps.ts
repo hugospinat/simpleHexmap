@@ -5,6 +5,8 @@ import type { FeatureVisibilityMode } from "@/core/map/features";
 import type { EditGestureAction } from "@/editor/tools/editGesture";
 import type { EditorMode } from "@/editor/tools/editorTypes";
 import type { HexCanvasProps } from "@/ui/components/MapCanvas/types";
+import type { RenderWorldPatch } from "@/render/renderWorldPatch";
+import type { MapOperation } from "@/core/protocol";
 
 type UseEditorCanvasPropsOptions = {
   activeMode: EditorMode;
@@ -18,7 +20,10 @@ type UseEditorCanvasPropsOptions = {
   hoveredHex: Axial | null;
   interactionLabel: string;
   level: number;
+  onRenderWorldPatchApplied?: (revision: number) => void;
+  previewOperations: MapOperation[];
   role: "gm" | "player";
+  renderWorldPatch?: RenderWorldPatch;
   setCenter: (center: Axial) => void;
   setHoveredHex: (axial: Axial | null) => void;
   showCoordinates: boolean;
@@ -40,7 +45,10 @@ export function useEditorCanvasProps({
   hoveredHex,
   interactionLabel,
   level,
+  onRenderWorldPatchApplied,
+  previewOperations,
   role,
+  renderWorldPatch,
   setCenter,
   setHoveredHex,
   showCoordinates,
@@ -66,7 +74,10 @@ export function useEditorCanvasProps({
       onRiverGestureMove: applyActiveRiverGestureEdges,
       onRiverGestureStart: startRiverGesture,
       onHoveredHexChange: setHoveredHex,
+      onRenderWorldPatchApplied,
       onVisualZoomChange: changeVisualZoom,
+      previewOperations,
+      renderWorldPatch,
       hoveredHex,
       showCoordinates,
       visualZoom,
@@ -84,7 +95,10 @@ export function useEditorCanvasProps({
       hoveredHex,
       interactionLabel,
       level,
+      onRenderWorldPatchApplied,
+      previewOperations,
       role,
+      renderWorldPatch,
       setCenter,
       setHoveredHex,
       showCoordinates,

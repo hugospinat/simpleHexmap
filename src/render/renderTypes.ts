@@ -12,6 +12,8 @@ export type VisibleCell = {
 };
 
 export type RenderCell = VisibleCell & {
+  boundsHeight: number;
+  boundsWidth: number;
   center: Pixel;
   corners: Pixel[];
   factionColor: string | null;
@@ -21,6 +23,8 @@ export type RenderCell = VisibleCell & {
   riverEdges: RiverEdgeSet;
   roadEdges: RoadEdgeSet;
   terrainImage: HTMLImageElement | null;
+  worldCenter: Pixel;
+  worldCorners: Pixel[];
 };
 
 export type RenderStats = {

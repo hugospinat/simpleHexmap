@@ -1,6 +1,6 @@
 import { coalesceMapOperations, type MapOperation } from "@/core/protocol";
 import type { MapOperationMessage } from "@/app/api/mapApi";
-import { applyOperationsToWorld, applyOperationToWorld } from "@/core/map/worldOperationApplier";
+import { applyOperationsToWorld } from "@/core/map/worldOperationApplier";
 import type { MapState } from "@/core/map/world";
 import {
   acknowledgePendingOperation,
@@ -156,9 +156,10 @@ export function takeReadySessionOperations(session: MapSyncSession): Array<{ seq
 export function applyReadySessionOperations(session: MapSyncSession): MapSyncReadyOperation[] {
   const readyOperations = takeReadySessionOperations(session);
   const applied: MapSyncReadyOperation[] = [];
+  const operationsToApply: MapOperation[] = [];
 
   for (const { sequence, message } of readyOperations) {
-    session.confirmedWorld = applyOperationToWorld(session.confirmedWorld, message.operation);
+    operationsToApply.push(message.operation);
     const acknowledgedLocal = message.sourceClientId === session.clientId
       ? acknowledgePendingOperation(session.pendingOperations, message.operationId)
       : false;
@@ -166,6 +167,7 @@ export function applyReadySessionOperations(session: MapSyncSession): MapSyncRea
   }
 
   if (applied.length > 0) {
+    session.confirmedWorld = applyOperationsToWorld(session.confirmedWorld, operationsToApply);
     refreshVisibleWorld(session);
   }
 

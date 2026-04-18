@@ -82,7 +82,7 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
   const maxLevels = editorConfig.maxLevels;
   const appRef = useRef<HTMLElement | null>(null);
   const { changeLevelByDelta, changeVisualZoom, setCenter, view, visualZoom } = useCamera();
-  const [toolPreviewWorld, setToolPreviewWorld] = useState<MapState | null>(null);
+  const [toolPreviewOperations, setToolPreviewOperations] = useState<MapOperation[]>([]);
   const [activeMode, setActiveMode] = useState<EditorMode>("terrain");
   const [activeType, setActiveType] = useState<TerrainType>("plain");
   const [activeFeatureKind, setActiveFeatureKind] = useState<FeatureKind>("city");
@@ -93,20 +93,29 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
   const activeGestureRef = useRef<ActiveEditorGesture | null>(null);
   const operationHistoryRef = useRef(createOperationHistoryState());
   const featureIdRef = useRef(0);
-  const clearToolPreviewWorld = useCallback(() => {
-    setToolPreviewWorld(null);
+  const publishToolPreviewOperations = useCallback((operations: MapOperation[]) => {
+    if (operations.length === 0) {
+      return;
+    }
+
+    setToolPreviewOperations((previous) => [...previous, ...operations]);
+  }, []);
+  const clearToolPreview = useCallback(() => {
+    setToolPreviewOperations([]);
   }, []);
   const {
+    acknowledgeRenderWorldPatch,
     commitLocalOperations,
+    renderWorldPatch,
     syncStatus,
     visibleWorld
   } = useMapSocketSync({
-    clearPreviewWorld: clearToolPreviewWorld,
+    clearPreview: clearToolPreview,
     initialWorld,
     mapId
   });
 
-  const world = toolPreviewWorld ?? visibleWorld;
+  const world = visibleWorld;
   const canEdit = role === "gm";
   const factions = useMemo(() => getFactions(world), [world]);
   const selectedFaction = useMemo(
@@ -161,7 +170,7 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
   useEffect(() => {
     clearOperationHistory(operationHistoryRef.current);
     activeGestureRef.current = null;
-    setToolPreviewWorld(null);
+    setToolPreviewOperations([]);
   }, [mapId]);
 
   const applyTerrainGestureCells = useCallback(
@@ -174,13 +183,14 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
       }
 
       const beforeWorld = gesture.world;
+      const operationStartIndex = gesture.operations.length;
       const nextWorld = applyEditGestureCells(gesture, axials);
 
       if (nextWorld !== beforeWorld) {
-        setToolPreviewWorld(nextWorld);
+        publishToolPreviewOperations(gesture.operations.slice(operationStartIndex));
       }
     },
-    []
+    [publishToolPreviewOperations]
   );
 
   const applyActiveGestureCells = useCallback(
@@ -194,34 +204,37 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
 
       if (activeGesture?.kind === "faction") {
         const beforeWorld = activeGesture.gesture.world;
+        const operationStartIndex = activeGesture.gesture.operations.length;
         const nextWorld = applyFactionGestureCells(activeGesture.gesture, axials);
 
         if (nextWorld !== beforeWorld) {
-          setToolPreviewWorld(nextWorld);
+          publishToolPreviewOperations(activeGesture.gesture.operations.slice(operationStartIndex));
         }
         return;
       }
 
       if (activeGesture?.kind === "road") {
         const beforeWorld = activeGesture.gesture.world;
+        const operationStartIndex = activeGesture.gesture.operations.length;
         const nextWorld = applyRoadGestureCells(activeGesture.gesture, axials);
 
         if (nextWorld !== beforeWorld) {
-          setToolPreviewWorld(nextWorld);
+          publishToolPreviewOperations(activeGesture.gesture.operations.slice(operationStartIndex));
         }
         return;
       }
 
       if (activeGesture?.kind === "fog") {
         const beforeWorld = activeGesture.gesture.world;
+        const operationStartIndex = activeGesture.gesture.operations.length;
         const nextWorld = applyFogGestureCells(activeGesture.gesture, axials);
 
         if (nextWorld !== beforeWorld) {
-          setToolPreviewWorld(nextWorld);
+          publishToolPreviewOperations(activeGesture.gesture.operations.slice(operationStartIndex));
         }
       }
     },
-    [applyTerrainGestureCells]
+    [applyTerrainGestureCells, publishToolPreviewOperations]
   );
 
   const applyActiveRiverGestureEdges = useCallback(
@@ -234,13 +247,14 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
       }
 
       const beforeWorld = gesture.world;
+      const operationStartIndex = gesture.operations.length;
       const nextWorld = applyRiverGestureEdges(gesture, edges);
 
       if (nextWorld !== beforeWorld) {
-        setToolPreviewWorld(nextWorld);
+        publishToolPreviewOperations(gesture.operations.slice(operationStartIndex));
       }
     },
-    []
+    [publishToolPreviewOperations]
   );
 
   const startEditGesture = useCallback(
@@ -425,7 +439,7 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
   const finishEditGesture = useCallback(() => {
     const activeGesture = activeGestureRef.current;
     activeGestureRef.current = null;
-    setToolPreviewWorld(null);
+    setToolPreviewOperations([]);
 
     const operations = activeGesture?.gesture.operations ?? [];
 
@@ -568,7 +582,10 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
     hoveredHex,
     interactionLabel,
     level: view.level,
+    onRenderWorldPatchApplied: acknowledgeRenderWorldPatch,
+    previewOperations: toolPreviewOperations,
     role,
+    renderWorldPatch,
     setCenter,
     setHoveredHex,
     showCoordinates,
