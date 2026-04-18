@@ -1,5 +1,3 @@
-const defaultDevApiBaseUrl = "http://localhost:8787";
-
 function trimTrailingSlash(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
 }
@@ -27,10 +25,6 @@ export function getApiBaseUrl(): string {
 
   if (configured) {
     return trimTrailingSlash(configured);
-  }
-
-  if (import.meta.env.DEV) {
-    return defaultDevApiBaseUrl;
   }
 
   return "";
