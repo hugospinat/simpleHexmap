@@ -26,6 +26,7 @@ export default function MapCanvas({
   renderWorldPatch,
   previewOperations,
   mapTokens,
+  activeTokenProfileId,
   canEdit,
   playerMode,
   fogEditingActive,
@@ -46,6 +47,8 @@ export default function MapCanvas({
   onEditGestureEnd,
   onRiverGestureEnd,
   onHoveredHexChange,
+  onGmTokenPlace,
+  onGmTokenRemove,
   onPlayerTokenPlace,
   onToolStep,
   onRenderWorldPatchApplied
@@ -68,6 +71,7 @@ export default function MapCanvas({
   useCanvasWheelZoom(overlayCanvasRef, visualZoom, onVisualZoomChange, onToolStep);
 
   const { handlers, hoverRiverEdge } = useMapInteraction({
+    activeTokenProfileId,
     canEdit,
     canvasRef: overlayCanvasRef,
     center,
@@ -81,10 +85,14 @@ export default function MapCanvas({
     onRiverGestureMove,
     onRiverGestureStart,
     onHoveredHexChange,
+    onGmTokenPlace,
+    onGmTokenRemove,
     onPlayerTokenPlace,
+    mapTokens,
     playerMode,
     viewport,
-    visualZoom
+    visualZoom,
+    world
   });
 
   useEffect(() => {

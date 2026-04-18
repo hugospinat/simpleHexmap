@@ -63,7 +63,7 @@ import {
   takeRedoOperations,
   takeUndoOperations
 } from "@/core/map/history/mapOperationHistory";
-import type { MapOperation } from "@/core/protocol";
+import type { MapOperation, MapTokenRecord } from "@/core/protocol";
 import type { ProfileRecord } from "@/core/profile/profileTypes";
 
 type UseEditorControllerOptions = {
@@ -89,6 +89,8 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
   const [activeType, setActiveType] = useState<TerrainType>("plain");
   const [activeFeatureKind, setActiveFeatureKind] = useState<FeatureKind>("city");
   const [activeFactionId, setActiveFactionId] = useState<string | null>(null);
+  const [activeTokenProfileId, setActiveTokenProfileId] = useState<string | null>(null);
+  const [activeTokenColor, setActiveTokenColor] = useState("#2f6fed");
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
   const [showCoordinates, setShowCoordinates] = useState(false);
   const [hoveredHex, setHoveredHex] = useState<Axial | null>(null);
@@ -198,6 +200,64 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
     });
   }, [playerTokenColor, profile.id, role, sendTokenOperation, view.level, visibleWorld]);
 
+  const selectMapToken = useCallback((token: MapTokenRecord) => {
+    if (!canEdit) {
+      return;
+    }
+
+    if (activeTokenProfileId === token.profileId) {
+      setActiveTokenProfileId(null);
+      return;
+    }
+
+    setActiveTokenProfileId(token.profileId);
+    setActiveTokenColor(token.color);
+  }, [activeTokenProfileId, canEdit]);
+
+  const placeSelectedMapToken = useCallback((axial: Axial) => {
+    if (!canEdit || !activeTokenProfileId) {
+      return;
+    }
+
+    if (view.level !== SOURCE_LEVEL) {
+      return;
+    }
+
+    const cell = getLevelMap(visibleWorld, view.level).get(hexKey(axial));
+
+    if (!cell || cell.hidden) {
+      return;
+    }
+
+    sendTokenOperation({
+      type: "set_map_token",
+      token: {
+        profileId: activeTokenProfileId,
+        q: axial.q,
+        r: axial.r,
+        color: activeTokenColor
+      }
+    });
+  }, [activeTokenColor, activeTokenProfileId, canEdit, sendTokenOperation, view.level, visibleWorld]);
+
+  const removeMapToken = useCallback((profileId: string) => {
+    if (!canEdit) {
+      return;
+    }
+
+    const token = mapTokens.find((candidate) => candidate.profileId === profileId);
+
+    if (token) {
+      setActiveTokenProfileId(token.profileId);
+      setActiveTokenColor(token.color);
+    }
+
+    sendTokenOperation({
+      type: "remove_map_token",
+      profileId
+    });
+  }, [canEdit, mapTokens, sendTokenOperation]);
+
   const undoLastOperationBatch = useCallback(() => {
     if (!canEdit) {
       return;
@@ -230,6 +290,8 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
     clearOperationHistory(operationHistoryRef.current);
     activeGestureRef.current = null;
     setToolPreviewOperations([]);
+    setActiveTokenProfileId(null);
+    setActiveTokenColor("#2f6fed");
   }, [mapId]);
 
   const applyTerrainGestureCells = useCallback(
@@ -589,15 +651,17 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
     activeFactionId,
     activeFeatureKind,
     activeMode,
+    activeTokenProfileId,
     activeType,
     canEdit,
     level: view.level,
     selectedFaction
-  }), [activeFactionId, activeFeatureKind, activeMode, activeType, canEdit, selectedFaction, view.level]);
+  }), [activeFactionId, activeFeatureKind, activeMode, activeTokenProfileId, activeType, canEdit, selectedFaction, view.level]);
   const featureVisibilityMode: "gm" | "player" = role === "player" ? "player" : "gm";
 
   const canvasProps = useEditorCanvasProps({
     activeMode,
+    activeTokenProfileId,
     applyActiveGestureCells,
     applyActiveRiverGestureEdges,
     canEdit,
@@ -616,6 +680,8 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
     renderWorldPatch,
     setCenter,
     setHoveredHex,
+    onGmTokenPlace: placeSelectedMapToken,
+    onGmTokenRemove: removeMapToken,
     onPlayerTokenPlace: placePlayerToken,
     showCoordinates,
     startEditGesture,
@@ -628,6 +694,7 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
     activeFeatureKind,
     activeFactionId,
     activeMode,
+    activeTokenProfileId,
     activeType,
     factions,
     hoveredHex,
@@ -645,6 +712,7 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
     renameFaction,
     recolorFaction,
     selectFaction: setActiveFactionId,
+    selectMapToken,
     setPlayerTokenColor,
     setActiveMode: changeMode,
     setActiveType,

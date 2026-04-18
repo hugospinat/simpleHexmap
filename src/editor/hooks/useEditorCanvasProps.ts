@@ -10,6 +10,7 @@ import type { MapOperation, MapTokenRecord } from "@/core/protocol";
 
 type UseEditorCanvasPropsOptions = {
   activeMode: EditorMode;
+  activeTokenProfileId: string | null;
   applyActiveGestureCells: (axials: Axial[]) => void;
   applyActiveRiverGestureEdges: (edges: RiverEdgeRef[]) => void;
   canEdit: boolean;
@@ -28,6 +29,8 @@ type UseEditorCanvasPropsOptions = {
   renderWorldPatch?: RenderWorldPatch;
   setCenter: (center: Axial) => void;
   setHoveredHex: (axial: Axial | null) => void;
+  onGmTokenPlace: (axial: Axial) => void;
+  onGmTokenRemove: (profileId: string) => void;
   onPlayerTokenPlace: (axial: Axial) => void;
   showCoordinates: boolean;
   startEditGesture: (action: EditGestureAction, axials: Axial[]) => void;
@@ -38,6 +41,7 @@ type UseEditorCanvasPropsOptions = {
 
 export function useEditorCanvasProps({
   activeMode,
+  activeTokenProfileId,
   applyActiveGestureCells,
   applyActiveRiverGestureEdges,
   canEdit,
@@ -56,6 +60,8 @@ export function useEditorCanvasProps({
   renderWorldPatch,
   setCenter,
   setHoveredHex,
+  onGmTokenPlace,
+  onGmTokenRemove,
   onPlayerTokenPlace,
   showCoordinates,
   startEditGesture,
@@ -65,6 +71,7 @@ export function useEditorCanvasProps({
 }: UseEditorCanvasPropsOptions): MapCanvasProps {
   return useMemo(
     () => ({
+      activeTokenProfileId,
       center,
       canEdit,
       playerMode: role === "player",
@@ -81,6 +88,8 @@ export function useEditorCanvasProps({
       onRiverGestureMove: applyActiveRiverGestureEdges,
       onRiverGestureStart: startRiverGesture,
       onHoveredHexChange: setHoveredHex,
+      onGmTokenPlace,
+      onGmTokenRemove,
       onPlayerTokenPlace,
       onToolStep,
       onRenderWorldPatchApplied,
@@ -95,6 +104,7 @@ export function useEditorCanvasProps({
     }),
     [
       activeMode,
+      activeTokenProfileId,
       applyActiveGestureCells,
       applyActiveRiverGestureEdges,
       canEdit,
@@ -106,6 +116,8 @@ export function useEditorCanvasProps({
       interactionLabel,
       level,
       onRenderWorldPatchApplied,
+      onGmTokenPlace,
+      onGmTokenRemove,
       onPlayerTokenPlace,
       onToolStep,
       previewOperations,

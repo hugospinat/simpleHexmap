@@ -156,18 +156,28 @@ export async function applyTokenOperationToSession(
     throw new Error(validationError);
   }
 
-  if (operation.type === "set_map_token" && operation.token.profileId !== sourceProfileId) {
-    throw new Error("Cannot move another profile token.");
-  }
-
-  if (operation.type === "remove_map_token" && operation.profileId !== sourceProfileId) {
-    throw new Error("Cannot remove another profile token.");
-  }
-
   const session = await getOrCreateSession(mapId, sourceProfileId);
 
   if (!session) {
     throw new Error("Map not found.");
+  }
+
+  const canManageOtherProfileTokens = canOpenMapAsGM(sourceProfileId, session.map.permissions);
+
+  if (
+    operation.type === "set_map_token"
+    && operation.token.profileId !== sourceProfileId
+    && !canManageOtherProfileTokens
+  ) {
+    throw new Error("Cannot move another profile token.");
+  }
+
+  if (
+    operation.type === "remove_map_token"
+    && operation.profileId !== sourceProfileId
+    && !canManageOtherProfileTokens
+  ) {
+    throw new Error("Cannot remove another profile token.");
   }
 
   if (operation.type === "set_map_token") {

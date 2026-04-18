@@ -235,6 +235,7 @@ export default function App() {
         initialWorld={openMap.world}
         mapId={openMap.id}
         mapName={openMap.name}
+        profiles={profiles}
         profile={profile}
         role={openMap.role}
         onBackToMaps={closeEditor}

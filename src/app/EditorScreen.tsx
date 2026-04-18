@@ -14,12 +14,13 @@ type EditorScreenProps = {
   initialWorld: MapState;
   mapId: string;
   mapName: string;
+  profiles: ProfileRecord[];
   profile: ProfileRecord;
   role: ViewerRole;
   onBackToMaps: () => void;
 };
 
-export function EditorScreen({ initialWorld, mapId, mapName, profile, role, onBackToMaps }: EditorScreenProps) {
+export function EditorScreen({ initialWorld, mapId, mapName, profiles, profile, role, onBackToMaps }: EditorScreenProps) {
   const editor = useEditorController({
     initialWorld,
     mapId,
@@ -49,9 +50,12 @@ export function EditorScreen({ initialWorld, mapId, mapName, profile, role, onBa
           activeFactionId={editor.activeFactionId}
           activeFeatureKind={editor.activeFeatureKind}
           activeMode={editor.activeMode}
+          activeTokenProfileId={editor.activeTokenProfileId}
           activeType={editor.activeType}
           factions={editor.factions}
+          mapTokens={editor.mapTokens}
           mapName={mapName}
+          profiles={profiles}
           onBackToMaps={onBackToMaps}
           onCreateFaction={editor.createFaction}
           onDeleteFaction={editor.deleteFaction}
@@ -61,6 +65,7 @@ export function EditorScreen({ initialWorld, mapId, mapName, profile, role, onBa
           onRedo={editor.redoLastOperationBatch}
           onRenameFaction={editor.renameFaction}
           onSelectFaction={editor.selectFaction}
+          onSelectMapToken={editor.selectMapToken}
           onTileTypeChange={editor.setActiveType}
           onUndo={editor.undoLastOperationBatch}
         />

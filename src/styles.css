@@ -190,14 +190,15 @@ input::placeholder {
 
 .tool-tabs {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .river-panel p,
 .road-panel p,
 .fog-panel p,
-.faction-panel p {
+.faction-panel p,
+.token-panel p {
   margin: 0;
   color: #5b5b5b;
   font-size: 13px;
@@ -275,6 +276,51 @@ input::placeholder {
   background: transparent;
 }
 
+.token-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.token-item {
+  border: 1px solid #d6d6d6;
+}
+
+.token-item.is-active {
+  outline: 1px solid #111111;
+  outline-offset: -1px;
+}
+
+.token-select-button {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+}
+
+.token-color-swatch {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border: 1px solid #111111;
+  border-radius: 50%;
+}
+
+.token-profile-id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
 .data-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -298,6 +344,13 @@ input::placeholder {
   color: #111111;
   font-size: 16px;
   font-weight: 400;
+}
+
+.token-panel .active-tile strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tile-palette {

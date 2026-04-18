@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { FeatureKind } from "@/core/map/features";
 import type { Faction, TerrainType } from "@/core/map/world";
 import type { EditorMode } from "@/editor/tools/editorTypes";
+import type { MapTokenRecord } from "@/core/protocol";
+import type { ProfileRecord } from "@/core/profile/profileTypes";
 import { FeaturePalette } from "../FeaturePalette/FeaturePalette";
 import { TilePalette } from "../TilePalette/TilePalette";
 import { ToolTabs } from "../ToolTabs/ToolTabs";
@@ -10,8 +12,11 @@ type SidebarProps = {
   activeFactionId: string | null;
   activeFeatureKind: FeatureKind;
   activeMode: EditorMode;
+  activeTokenProfileId: string | null;
   activeType: TerrainType;
   factions: Faction[];
+  mapTokens: MapTokenRecord[];
+  profiles: ProfileRecord[];
   mapName: string;
   onBackToMaps: () => void;
   onCreateFaction: () => void;
@@ -22,6 +27,7 @@ type SidebarProps = {
   onRedo: () => void;
   onRenameFaction: (factionId: string, name: string) => void;
   onSelectFaction: (factionId: string | null) => void;
+  onSelectMapToken: (token: MapTokenRecord) => void;
   onTileTypeChange: (type: TerrainType) => void;
   onUndo: () => void;
 };
@@ -30,8 +36,11 @@ export function Sidebar({
   activeFactionId,
   activeFeatureKind,
   activeMode,
+  activeTokenProfileId,
   activeType,
   factions,
+  mapTokens,
+  profiles,
   mapName,
   onBackToMaps,
   onCreateFaction,
@@ -42,11 +51,20 @@ export function Sidebar({
   onRedo,
   onRenameFaction,
   onSelectFaction,
+  onSelectMapToken,
   onTileTypeChange,
   onUndo
 }: SidebarProps) {
   const [editingFactionId, setEditingFactionId] = useState<string | null>(null);
   const [editingFactionName, setEditingFactionName] = useState("");
+  const tokenUsernamesByProfileId = useMemo(
+    () => new Map(profiles.map((entry) => [entry.id, entry.username])),
+    [profiles]
+  );
+
+  const getTokenDisplayName = (profileId: string): string => {
+    return tokenUsernamesByProfileId.get(profileId) ?? profileId;
+  };
 
   const startFactionNameEdit = (factionId: string, currentName: string) => {
     setEditingFactionId(factionId);
@@ -115,7 +133,43 @@ export function Sidebar({
             <span>Brush</span>
             <strong>Visibility</strong>
           </div>
-          <p>Left click toggles terrain fog for a cell. Right click toggles hidden state on features in the cell.</p>
+          {activeTokenProfileId ? (
+            <>
+              <div className="active-tile">
+                <span>Selected token</span>
+                <strong>{getTokenDisplayName(activeTokenProfileId)}</strong>
+              </div>
+              <p>Token selected: left click places it on level 3, right click removes the clicked visible token. Click the same token in the list to deselect.</p>
+            </>
+          ) : (
+            <p>Left click toggles terrain fog for a cell. Right click toggles hidden state on features in the cell.</p>
+          )}
+
+          {mapTokens.length === 0 ? (
+            <p>No player token exists on this map yet. A player creates one by placing their token in play mode.</p>
+          ) : (
+            <ul className="token-list" aria-label="Map token list">
+              {mapTokens.map((token) => (
+                <li
+                  key={token.profileId}
+                  className={activeTokenProfileId === token.profileId ? "token-item is-active" : "token-item"}
+                >
+                  <button
+                    type="button"
+                    className="token-select-button"
+                    onClick={() => onSelectMapToken(token)}
+                  >
+                    <span
+                      className="token-color-swatch"
+                      aria-hidden="true"
+                      style={{ backgroundColor: token.color }}
+                    />
+                    <span className="token-profile-id">{getTokenDisplayName(token.profileId)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       ) : (
         <section className="panel faction-panel">

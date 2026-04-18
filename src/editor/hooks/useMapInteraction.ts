@@ -13,6 +13,7 @@ import {
   riverEdgesEqual
 } from "@/core/geometry/edgeDetection";
 import type { Viewport } from "@/render/renderTypes";
+import { findMapTokenProfileAtPoint } from "@/editor/tokens/mapTokenHitTest";
 import {
   getAxialLine,
   panCenterByScreenDelta,
@@ -23,11 +24,13 @@ import {
 } from "@/core/geometry/hex";
 import type { EditGestureAction } from "@/editor/tools/editGesture";
 import type { EditorMode } from "@/editor/tools/editorTypes";
-import type { RiverEdgeRef } from "@/core/map/world";
+import type { RiverEdgeRef, MapState } from "@/core/map/world";
+import type { MapTokenRecord } from "@/core/protocol";
 import { useLatestRef } from "./useLatestRef";
 import { getPointerAction, getPointerTarget, type PointerSession } from "./mapPointerIntent";
 
 type UseMapInteractionOptions = {
+  activeTokenProfileId: string | null;
   canEdit: boolean;
   canvasRef: RefObject<HTMLCanvasElement | null>;
   center: Axial;
@@ -41,13 +44,18 @@ type UseMapInteractionOptions = {
   onRiverGestureMove: (edges: RiverEdgeRef[]) => void;
   onRiverGestureStart: (action: EditGestureAction, edges: RiverEdgeRef[]) => void;
   onHoveredHexChange: (axial: Axial | null) => void;
+  onGmTokenPlace: (axial: Axial) => void;
+  onGmTokenRemove: (profileId: string) => void;
   onPlayerTokenPlace: (axial: Axial) => void;
+  mapTokens: readonly MapTokenRecord[];
   playerMode: boolean;
   viewport: Viewport;
   visualZoom: number;
+  world: MapState;
 };
 
 export function useMapInteraction({
+  activeTokenProfileId,
   canEdit,
   canvasRef,
   center,
@@ -61,10 +69,14 @@ export function useMapInteraction({
   onRiverGestureMove,
   onRiverGestureStart,
   onHoveredHexChange,
+  onGmTokenPlace,
+  onGmTokenRemove,
   onPlayerTokenPlace,
+  mapTokens,
   playerMode,
   viewport,
-  visualZoom
+  visualZoom,
+  world
 }: UseMapInteractionOptions) {
   const [hoverRiverEdge, setHoverRiverEdge] = useState<RiverEdgeRef | null>(null);
   const pointerRef = useRef<PointerSession | null>(null);
@@ -79,6 +91,7 @@ export function useMapInteraction({
 
   const centerRef = useLatestRef(center);
   const editModeRef = useLatestRef(editMode);
+  const activeTokenProfileIdRef = useLatestRef(activeTokenProfileId);
   const levelRef = useLatestRef(level);
   const zoomRef = useLatestRef(visualZoom);
   const viewportRef = useLatestRef(viewport);
@@ -88,6 +101,10 @@ export function useMapInteraction({
   const onRiverGestureMoveRef = useLatestRef(onRiverGestureMove);
   const onEditGestureEndRef = useLatestRef(onEditGestureEnd);
   const onRiverGestureEndRef = useLatestRef(onRiverGestureEnd);
+  const onGmTokenPlaceRef = useLatestRef(onGmTokenPlace);
+  const onGmTokenRemoveRef = useLatestRef(onGmTokenRemove);
+  const mapTokensRef = useLatestRef(mapTokens);
+  const worldRef = useLatestRef(world);
 
   const setHoveredHexIfChanged = useCallback((next: Axial | null) => {
     const previous = hoveredHexRef.current;
@@ -341,6 +358,33 @@ export function useMapInteraction({
         return;
       }
 
+      if (editModeRef.current === "fog" && activeTokenProfileIdRef.current && (event.button === 0 || event.button === 2)) {
+        if (event.button === 0) {
+          const axial = pointToAxial(point);
+          setHoveredHexIfChanged(axial);
+          onGmTokenPlaceRef.current(axial);
+        } else {
+          const profileId = findMapTokenProfileAtPoint({
+            center: centerRef.current,
+            level: levelRef.current,
+            point,
+            tokens: mapTokensRef.current,
+            viewport: viewportRef.current,
+            visualZoom: zoomRef.current,
+            world: worldRef.current
+          });
+
+          if (profileId) {
+            onGmTokenRemoveRef.current(profileId);
+          }
+        }
+
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+        return;
+      }
+
       const action: EditGestureAction = playerPointerAction;
       const target = getPointerTarget(editModeRef.current, action);
 
@@ -387,11 +431,15 @@ export function useMapInteraction({
     },
     [
       canEdit,
+      activeTokenProfileIdRef,
       centerRef,
       editModeRef,
       getCanvasPoint,
       levelRef,
+      mapTokensRef,
       onEditGestureStart,
+      onGmTokenPlaceRef,
+      onGmTokenRemoveRef,
       onRiverGestureStart,
       onPlayerTokenPlace,
       pointToAxial,
@@ -399,6 +447,7 @@ export function useMapInteraction({
       setHoveredHexIfChanged,
       setHoverRiverEdgeIfChanged,
       viewportRef,
+      worldRef,
       zoomRef
     ]
   );

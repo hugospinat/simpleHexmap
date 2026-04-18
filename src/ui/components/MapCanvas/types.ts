@@ -11,6 +11,7 @@ export type MapCanvasProps = {
   onRenderWorldPatchApplied?: (revision: number) => void;
   previewOperations: MapOperation[];
   mapTokens: MapTokenRecord[];
+  activeTokenProfileId: string | null;
   canEdit: boolean;
   playerMode: boolean;
   fogEditingActive: boolean;
@@ -31,6 +32,8 @@ export type MapCanvasProps = {
   onEditGestureEnd: () => void;
   onRiverGestureEnd: () => void;
   onHoveredHexChange: (axial: Axial | null) => void;
+  onGmTokenPlace: (axial: Axial) => void;
+  onGmTokenRemove: (profileId: string) => void;
   onPlayerTokenPlace: (axial: Axial) => void;
   onToolStep?: (delta: 1 | -1) => void;
 };

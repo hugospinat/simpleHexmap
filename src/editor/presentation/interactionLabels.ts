@@ -8,6 +8,7 @@ type InteractionLabelOptions = {
   activeFactionId: string | null;
   activeFeatureKind: FeatureKind;
   activeMode: EditorMode;
+  activeTokenProfileId: string | null;
   activeType: TerrainType;
   canEdit: boolean;
   level: number;
@@ -18,6 +19,7 @@ export function getInteractionLabel({
   activeFactionId,
   activeFeatureKind,
   activeMode,
+  activeTokenProfileId,
   activeType,
   canEdit,
   level,
@@ -57,7 +59,15 @@ export function getInteractionLabel({
   }
 
   if (activeMode === "fog") {
-    return "Left adds fog to terrain, then features. Right reveals hidden features, then terrain. Middle drag pans.";
+    if (!activeTokenProfileId) {
+      return "Left adds fog to terrain, then features. Right reveals hidden features, then terrain. Middle drag pans.";
+    }
+
+    if (level !== SOURCE_LEVEL) {
+      return "Token selected: interactions apply on level 3 only. Use A/E to switch to level 3.";
+    }
+
+    return "Token selected: left click places it, right click removes clicked visible token. Middle drag pans.";
   }
 
   if (level !== SOURCE_LEVEL) {
