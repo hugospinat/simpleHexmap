@@ -1,5 +1,7 @@
 import { useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
 import type { MapSummary } from "@/app/api/mapApi";
+import { canOpenMapAsGM } from "@/core/profile/profileTypes";
+import type { ProfileRecord } from "@/core/profile/profileTypes";
 
 export type ViewerRole = "gm" | "player";
 
@@ -7,7 +9,9 @@ type MapMenuProps = {
   errorMessage: string | null;
   isBusy: boolean;
   maps: MapSummary[];
+  profile: ProfileRecord | null;
   selectedMapId: string | null;
+  onChangeProfile: () => void;
   onCreateMap: (name: string) => Promise<void>;
   onDeleteMap: (mapId: string) => Promise<void>;
   onExportMap: (mapId: string) => Promise<void>;
@@ -32,7 +36,9 @@ export function MapMenu({
   errorMessage,
   isBusy,
   maps,
+  profile,
   selectedMapId,
+  onChangeProfile,
   onCreateMap,
   onDeleteMap,
   onExportMap,
@@ -54,6 +60,8 @@ export function MapMenu({
   };
 
   const selectedMap = selectedMapId ? maps.find((map) => map.id === selectedMapId) ?? null : null;
+  const canOpenSelectedAsGm = Boolean(selectedMap && profile && canOpenMapAsGM(profile.id, selectedMap.permissions));
+  const canManageSelectedMap = Boolean(selectedMap && profile && selectedMap.permissions.ownerProfileId === profile.id);
 
   const onFileSelected = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -127,6 +135,14 @@ export function MapMenu({
           <span className="eyebrow">OSR CARTOGRAPHY</span>
           <h1>Maps</h1>
           <p>Choose a map to edit, create a new one, or import/export JSON files.</p>
+          {profile ? (
+            <div className="map-menu-profile">
+              <span>Player: {profile.username}</span>
+              <button type="button" className="compact-button" onClick={onChangeProfile} disabled={isBusy}>
+                Change player
+              </button>
+            </div>
+          ) : null}
         </header>
 
         <form className="map-create-form" onSubmit={submitCreate}>
@@ -149,7 +165,7 @@ export function MapMenu({
             type="button"
             className="compact-button"
             onClick={() => selectedMap ? void onOpenMap(selectedMap.id, "player") : undefined}
-            disabled={isBusy || !selectedMap}
+            disabled={isBusy || !selectedMap || !profile}
           >
             Open as Player
           </button>
@@ -157,7 +173,7 @@ export function MapMenu({
             type="button"
             className="compact-button"
             onClick={() => selectedMap ? void onOpenMap(selectedMap.id, "gm") : undefined}
-            disabled={isBusy || !selectedMap}
+            disabled={isBusy || !selectedMap || !canOpenSelectedAsGm}
           >
             Open as GM
           </button>
@@ -173,7 +189,7 @@ export function MapMenu({
             type="button"
             className="danger-button"
             onClick={() => void removeSelectedMap()}
-            disabled={isBusy || !selectedMap}
+            disabled={isBusy || !selectedMap || !canManageSelectedMap}
           >
             Remove selected
           </button>

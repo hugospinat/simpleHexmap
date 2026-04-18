@@ -275,22 +275,25 @@ Il parse les réponses serveur et valide le contenu avec les codecs document.
 
 ### Documents
 
-Chemin: `src/app/document`.
+Chemins:
+
+- `src/core/document`: types et codec de contenu sauvegarde, partages client/serveur.
+- `src/app/document`: import/export navigateur et conversion `MapState <-> SavedMapContent`.
 
 Responsabilités:
 
 - lire/écrire des fichiers `.json`,
-- parser le JSON persistant,
-- préserver la compatibilité legacy,
+- parser le JSON persistant dans `core/document`,
+- préserver la compatibilité legacy dans `core/document`,
 - convertir `MapState <-> SavedMapContent`,
 - garder la frontiere document distincte du protocole et du `MapState`.
 
 Fichiers clés:
 
-- `savedMapCodec.ts`: parse et normalise le contenu sauvegardé.
-- `worldMapCodec.ts`: conversion runtime/persistant.
-- `mapFile.ts`: import/export fichier navigateur.
-- `savedMapCodec.ts`: compatibilite vieux fichiers uniquement.
+- `core/document/savedMapCodec.ts`: parse, valide et normalise le contenu sauvegarde.
+- `core/document/savedMapTypes.ts`: types document publics.
+- `app/document/worldMapCodec.ts`: conversion runtime/persistant.
+- `app/document/mapFile.ts`: import/export fichier navigateur.
 - Les appliers d'operations vivent dans `core/protocol/contentOperations.ts` pour `SavedMapContent` et `core/map/worldOperationApplier.ts` pour `MapState`.
 
 Compatibilité legacy fichier uniquement:
@@ -355,7 +358,6 @@ Chaque outil transforme des mouvements utilisateur en commandes:
 - `roadGesture.ts`: routes.
 - `riverGesture.ts`: rivières.
 - `gestureSession.ts`: structure commune des gestures.
-- `toolStrategy.ts`: contrat minimal pour brancher de futurs outils.
 
 Le contrat général:
 
@@ -470,7 +472,7 @@ Composants principaux:
 - `MapPane`: zone principale de carte.
 - `MapCanvas`: canvas PixiJS et branchement du hook d'interaction.
 - `Sidebar`: palettes et outils GM.
-- `FeatureInspector`: édition metadata des features.
+- `FeatureLabelPopup`: édition rapide des labels GM/joueur des features sélectionnées.
 - `BottomBar`: coordonnées, niveau, zoom.
 - `TilePalette`, `FeaturePalette`, `ToolTabs`: contrôles d'édition.
 
@@ -490,7 +492,6 @@ Fichiers:
 - `mapStorage.ts`: stockage disque dans `data/`.
 - `sessionStore.ts`: sessions serveur en mémoire.
 - `operationService.ts`: application d'operations et diffusion.
-- `mapContent.ts`: validation/application côté contenu.
 - `appliedOperationLog.ts`: mémoire des operations déjà appliquées.
 - `broadcastService.ts`: diffusion aux clients.
 - `persistenceScheduler.ts`: sauvegarde debouncée.
@@ -534,11 +535,12 @@ Tests importants:
 - `src/core/map/*test.ts`: règles de domaine.
 - `src/core/map/commands/mapEditCommands.test.ts`: commandes d'édition.
 - `src/core/map/history/mapOperationHistory.test.ts`: undo/redo par operations.
-- `src/app/document/savedMapCodec.test.ts`: format persistant et compat legacy.
+- `src/core/document/savedMapCodec.test.ts`: format persistant et compat legacy.
+- `src/app/document/worldMapCodec.test.ts`: conversion `MapState <-> SavedMapContent`.
 - `src/app/document/operationApplierParity.test.ts`: parité `MapState`/`SavedMapContent` appliers.
 - `src/app/sync/*test.ts`: queue, pending ops et session sync.
 - `src/render/*test.ts`: rendu, transform et visibilité.
-- `server/mapContent.test.ts`: validation/application serveur.
+- `src/core/protocol/contentOperations.test.ts`: validation/application du protocole partagé utilisé par client et serveur.
 
 Avant de considérer un changement terminé:
 

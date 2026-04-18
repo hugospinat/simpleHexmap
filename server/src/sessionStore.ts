@@ -14,12 +14,13 @@ import type {
   MapSummary
 } from "./types.js";
 
-const mapSessions = new Map<string, MapSession>();
+const sessionsByMapId = new Map<string, MapSession>();
 
 function toMapSummary(map: MapRecord): MapSummary {
   return {
     id: map.id,
     name: map.name,
+    permissions: map.permissions,
     updatedAt: map.updatedAt
   };
 }
@@ -38,7 +39,7 @@ export async function listMaps(): Promise<MapSummary[]> {
     summariesById.set(summary.id, summary);
   }
 
-  for (const session of mapSessions.values()) {
+  for (const session of sessionsByMapId.values()) {
     summariesById.set(session.map.id, toMapSummary(session.map));
   }
 
@@ -47,24 +48,24 @@ export async function listMaps(): Promise<MapSummary[]> {
   return summaries;
 }
 
-export async function getMap(mapId: string): Promise<MapRecord | null> {
-  const session = mapSessions.get(mapId);
+export async function getMap(mapId: string, fallbackOwnerProfileId?: string): Promise<MapRecord | null> {
+  const session = sessionsByMapId.get(mapId);
 
   if (session) {
     return getSessionMapRecord(session);
   }
 
-  return readDiskMap(mapId);
+  return readDiskMap(mapId, fallbackOwnerProfileId);
 }
 
-export async function getOrCreateSession(mapId: string): Promise<MapSession | null> {
-  const existing = mapSessions.get(mapId);
+export async function getOrCreateSession(mapId: string, fallbackOwnerProfileId?: string): Promise<MapSession | null> {
+  const existing = sessionsByMapId.get(mapId);
 
   if (existing) {
     return existing;
   }
 
-  const map = await getMap(mapId);
+  const map = await getMap(mapId, fallbackOwnerProfileId);
 
   if (!map) {
     return null;
@@ -79,12 +80,12 @@ export async function getOrCreateSession(mapId: string): Promise<MapSession | nu
     appliedOperationOrder: [],
     nextSequence: 1
   };
-  mapSessions.set(mapId, session);
+  sessionsByMapId.set(mapId, session);
   return session;
 }
 
 export async function deleteMap(mapId: string): Promise<boolean> {
-  const session = mapSessions.get(mapId);
+  const session = sessionsByMapId.get(mapId);
 
   if (session) {
     if (session.persistTimer) {
@@ -99,7 +100,7 @@ export async function deleteMap(mapId: string): Promise<boolean> {
     }
 
     session.clients.clear();
-    mapSessions.delete(mapId);
+    sessionsByMapId.delete(mapId);
   }
 
   const deletedFile = await deleteMapFile(mapId);

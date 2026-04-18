@@ -270,7 +270,7 @@ export function removeFeatureAt(world: MapState, level: number, coord: Axial): M
 
 export function getFeatureLabel(feature: Feature, mode: FeatureVisibilityMode): string | undefined {
   if (mode === "player") {
-    return feature.labelRevealed ? feature.playerLabel : undefined;
+    return feature.playerLabel;
   }
 
   return feature.gmLabel;

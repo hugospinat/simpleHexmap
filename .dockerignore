@@ -1,0 +1,11 @@
+node_modules
+dist
+server/dist
+.git
+.github
+.vscode
+data/maps
+data/profiles
+*.log
+.env
+.env.local

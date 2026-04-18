@@ -18,7 +18,6 @@ export type GestureUpdate = {
 export type GestureCommit = {
   changed: boolean;
   operations: MapOperation[];
-  previewWorld: MapState | null;
 };
 
 export function createGestureSession<TAction extends string>(
@@ -53,7 +52,6 @@ export function applyGestureUpdate<TAction extends string>(
 export function finishGestureSession<TAction extends string>(session: GestureSession<TAction>): GestureCommit {
   return {
     changed: session.changed,
-    operations: session.operations,
-    previewWorld: session.changed ? session.world : null
+    operations: session.operations
   };
 }

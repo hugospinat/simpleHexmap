@@ -1,22 +1,17 @@
 import { hexKey, parseHexKey } from "@/core/geometry/hex";
 import {
-  addFaction,
-  addFeature,
-  addRoadConnection,
-  addRiverEdge,
-  setCellHidden,
-  addTile,
-  assignFactionAt,
-  createEmptyWorld,
-  featureKinds,
   getCanonicalRiverEdgeRef,
   getFactionLevelMap,
   getFactions,
+  getNeighborForRiverEdge,
   getNeighborForRoadEdge,
+  getOppositeRiverEdgeIndex,
+  getOppositeRoadEdgeIndex,
   type TerrainType,
   type MapState
 } from "@/core/map/world";
 import { SOURCE_LEVEL } from "@/core/map/mapRules";
+import { createInitialMapStateVersions } from "@/core/map/worldTypes";
 import {
   mapFileVersion,
   type MapFactionRecord,
@@ -26,7 +21,11 @@ import {
   type MapRoadRecord,
   type MapTileRecord,
   type SavedMapContent
-} from "@/app/document/savedMapTypes";
+} from "@/core/document/savedMapTypes";
+import type { Feature, FeatureKind, FeatureLevelMap } from "@/core/map/features";
+import type { FactionLevelMap, FactionMap } from "@/core/map/factions";
+import type { RiverEdgeIndex, RiverLevelMap } from "@/core/map/worldTypes";
+import type { RoadEdgeIndex, RoadLevelMap } from "@/core/map/roads";
 
 function serializeTiles(world: MapState): MapTileRecord[] {
   const levelMap = world.levels[SOURCE_LEVEL] ?? new Map();
@@ -135,51 +134,117 @@ function serializeFactionTerritories(world: MapState): MapFactionTerritoryRecord
 }
 
 export function deserializeWorld(savedMap: SavedMapContent): MapState {
-  let world = createEmptyWorld();
+  const sourceLevel = new Map<string, { hidden: boolean; type: TerrainType }>();
 
   for (const tile of savedMap.tiles) {
-    world = addTile(world, SOURCE_LEVEL, { q: tile.q, r: tile.r }, tile.terrain as TerrainType);
-    world = setCellHidden(world, SOURCE_LEVEL, { q: tile.q, r: tile.r }, tile.hidden);
+    sourceLevel.set(hexKey({ q: tile.q, r: tile.r }), {
+      hidden: tile.hidden,
+      type: tile.terrain as TerrainType
+    });
   }
+
+  const factions: FactionMap = new Map();
 
   for (const faction of savedMap.factions) {
-    world = addFaction(world, faction);
+    if (!factions.has(faction.id)) {
+      factions.set(faction.id, { ...faction });
+    }
   }
 
+  const features: FeatureLevelMap = new Map();
+
   for (const feature of savedMap.features) {
-    world = addFeature(world, SOURCE_LEVEL, {
+    const hexId = hexKey({ q: feature.q, r: feature.r });
+
+    if (features.has(hexId)) {
+      continue;
+    }
+
+    features.set(hexId, {
       id: feature.id,
-      kind: feature.kind as (typeof featureKinds)[number],
-      hexId: hexKey({ q: feature.q, r: feature.r }),
+      kind: feature.kind as FeatureKind,
+      hexId,
       hidden: feature.visibility === "hidden",
       overrideTerrainTile: feature.overrideTerrainTile,
       gmLabel: feature.gmLabel ?? undefined,
       playerLabel: feature.playerLabel ?? undefined,
       labelRevealed: feature.labelRevealed
-    });
+    } satisfies Feature);
   }
 
+  const rivers: RiverLevelMap = new Map();
+
+  const setRiverHalfEdge = (key: string, edge: RiverEdgeIndex) => {
+    const edges = rivers.get(key) ?? new Set<RiverEdgeIndex>();
+    edges.add(edge);
+    rivers.set(key, edges);
+  };
+
   for (const river of savedMap.rivers) {
-    world = addRiverEdge(world, SOURCE_LEVEL, {
-      axial: { q: river.q, r: river.r },
-      edge: river.edge
-    });
+    const axial = { q: river.q, r: river.r };
+    const key = hexKey(axial);
+    const neighbor = getNeighborForRiverEdge(axial, river.edge);
+    const neighborEdge = getOppositeRiverEdgeIndex(river.edge);
+    setRiverHalfEdge(key, river.edge);
+    setRiverHalfEdge(hexKey(neighbor), neighborEdge);
   }
+
+  const roads: RoadLevelMap = new Map();
+
+  const setRoadHalfEdge = (key: string, edge: RoadEdgeIndex) => {
+    const edges = roads.get(key) ?? new Set<RoadEdgeIndex>();
+    edges.add(edge);
+    roads.set(key, edges);
+  };
 
   for (const road of savedMap.roads) {
     const from = { q: road.q, r: road.r };
+    const fromKey = hexKey(from);
 
     for (const edge of road.edges) {
       const to = getNeighborForRoadEdge(from, edge);
-      world = addRoadConnection(world, SOURCE_LEVEL, from, to);
+      const toKey = hexKey(to);
+      setRoadHalfEdge(fromKey, edge);
+      setRoadHalfEdge(toKey, getOppositeRoadEdgeIndex(edge));
     }
   }
 
+  const factionAssignments: FactionLevelMap = new Map();
+
   for (const territory of savedMap.factionTerritories) {
-    world = assignFactionAt(world, SOURCE_LEVEL, { q: territory.q, r: territory.r }, territory.factionId);
+    const key = hexKey({ q: territory.q, r: territory.r });
+
+    if (sourceLevel.has(key) && factions.has(territory.factionId)) {
+      factionAssignments.set(key, territory.factionId);
+    }
   }
 
-  return world;
+  const versions = createInitialMapStateVersions();
+  versions.terrain = sourceLevel.size > 0 ? 1 : 0;
+  versions.features = features.size > 0 ? 1 : 0;
+  versions.factions = factions.size > 0 || factionAssignments.size > 0 ? 1 : 0;
+  versions.rivers = rivers.size > 0 ? 1 : 0;
+  versions.roads = roads.size > 0 ? 1 : 0;
+
+  return {
+    levels: {
+      [SOURCE_LEVEL]: sourceLevel
+    },
+    featuresByLevel: {
+      [SOURCE_LEVEL]: features
+    },
+    factions,
+    factionAssignmentsByLevel: {
+      [SOURCE_LEVEL]: factionAssignments
+    },
+    riversByLevel: {
+      [SOURCE_LEVEL]: rivers
+    },
+    roadsByLevel: {
+      [SOURCE_LEVEL]: roads
+    },
+    versions
+  };
 }
 
 export function serializeWorld(world: MapState): SavedMapContent {
@@ -190,6 +255,7 @@ export function serializeWorld(world: MapState): SavedMapContent {
     rivers: serializeRivers(world),
     roads: serializeRoads(world),
     factions: serializeFactions(world),
-    factionTerritories: serializeFactionTerritories(world)
+    factionTerritories: serializeFactionTerritories(world),
+    tokens: []
   };
 }

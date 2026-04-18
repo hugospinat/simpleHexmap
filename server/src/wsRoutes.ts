@@ -2,12 +2,14 @@ import { WebSocket, WebSocketServer } from "ws";
 import { isObject, mapIdPatternSource } from "./mapStorage.js";
 import {
   applyOperationBatchToSession,
-  applyOperationToSession
+  applyOperationToSession,
+  applyTokenOperationToSession
 } from "./operationService.js";
 import {
   getOrCreateSession,
   getSessionMapRecord
 } from "./sessionStore.js";
+import type { MapOperation, MapTokenOperation } from "../../src/core/protocol/index.js";
 
 const maxOperationsPerBatch = 500;
 const mapSocketPattern = new RegExp(`^/api/maps/(${mapIdPatternSource})/ws$`);
@@ -34,8 +36,25 @@ function sendSnapshot(client, session) {
   }));
 }
 
-async function handleClientMessage(mapId, client, raw) {
+async function handleClientMessage(mapId, client, raw, profileId) {
   const message = JSON.parse(raw.toString("utf8"));
+
+  if (
+    isObject(message)
+    && message.type === "map_token_update"
+    && isObject(message.operation)
+  ) {
+    try {
+      await applyTokenOperationToSession(mapId, message.operation as MapTokenOperation, profileId);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Invalid token operation.";
+
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({ type: "map_token_error", error: detail }));
+      }
+    }
+    return;
+  }
 
   if (
     isObject(message)
@@ -59,7 +78,7 @@ async function handleClientMessage(mapId, client, raw) {
       return;
     }
 
-    await applyOperationBatchToSession(mapId, message.operations, message.clientId, client);
+    await applyOperationBatchToSession(mapId, message.operations, message.clientId, client, profileId);
     return;
   }
 
@@ -78,10 +97,10 @@ async function handleClientMessage(mapId, client, raw) {
     return;
   }
 
-  await applyOperationToSession(mapId, message.operation, message.clientId, message.operationId, client);
+  await applyOperationToSession(mapId, message.operation as MapOperation, message.clientId, message.operationId, client, profileId);
 }
 
-function attachClientHandlers(mapId, session, client) {
+function attachClientHandlers(mapId, session, client, profileId) {
   session.clients.add(client);
   sendSnapshot(client, session);
 
@@ -91,7 +110,7 @@ function attachClientHandlers(mapId, session, client) {
 
   client.on("message", async (raw) => {
     try {
-      await handleClientMessage(mapId, client, raw);
+      await handleClientMessage(mapId, client, raw, profileId);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Invalid map operation.";
       if (client.readyState === WebSocket.OPEN) {
@@ -120,7 +139,14 @@ export function attachWebSocketRoutes(server) {
       }
 
       const mapId = match[1];
-      const session = await getOrCreateSession(mapId);
+      const profileId = url.searchParams.get("profileId");
+
+      if (!profileId) {
+        socket.destroy();
+        return;
+      }
+
+      const session = await getOrCreateSession(mapId, profileId);
 
       if (!session) {
         socket.destroy();
@@ -128,7 +154,7 @@ export function attachWebSocketRoutes(server) {
       }
 
       webSocketServer.handleUpgrade(request, socket, head, (client) => {
-        attachClientHandlers(mapId, session, client);
+        attachClientHandlers(mapId, session, client, profileId);
       });
     } catch {
       socket.destroy();

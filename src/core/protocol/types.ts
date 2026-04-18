@@ -44,6 +44,13 @@ export type MapFactionTerritoryRecord = {
   factionId: string;
 };
 
+export type MapTokenRecord = {
+  profileId: string;
+  q: number;
+  r: number;
+  color: string;
+};
+
 export type SavedMapContent = {
   version: number;
   tiles: MapTileRecord[];
@@ -52,7 +59,12 @@ export type SavedMapContent = {
   roads: MapRoadRecord[];
   factions: MapFactionRecord[];
   factionTerritories: MapFactionTerritoryRecord[];
+  tokens: MapTokenRecord[];
 };
+
+export type MapTokenOperation =
+  | { type: "set_map_token"; token: MapTokenRecord }
+  | { type: "remove_map_token"; profileId: string };
 
 export type FeaturePatch = Partial<Pick<
   MapFeatureRecord,

@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { createEmptyWorld, getRiverLevelMap } from "@/core/map/world";
 import {
   applyRiverGestureEdges,
-  createRiverGesture,
-  getFinishedRiverGestureWorld
+  createRiverGesture
 } from "./riverGesture";
+import { finishGestureSession } from "./gestureSession";
 
 describe("river gestures", () => {
   it("adds dragged edges and deduplicates opposite-side repeats", () => {
@@ -16,7 +16,7 @@ describe("river gestures", () => {
       { axial: { q: 0, r: 0 }, edge: 0 }
     ]);
 
-    expect(getFinishedRiverGestureWorld(gesture)).not.toBeNull();
+    expect(finishGestureSession(gesture).changed).toBe(true);
     expect(gesture.touchedEdgeKeys.size).toBe(1);
     expect(getRiverLevelMap(gesture.world, 3).get("0,0")?.has(0)).toBe(true);
     expect(getRiverLevelMap(gesture.world, 3).get("0,1")?.has(3)).toBe(true);
@@ -27,7 +27,7 @@ describe("river gestures", () => {
 
     applyRiverGestureEdges(gesture, [{ axial: { q: 8, r: -3 }, edge: 2 }]);
 
-    expect(getFinishedRiverGestureWorld(gesture)).toBeNull();
+    expect(finishGestureSession(gesture).changed).toBe(false);
     expect(gesture.touchedEdgeKeys.size).toBe(1);
   });
 });

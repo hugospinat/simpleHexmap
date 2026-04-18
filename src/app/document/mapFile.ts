@@ -1,5 +1,5 @@
-import type { SavedMapContent } from "@/app/document/savedMapTypes";
-import { parseSavedMapContentText } from "@/app/document/savedMapCodec";
+import type { SavedMapContent } from "@/core/document/savedMapTypes";
+import { parseSavedMapContentText } from "@/core/document/savedMapCodec";
 
 async function readFileAsText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

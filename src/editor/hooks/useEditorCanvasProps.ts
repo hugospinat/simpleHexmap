@@ -6,7 +6,7 @@ import type { EditGestureAction } from "@/editor/tools/editGesture";
 import type { EditorMode } from "@/editor/tools/editorTypes";
 import type { MapCanvasProps } from "@/ui/components/MapCanvas/types";
 import type { RenderWorldPatch } from "@/render/renderWorldPatch";
-import type { MapOperation } from "@/core/protocol";
+import type { MapOperation, MapTokenRecord } from "@/core/protocol";
 
 type UseEditorCanvasPropsOptions = {
   activeMode: EditorMode;
@@ -22,10 +22,13 @@ type UseEditorCanvasPropsOptions = {
   level: number;
   onRenderWorldPatchApplied?: (revision: number) => void;
   previewOperations: MapOperation[];
+  mapTokens: MapTokenRecord[];
+  onToolStep?: (delta: 1 | -1) => void;
   role: "gm" | "player";
   renderWorldPatch?: RenderWorldPatch;
   setCenter: (center: Axial) => void;
   setHoveredHex: (axial: Axial | null) => void;
+  onPlayerTokenPlace: (axial: Axial) => void;
   showCoordinates: boolean;
   startEditGesture: (action: EditGestureAction, axials: Axial[]) => void;
   startRiverGesture: (action: EditGestureAction, edges: RiverEdgeRef[]) => void;
@@ -47,10 +50,13 @@ export function useEditorCanvasProps({
   level,
   onRenderWorldPatchApplied,
   previewOperations,
+  mapTokens,
+  onToolStep,
   role,
   renderWorldPatch,
   setCenter,
   setHoveredHex,
+  onPlayerTokenPlace,
   showCoordinates,
   startEditGesture,
   startRiverGesture,
@@ -61,6 +67,7 @@ export function useEditorCanvasProps({
     () => ({
       center,
       canEdit,
+      playerMode: role === "player",
       editMode: activeMode,
       featureVisibilityMode,
       fogEditingActive: role === "gm" && activeMode === "fog",
@@ -74,9 +81,12 @@ export function useEditorCanvasProps({
       onRiverGestureMove: applyActiveRiverGestureEdges,
       onRiverGestureStart: startRiverGesture,
       onHoveredHexChange: setHoveredHex,
+      onPlayerTokenPlace,
+      onToolStep,
       onRenderWorldPatchApplied,
       onVisualZoomChange: changeVisualZoom,
       previewOperations,
+      mapTokens,
       renderWorldPatch,
       hoveredHex,
       showCoordinates,
@@ -96,7 +106,10 @@ export function useEditorCanvasProps({
       interactionLabel,
       level,
       onRenderWorldPatchApplied,
+      onPlayerTokenPlace,
+      onToolStep,
       previewOperations,
+      mapTokens,
       role,
       renderWorldPatch,
       setCenter,

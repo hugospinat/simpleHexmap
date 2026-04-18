@@ -6,7 +6,6 @@ import {
 import {
   applyGestureUpdate,
   createGestureSession,
-  finishGestureSession,
   type GestureSession
 } from "@/editor/tools/gestureSession";
 
@@ -52,6 +51,3 @@ export function applyEditGestureCells(gesture: EditGesture, axials: Axial[]): Ma
   return gesture.world;
 }
 
-export function getFinishedGestureWorld(gesture: EditGesture): MapState | null {
-  return finishGestureSession(gesture).previewWorld;
-}

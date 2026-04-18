@@ -8,6 +8,8 @@ export type {
   MapRiverRecord,
   MapRoadRecord,
   MapTileRecord,
+  MapTokenOperation,
+  MapTokenRecord,
   RiverEdgeIndex,
   RoadEdgeIndex,
   SavedMapContent
@@ -51,3 +53,8 @@ export {
   type TileKey
 } from "./recordHelpers.js";
 export { validateMapOperation } from "./validation.js";
+export {
+  applyMapTokenOperation,
+  applyMapTokenOperations,
+  validateMapTokenOperation
+} from "./tokenOperations.js";

@@ -57,7 +57,7 @@ export function getInteractionLabel({
   }
 
   if (activeMode === "fog") {
-    return "Left toggles terrain fog, right toggles feature hidden state, middle drag pans.";
+    return "Left adds fog to terrain, then features. Right reveals hidden features, then terrain. Middle drag pans.";
   }
 
   if (level !== SOURCE_LEVEL) {

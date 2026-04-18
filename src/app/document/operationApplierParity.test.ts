@@ -60,7 +60,7 @@ function expectDirectParity(world: MapState, operation: MapOperation) {
   expect(serializeWorld(direct)).toEqual(serializeWorld(roundTrip));
 }
 
-describe("mapOperations", () => {
+describe("operation applier parity", () => {
   test("set_tile updates snapshots incrementally", () => {
     const empty = serializeWorld(createEmptyWorld());
     const updated = applyMapOperation(empty, {

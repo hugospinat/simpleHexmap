@@ -1,13 +1,19 @@
+import { createReadStream, promises as fs } from "node:fs";
+import path from "node:path";
 import {
   createMapId,
   createOperationId,
+  createDefaultMapPermissions,
   defaultMapContent,
-  isValidMapContent,
+  isObject,
   mapIdPatternSource,
   nowIso,
+  normalizeMapContent,
   sanitizeName,
   writeMapToFile
 } from "./mapStorage.js";
+import { ensureProfile, listProfiles } from "./profileStorage.js";
+import { canOpenMapAsGM } from "../../src/core/profile/profileTypes.js";
 import {
   applyOperationToSession,
 } from "./operationService.js";
@@ -20,12 +26,93 @@ import {
 
 const maxRequestBodySizeBytes = 5 * 1024 * 1024;
 const mapPathPattern = new RegExp(`^/api/maps/(${mapIdPatternSource})$`);
+const staticRoot = path.resolve(process.cwd(), "dist");
+const staticContentTypes = new Map([
+  [".css", "text/css; charset=utf-8"],
+  [".html", "text/html; charset=utf-8"],
+  [".js", "text/javascript; charset=utf-8"],
+  [".json", "application/json; charset=utf-8"],
+  [".png", "image/png"],
+  [".svg", "image/svg+xml"],
+  [".txt", "text/plain; charset=utf-8"],
+  [".webp", "image/webp"]
+]);
+
+function getRequestProfileId(request): string | null {
+  const header = request.headers["x-profile-id"];
+  return typeof header === "string" && header.trim() ? header : null;
+}
 
 function sendJson(response, statusCode, payload) {
   response.statusCode = statusCode;
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.setHeader("Access-Control-Allow-Origin", "*");
   response.end(`${JSON.stringify(payload)}\n`);
+}
+
+function sendStaticFile(response, filePath, method) {
+  const extension = path.extname(filePath).toLowerCase();
+  response.statusCode = 200;
+  response.setHeader("Content-Type", staticContentTypes.get(extension) ?? "application/octet-stream");
+
+  if (extension !== ".html") {
+    response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+  } else {
+    response.setHeader("Cache-Control", "no-cache");
+  }
+
+  if (method === "HEAD") {
+    response.end();
+    return;
+  }
+
+  createReadStream(filePath).pipe(response);
+}
+
+async function resolveStaticFile(pathname) {
+  const decodedPathname = decodeURIComponent(pathname);
+  const normalizedPathname = decodedPathname === "/" ? "/index.html" : decodedPathname;
+  const candidate = path.resolve(staticRoot, `.${normalizedPathname}`);
+
+  if (candidate.startsWith(staticRoot)) {
+    try {
+      const stats = await fs.stat(candidate);
+
+      if (stats.isFile()) {
+        return candidate;
+      }
+    } catch {
+      // Fall back to the SPA entry below.
+    }
+  }
+
+  const indexPath = path.join(staticRoot, "index.html");
+
+  try {
+    const stats = await fs.stat(indexPath);
+    return stats.isFile() ? indexPath : null;
+  } catch {
+    return null;
+  }
+}
+
+async function handleStaticRequest(request, response, url) {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return false;
+  }
+
+  if (url.pathname.startsWith("/api/")) {
+    return false;
+  }
+
+  const filePath = await resolveStaticFile(url.pathname);
+
+  if (!filePath) {
+    return false;
+  }
+
+  sendStaticFile(response, filePath, request.method);
+  return true;
 }
 
 async function readBody(request): Promise<any> {
@@ -68,11 +155,28 @@ async function handleMapCollectionRequest(request, response) {
 
   if (request.method === "POST") {
     const body = await readBody(request);
+    const profileId = getRequestProfileId(request);
+
+    if (!profileId) {
+      sendJson(response, 400, { error: "Missing profile id." });
+      return true;
+    }
+
+    await ensureProfile({ profileId });
+    let content = defaultMapContent;
+
+    try {
+      content = normalizeMapContent(body.content);
+    } catch {
+      content = defaultMapContent;
+    }
+
     const map = {
       id: createMapId(),
       name: sanitizeName(body.name),
       updatedAt: nowIso(),
-      content: isValidMapContent(body.content) ? body.content : defaultMapContent
+      permissions: createDefaultMapPermissions(profileId),
+      content
     };
 
     await writeMapToFile(map);
@@ -85,10 +189,18 @@ async function handleMapCollectionRequest(request, response) {
 
 async function handleMapResourceRequest(request, response, mapId) {
   if (request.method === "GET") {
-    const map = await getMap(mapId);
+    const profileId = getRequestProfileId(request);
+    const map = await getMap(mapId, profileId ?? undefined);
 
     if (!map) {
       sendJson(response, 404, { error: "Map not found." });
+      return true;
+    }
+
+    const url = new URL(request.url ?? "", "http://localhost");
+
+    if (url.searchParams.get("role") === "gm" && (!profileId || !canOpenMapAsGM(profileId, map.permissions))) {
+      sendJson(response, 403, { error: "GM access denied." });
       return true;
     }
 
@@ -98,10 +210,16 @@ async function handleMapResourceRequest(request, response, mapId) {
 
   if (request.method === "PATCH") {
     const body = await readBody(request);
-    const session = await getOrCreateSession(mapId);
+    const profileId = getRequestProfileId(request);
+    const session = await getOrCreateSession(mapId, profileId ?? undefined);
 
     if (!session) {
       sendJson(response, 404, { error: "Map not found." });
+      return true;
+    }
+
+    if (!profileId || !canOpenMapAsGM(profileId, session.map.permissions)) {
+      sendJson(response, 403, { error: "GM access denied." });
       return true;
     }
 
@@ -109,13 +227,26 @@ async function handleMapResourceRequest(request, response, mapId) {
       type: "rename_map",
       name: sanitizeName(body.name)
     } as const;
-    const updated = await applyOperationToSession(mapId, operation, "http", createOperationId());
+    const updated = await applyOperationToSession(mapId, operation, "http", createOperationId(), null, profileId);
     await writeMapToFile(updated);
     sendJson(response, 200, { map: updated });
     return true;
   }
 
   if (request.method === "DELETE") {
+    const profileId = getRequestProfileId(request);
+    const map = await getMap(mapId, profileId ?? undefined);
+
+    if (!map) {
+      sendJson(response, 404, { error: "Map not found." });
+      return true;
+    }
+
+    if (!profileId || map.permissions.ownerProfileId !== profileId) {
+      sendJson(response, 403, { error: "Owner access denied." });
+      return true;
+    }
+
     const deleted = await deleteMap(mapId);
 
     if (!deleted) {
@@ -134,7 +265,7 @@ export function createHttpHandler() {
   return async (request, response) => {
     response.setHeader("Access-Control-Allow-Origin", "*");
     response.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
-    response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    response.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Profile-Id");
 
     if (request.method === "OPTIONS") {
       response.statusCode = 204;
@@ -150,6 +281,22 @@ export function createHttpHandler() {
     const url = new URL(request.url, "http://localhost");
 
     try {
+      if (url.pathname === "/api/profiles" && request.method === "GET") {
+        const profiles = await listProfiles();
+        sendJson(response, 200, { profiles });
+        return;
+      }
+
+      if (url.pathname === "/api/profiles" && request.method === "POST") {
+        const body = await readBody(request);
+        const profile = await ensureProfile({
+          profileId: isObject(body) ? body.profileId : undefined,
+          username: isObject(body) ? body.username : undefined
+        });
+        sendJson(response, 200, { profile });
+        return;
+      }
+
       if (url.pathname === "/api/maps" && await handleMapCollectionRequest(request, response)) {
         return;
       }
@@ -157,6 +304,10 @@ export function createHttpHandler() {
       const mapMatch = url.pathname.match(mapPathPattern);
 
       if (mapMatch && await handleMapResourceRequest(request, response, mapMatch[1])) {
+        return;
+      }
+
+      if (await handleStaticRequest(request, response, url)) {
         return;
       }
 

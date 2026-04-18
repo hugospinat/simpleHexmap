@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyWorld, getLevelMap } from "@/core/map/world";
-import { applyEditGestureCells, createEditGesture, getFinishedGestureWorld } from "./editGesture";
+import { applyEditGestureCells, createEditGesture } from "./editGesture";
+import { finishGestureSession } from "./gestureSession";
 
 describe("edit gestures", () => {
   it("paints multiple cells into one finished world and ignores duplicate hexes", () => {
@@ -12,9 +13,9 @@ describe("edit gestures", () => {
       { q: 0, r: 0 }
     ]);
 
-    const finishedWorld = getFinishedGestureWorld(gesture);
+    const commit = finishGestureSession(gesture);
 
-    expect(finishedWorld).not.toBeNull();
+    expect(commit.changed).toBe(true);
     expect(gesture.touchedKeys.size).toBe(2);
     expect(getLevelMap(gesture.world, 1).size).toBe(2);
     expect(getLevelMap(gesture.world, 2).size).toBe(14);
@@ -25,7 +26,7 @@ describe("edit gestures", () => {
 
     applyEditGestureCells(gesture, [{ q: 8, r: -3 }]);
 
-    expect(getFinishedGestureWorld(gesture)).toBeNull();
+    expect(finishGestureSession(gesture).changed).toBe(false);
     expect(gesture.touchedKeys.size).toBe(1);
   });
 
@@ -42,7 +43,7 @@ describe("edit gestures", () => {
       { q: 1, r: 0 }
     ]);
 
-    expect(getFinishedGestureWorld(eraseGesture)).not.toBeNull();
+    expect(finishGestureSession(eraseGesture).changed).toBe(true);
     expect(getLevelMap(eraseGesture.world, 1).size).toBe(0);
     expect(getLevelMap(eraseGesture.world, 2).size).toBe(0);
   });

@@ -4,7 +4,6 @@ import { executeMapEditCommand } from "@/core/map/commands/mapEditCommands";
 import {
   applyGestureUpdate,
   createGestureSession,
-  finishGestureSession,
   type GestureSession
 } from "@/editor/tools/gestureSession";
 
@@ -54,6 +53,3 @@ export function applyFactionGestureCells(gesture: FactionGesture, axials: Axial[
   return gesture.world;
 }
 
-export function getFinishedFactionGestureWorld(gesture: FactionGesture): MapState | null {
-  return finishGestureSession(gesture).previewWorld;
-}

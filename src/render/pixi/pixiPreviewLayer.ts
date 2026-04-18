@@ -2,7 +2,7 @@ import { Graphics, type Container } from "pixi.js";
 import { getAncestorAtLevel, hexKey, type Axial, type HexId, type Pixel } from "@/core/geometry/hex";
 import { SOURCE_LEVEL } from "@/core/map/mapRules";
 import { getRoadEdgeBetween, type RoadEdgeIndex } from "@/core/map/roads";
-import { tileColors } from "@/core/map/world";
+import { featureHexIdToAxial, getFeatureById, tileColors } from "@/core/map/world";
 import type { MapOperation } from "@/core/protocol/types";
 import { getWorldHexGeometry } from "./pixiGeometry";
 import { getWorldHexCorners, parseCssColor, pathPolygon, scaleWorldLength } from "./pixiLayers";
@@ -134,6 +134,38 @@ function drawPreviewFog(
   return 1;
 }
 
+function drawPreviewFeatureFog(
+  graphics: Graphics,
+  frame: PixiSceneRenderFrame,
+  operation: Extract<MapOperation, { type: "set_feature_hidden" }>
+): number {
+  const feature = getFeatureById(frame.world, SOURCE_LEVEL, operation.featureId);
+
+  if (!feature) {
+    return 0;
+  }
+
+  const cell = getFrameCellForSourceAxial(frame, featureHexIdToAxial(feature.hexId));
+
+  if (!cell) {
+    return 0;
+  }
+
+  const radius = Math.min(cell.boundsWidth, cell.boundsHeight) * 0.24;
+  graphics.circle(cell.worldCenter.x, cell.worldCenter.y, radius);
+  graphics.fill({
+    alpha: previewFogAlpha,
+    color: operation.hidden ? 0x000000 : 0xffffff
+  });
+  graphics.circle(cell.worldCenter.x, cell.worldCenter.y, radius);
+  graphics.stroke({
+    alpha: 0.55,
+    color: operation.hidden ? 0xffffff : 0x000000,
+    width: scaleWorldLength(frame, 2)
+  });
+  return 1;
+}
+
 function drawPreviewFaction(
   graphics: Graphics,
   frame: PixiSceneRenderFrame,
@@ -250,6 +282,9 @@ export function drawPixiPreviewLayer(
         break;
       case "set_cell_hidden":
         count += drawPreviewFog(graphics, frame, operation);
+        break;
+      case "set_feature_hidden":
+        count += drawPreviewFeatureFog(graphics, frame, operation);
         break;
       case "set_faction_territory":
         count += drawPreviewFaction(graphics, frame, operation);

@@ -10,8 +10,12 @@ type LevelView = {
   center: Axial;
 };
 
-export function useCamera() {
-  const [view, setView] = useState<LevelView>({ level: 1, center: { q: 0, r: 0 } });
+export function useCamera(initialLevel = 1) {
+  const clampedInitialLevel = Math.min(editorConfig.maxLevels, Math.max(1, initialLevel));
+  const [view, setView] = useState<LevelView>({
+    level: clampedInitialLevel,
+    center: { q: 0, r: 0 }
+  });
   const [visualZoom, setVisualZoom] = useState(1);
 
   const setCenter = useCallback((center: Axial) => {

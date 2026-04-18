@@ -1,4 +1,3 @@
-import { featureKinds, terrainTypes, type RiverEdgeIndex, type RoadEdgeIndex, type TerrainType } from "@/core/map/world";
 import {
   mapFileVersion,
   type MapFactionRecord,
@@ -7,15 +6,38 @@ import {
   type MapRiverRecord,
   type MapRoadRecord,
   type MapTileRecord,
+  type MapTokenRecord,
   type SavedMapContent
-} from "@/app/document/savedMapTypes";
+} from "./savedMapTypes.js";
 
-export type SavedMapContentCodec = {
-  normalizeLegacy(raw: unknown): SavedMapContent;
-  parse(raw: unknown): SavedMapContent;
-  parseText(text: string): SavedMapContent;
-  serialize(content: SavedMapContent): SavedMapContent;
-};
+const terrainTypes = [
+  "empty",
+  "water",
+  "plain",
+  "forest",
+  "hill",
+  "mountain",
+  "desert",
+  "swamp",
+  "tundra",
+  "wasteland"
+] as const;
+
+const featureKinds = [
+  "city",
+  "capital",
+  "village",
+  "fort",
+  "ruin",
+  "tower",
+  "dungeon",
+  "marker",
+  "label"
+] as const;
+
+type TerrainType = (typeof terrainTypes)[number];
+type RoadEdgeIndex = 0 | 1 | 2 | 3 | 4 | 5;
+type RiverEdgeIndex = RoadEdgeIndex;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -57,6 +79,7 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
   const rawRoads = Array.isArray(raw.roads) ? raw.roads : [];
   const rawFactions = Array.isArray(raw.factions) ? raw.factions : [];
   const rawFactionTerritories = Array.isArray(raw.factionTerritories) ? raw.factionTerritories : [];
+  const rawTokens = Array.isArray(raw.tokens) ? raw.tokens : [];
 
   const tiles = raw.tiles.map((tile, index): MapTileRecord => {
     const terrain = isObject(tile) && typeof tile.terrain === "string"
@@ -195,6 +218,27 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
     };
   });
 
+  const tokens = rawTokens.map((token, index): MapTokenRecord => {
+    if (
+      !isObject(token)
+      || typeof token.profileId !== "string"
+      || !token.profileId.trim()
+      || !isInteger(token.q)
+      || !isInteger(token.r)
+      || typeof token.color !== "string"
+      || !isHexColor(token.color)
+    ) {
+      throw new Error(`Invalid token entry at index ${index}.`);
+    }
+
+    return {
+      profileId: token.profileId,
+      q: token.q,
+      r: token.r,
+      color: token.color
+    };
+  });
+
   return {
     version: mapFileVersion,
     tiles,
@@ -202,17 +246,11 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
     rivers,
     roads,
     factions,
-    factionTerritories
+    factionTerritories,
+    tokens
   };
 }
 
 export function parseSavedMapContentText(text: string): SavedMapContent {
   return parseSavedMapContent(JSON.parse(text) as unknown);
 }
-
-export const savedMapCodec: SavedMapContentCodec = {
-  normalizeLegacy: parseSavedMapContent,
-  parse: parseSavedMapContent,
-  parseText: parseSavedMapContentText,
-  serialize: (content) => content
-};

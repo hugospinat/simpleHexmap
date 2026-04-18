@@ -10,5 +10,6 @@
     "esModuleInterop": true,
     "types": ["node"]
   },
-  "include": ["server/src/**/*.ts", "src/core/protocol/**/*.ts"]
+  "include": ["server/src/**/*.ts", "src/core/protocol/**/*.ts", "src/core/document/**/*.ts", "src/core/profile/**/*.ts"],
+  "exclude": ["**/*.test.ts", "**/*.test.tsx"]
 }

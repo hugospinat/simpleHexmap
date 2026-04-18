@@ -30,7 +30,7 @@ describe("map edit commands", () => {
     expect(result.operations).toHaveLength(7);
     expect(result.operations[0]).toMatchObject({
       type: "set_tile",
-      tile: { terrain: "forest", hidden: false }
+      tile: { terrain: "forest", hidden: true }
     });
     expect(serializeWorld(applyCommandOperations(world, result.operations))).toEqual(serializeWorld(result.mapState));
   });
@@ -46,7 +46,7 @@ describe("map edit commands", () => {
     expect(result.operations).toEqual([
       {
         type: "set_tile",
-        tile: { q: 0, r: 0, terrain: "plain", hidden: false }
+        tile: { q: 0, r: 0, terrain: "plain", hidden: true }
       }
     ]);
     expect(getLevelMap(result.mapState, 3).get("0,0")?.type).toBe("plain");

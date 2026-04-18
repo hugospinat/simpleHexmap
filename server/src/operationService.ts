@@ -1,5 +1,4 @@
 import { WebSocket } from "ws";
-import { validateMapOperation } from "./mapContent.js";
 import {
   nowIso,
   sanitizeName
@@ -9,12 +8,19 @@ import { broadcastPayload } from "./broadcastService.js";
 import { parseAppliedOperationPayload, rememberAppliedOperation } from "./appliedOperationLog.js";
 import { schedulePersist } from "./persistenceScheduler.js";
 import { getOrCreateSession, getSessionMapRecord } from "./sessionStore.js";
+import { canOpenMapAsGM } from "../../src/core/profile/profileTypes.js";
+import {
+  validateMapOperation,
+  validateMapTokenOperation,
+  type MapOperation,
+  type MapTokenOperation
+} from "../../src/core/protocol/index.js";
 import type {
   AppliedOperationMessage,
+  MapTokenUpdatedMessage,
   MapRecord,
   OperationEnvelope
 } from "./types.js";
-import type { MapOperation } from "../../src/core/protocol/index.js";
 
 function applyOperationToMap(map: MapRecord, operation: MapOperation, updatedAt: string): MapRecord {
   if (operation.type === "rename_map") {
@@ -51,7 +57,8 @@ export async function applyOperationToSession(
   operation: MapOperation,
   sourceClientId: string,
   operationId: string,
-  sourceSocket: WebSocket | null = null
+  sourceSocket: WebSocket | null = null,
+  actorProfileId?: string
 ): Promise<MapRecord> {
   if (typeof operationId !== "string" || !operationId.trim()) {
     throw new Error("Invalid operation id.");
@@ -63,10 +70,14 @@ export async function applyOperationToSession(
     throw new Error(validationError);
   }
 
-  const session = await getOrCreateSession(mapId);
+  const session = await getOrCreateSession(mapId, actorProfileId);
 
   if (!session) {
     throw new Error("Map not found.");
+  }
+
+  if (actorProfileId && !canOpenMapAsGM(actorProfileId, session.map.permissions)) {
+    throw new Error("GM access denied.");
   }
 
   const existingPayload = session.appliedOperationPayloads.get(operationId);
@@ -134,16 +145,78 @@ export async function applyOperationToSession(
   return getSessionMapRecord(session);
 }
 
+export async function applyTokenOperationToSession(
+  mapId: string,
+  operation: MapTokenOperation,
+  sourceProfileId: string
+): Promise<MapRecord> {
+  const validationError = validateMapTokenOperation(operation);
+
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
+  if (operation.type === "set_map_token" && operation.token.profileId !== sourceProfileId) {
+    throw new Error("Cannot move another profile token.");
+  }
+
+  if (operation.type === "remove_map_token" && operation.profileId !== sourceProfileId) {
+    throw new Error("Cannot remove another profile token.");
+  }
+
+  const session = await getOrCreateSession(mapId, sourceProfileId);
+
+  if (!session) {
+    throw new Error("Map not found.");
+  }
+
+  if (operation.type === "set_map_token") {
+    const tile = session.runtime.contentIndex.tilesByHex.get(`${operation.token.q},${operation.token.r}`);
+
+    if (!tile || tile.hidden) {
+      throw new Error("Token can only be placed on visible terrain.");
+    }
+  }
+
+  const updatedAt = nowIso();
+
+  if (operation.type === "set_map_token") {
+    session.runtime.contentIndex.tokensByProfileId.set(operation.token.profileId, operation.token);
+  } else {
+    session.runtime.contentIndex.tokensByProfileId.delete(operation.profileId);
+  }
+
+  session.map = {
+    ...session.map,
+    updatedAt
+  };
+  schedulePersist(session);
+
+  const message: MapTokenUpdatedMessage = {
+    type: "map_token_updated",
+    operation,
+    sourceProfileId,
+    updatedAt
+  };
+  broadcastPayload(session, JSON.stringify(message));
+  return getSessionMapRecord(session);
+}
+
 export async function applyOperationBatchToSession(
   mapId: string,
   envelopes: OperationEnvelope[],
   sourceClientId: string,
-  sourceSocket: WebSocket | null = null
+  sourceSocket: WebSocket | null = null,
+  actorProfileId?: string
 ): Promise<MapRecord> {
-  const session = await getOrCreateSession(mapId);
+  const session = await getOrCreateSession(mapId, actorProfileId);
 
   if (!session) {
     throw new Error("Map not found.");
+  }
+
+  if (actorProfileId && !canOpenMapAsGM(actorProfileId, session.map.permissions)) {
+    throw new Error("GM access denied.");
   }
 
   const resolvedMessages: AppliedOperationMessage[] = [];

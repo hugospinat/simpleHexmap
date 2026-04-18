@@ -7,6 +7,7 @@ import type {
   MapRiverRecord,
   MapRoadRecord,
   MapTileRecord,
+  MapTokenRecord,
   SavedMapContent
 } from "./types.js";
 import {
@@ -254,6 +255,7 @@ export type SavedMapContentIndex = {
   riversByKey: Map<string, MapRiverRecord>;
   roads: MapRoadRecord[];
   tilesByHex: Map<string, MapTileRecord>;
+  tokensByProfileId: Map<string, MapTokenRecord>;
 };
 
 export function indexSavedMapContent(snapshot: SavedMapContent): SavedMapContentIndex {
@@ -263,7 +265,8 @@ export function indexSavedMapContent(snapshot: SavedMapContent): SavedMapContent
     featuresById: new Map(snapshot.features.map((feature) => [feature.id, feature])),
     riversByKey: new Map(snapshot.rivers.map((river) => [riverKey(river), river])),
     roads: snapshot.roads,
-    tilesByHex: new Map(snapshot.tiles.map((tile) => [tileKey(tile), tile]))
+    tilesByHex: new Map(snapshot.tiles.map((tile) => [tileKey(tile), tile])),
+    tokensByProfileId: new Map(snapshot.tokens.map((token) => [token.profileId, token]))
   };
 }
 
@@ -278,7 +281,8 @@ export function materializeSavedMapContent<TSnapshot extends SavedMapContent>(
     rivers: Array.from(index.riversByKey.values()),
     roads: index.roads,
     factions: Array.from(index.factionsById.values()),
-    factionTerritories: Array.from(index.factionTerritoriesByHex.values())
+    factionTerritories: Array.from(index.factionTerritoriesByHex.values()),
+    tokens: Array.from(index.tokensByProfileId.values())
   };
 }
 

@@ -5,6 +5,7 @@ import type { MapLevel } from "@/core/map/mapRules";
 import type { HexCell, MapState, RiverEdgeRef, RiverEdgeSet } from "@/core/map/worldTypes";
 import type { Feature } from "@/core/map/features";
 import type { RoadEdgeSet } from "@/core/map/roads";
+import type { MapTokenRecord } from "@/core/protocol";
 import type { RenderWorldPatch } from "@/render/renderWorldPatch";
 import type { RenderCell, RenderStats, Viewport } from "@/render/renderTypes";
 
@@ -16,26 +17,26 @@ export type PixiLayerTimings = {
   roads?: number;
   factions?: number;
   features?: number;
+  fog?: number;
   overlay?: number;
   preview?: number;
+  tokens?: number;
 };
 
 export type PixiRenderStats = RenderStats & {
   activeWindowMs?: number;
   cameraMs?: number;
   graphicsCount: number;
+  fogCells?: number;
+  fogCacheHit?: boolean;
   layerTimings: PixiLayerTimings;
   layerPatchMs?: number;
   pixiUpdateMs: number;
   pixiRenderMs?: number;
   sceneUpdateMs?: number;
   spriteCount: number;
+  tokens?: number;
   visibleCellCount: number;
-};
-
-export type PixiRenderOverlayOptions = {
-  featureVisibilityMode: FeatureVisibilityMode;
-  fogEditingActive: boolean;
 };
 
 export type MapInteractionOverlay = {
@@ -129,7 +130,10 @@ export type PixiStageLayers = {
   river: Graphics;
   road: Container;
   terrain: Container;
+  token: Graphics;
 };
+
+export type { MapTokenRecord };
 
 export type SpritePool = {
   acquire: (key: string, parent: Container) => Sprite;

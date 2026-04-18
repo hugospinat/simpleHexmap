@@ -36,16 +36,16 @@ describe("world operations", () => {
     const level2Children = getChildCluster({ q: 1, r: 0 });
     const level3Children = level2Children.flatMap(getChildCluster);
 
-    expect(getLevelMap(world, 1).get("1,0")).toEqual({ hidden: false, type: "forest" });
+    expect(getLevelMap(world, 1).get("1,0")).toEqual({ hidden: true, type: "forest" });
     expect(getLevelMap(world, 2).size).toBe(7);
     expect(getLevelMap(world, 3).size).toBe(49);
 
     for (const child of level2Children) {
-      expect(getLevelMap(world, 2).get(hexKey(child))).toEqual({ hidden: false, type: "forest" });
+      expect(getLevelMap(world, 2).get(hexKey(child))).toEqual({ hidden: true, type: "forest" });
     }
 
     for (const child of level3Children) {
-      expect(getLevelMap(world, 3).get(hexKey(child))).toEqual({ hidden: false, type: "forest" });
+      expect(getLevelMap(world, 3).get(hexKey(child))).toEqual({ hidden: true, type: "forest" });
     }
   });
 
@@ -55,17 +55,17 @@ describe("world operations", () => {
     const level2Children = getChildCluster({ q: 1, r: 0 });
     const level3Children = level2Children.flatMap(getChildCluster);
 
-    expect(getLevelMap(mountainWorld, 1).get("1,0")).toEqual({ hidden: false, type: "mountain" });
+    expect(getLevelMap(mountainWorld, 1).get("1,0")).toEqual({ hidden: true, type: "mountain" });
     for (const child of [...level2Children, ...level3Children]) {
       const level = level2Children.includes(child) ? 2 : 3;
-      expect(getLevelMap(mountainWorld, level).get(hexKey(child))).toEqual({ hidden: false, type: "mountain" });
+      expect(getLevelMap(mountainWorld, level).get(hexKey(child))).toEqual({ hidden: true, type: "mountain" });
     }
   });
 
   it("derives parent terrain from level 3 source tiles", () => {
     const world = addTileWithPropagation(createEmptyWorld(), 1, { q: 99, r: -42 }, "water", 2);
 
-    expect(getLevelMap(world, 1).get("99,-42")).toEqual({ hidden: false, type: "water" });
+    expect(getLevelMap(world, 1).get("99,-42")).toEqual({ hidden: true, type: "water" });
     expect(getLevelMap(world, 2).has("240,-27")).toBe(true);
     expect(getLevelMap(world, 2).size).toBe(7);
   });
@@ -84,7 +84,7 @@ describe("world operations", () => {
     const level2Child = getChildCluster({ q: 1, r: 0 })[0];
     const nextWorld = deleteWithDescendants(world, 2, level2Child, 3);
 
-    expect(getLevelMap(nextWorld, 1).get("1,0")).toEqual({ hidden: false, type: "mountain" });
+    expect(getLevelMap(nextWorld, 1).get("1,0")).toEqual({ hidden: true, type: "mountain" });
     expect(getLevelMap(nextWorld, 2).has(hexKey(level2Child))).toBe(false);
     expect(getLevelMap(nextWorld, 2).size).toBe(6);
 
@@ -107,7 +107,7 @@ describe("world operations", () => {
 
     expect(getLevelMap(world, 1).size).toBe(7);
     expect(getLevelMap(world, 2).size).toBe(49);
-    expect(getLevelMap(world, 1).get("0,0")).toEqual({ hidden: false, type: "plain" });
+    expect(getLevelMap(world, 1).get("0,0")).toEqual({ hidden: true, type: "plain" });
   });
 
   it("toggles cell hidden state and derives parent hidden state from source descendants", () => {
@@ -124,7 +124,7 @@ describe("world operations", () => {
     const empty = createEmptyWorld();
     const painted = addTile(empty, 3, { q: 0, r: 0 }, "plain");
     const unchanged = addTile(painted, 3, { q: 0, r: 0 }, "plain");
-    const hidden = setCellHidden(painted, 3, { q: 0, r: 0 }, true);
+    const hidden = setCellHidden(painted, 3, { q: 0, r: 0 }, false);
 
     expect(empty.versions.terrain).toBe(0);
     expect(painted.versions.terrain).toBe(1);

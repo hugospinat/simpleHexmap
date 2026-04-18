@@ -25,7 +25,9 @@ export default function MapCanvas({
   world,
   renderWorldPatch,
   previewOperations,
+  mapTokens,
   canEdit,
+  playerMode,
   fogEditingActive,
   level,
   center,
@@ -44,6 +46,8 @@ export default function MapCanvas({
   onEditGestureEnd,
   onRiverGestureEnd,
   onHoveredHexChange,
+  onPlayerTokenPlace,
+  onToolStep,
   onRenderWorldPatchApplied
 }: MapCanvasProps) {
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -55,11 +59,13 @@ export default function MapCanvas({
   const previewRenderFrameRef = useRef<number | null>(null);
   const renderDebugBatchRef = useRef({ frames: 0, lastLogAt: 0 });
   const lastPerformanceLogAtRef = useRef(0);
+  const sourceTileCountRef = useRef(0);
   const [rendererReady, setRendererReady] = useState(false);
   const viewport = useCanvasViewport(overlayCanvasRef);
   const pixiLevel = level as MapLevel;
+  sourceTileCountRef.current = world.levels[3]?.size ?? 0;
 
-  useCanvasWheelZoom(overlayCanvasRef, visualZoom, onVisualZoomChange);
+  useCanvasWheelZoom(overlayCanvasRef, visualZoom, onVisualZoomChange, onToolStep);
 
   const { handlers, hoverRiverEdge } = useMapInteraction({
     canEdit,
@@ -75,6 +81,8 @@ export default function MapCanvas({
     onRiverGestureMove,
     onRiverGestureStart,
     onHoveredHexChange,
+    onPlayerTokenPlace,
+    playerMode,
     viewport,
     visualZoom
   });
@@ -190,6 +198,16 @@ export default function MapCanvas({
       return;
     }
 
+    renderer.setTokens(mapTokens);
+  }, [mapTokens, rendererReady]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+
+    if (!renderer || !rendererReady) {
+      return;
+    }
+
     if (cameraRenderFrameRef.current !== null) {
       cancelAnimationFrame(cameraRenderFrameRef.current);
     }
@@ -221,13 +239,15 @@ export default function MapCanvas({
             frames: batch.frames,
             activeWindowMs: stats.activeWindowMs,
             cameraMs: stats.cameraMs,
+            fogCacheHit: stats.fogCacheHit,
+            fogCells: stats.fogCells,
             layerTimings: stats.layerTimings,
             layerPatchMs: stats.layerPatchMs,
             frameTimeMs: Number(frameDurationMs.toFixed(2)),
             level,
             pixiUpdateMs: stats.pixiUpdateMs,
             sceneUpdateMs: stats.sceneUpdateMs,
-            sourceTileCount: world.levels[3]?.size ?? 0,
+            sourceTileCount: sourceTileCountRef.current,
             spriteCount: stats.spriteCount,
             visibleCellCount: stats.visibleCellCount,
             visualZoom: Number(visualZoom.toFixed(2)),
@@ -275,7 +295,6 @@ export default function MapCanvas({
     showCoordinates,
     viewport,
     visualZoom,
-    world
   ]);
 
   useEffect(() => {
@@ -301,10 +320,7 @@ export default function MapCanvas({
         selectedHexes: []
       };
 
-      renderer.setOverlay(overlay, {
-        featureVisibilityMode,
-        fogEditingActive
-      });
+      renderer.setOverlay(overlay);
     });
 
     return () => {
@@ -315,18 +331,11 @@ export default function MapCanvas({
     };
   }, [
     canEdit,
-    center,
     editMode,
-    featureVisibilityMode,
-    fogEditingActive,
     hoverRiverEdge,
     hoveredHex,
     level,
-    pixiLevel,
-    rendererReady,
-    viewport,
-    visualZoom,
-    world
+    rendererReady
   ]);
 
   return (

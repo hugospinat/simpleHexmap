@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { applyOperationToContent, validateMapOperation } from "./src/mapContent";
+import {
+  applyMapOperation as applyOperationToContent,
+  validateMapOperation
+} from "./index.js";
 
 function createContent() {
   return {
@@ -9,17 +12,18 @@ function createContent() {
     rivers: [],
     roads: [],
     factions: [],
-    factionTerritories: []
+    factionTerritories: [],
+    tokens: []
   };
 }
 
-describe("server map content operations", () => {
+describe("protocol content operations", () => {
   it("validates and applies domain-shaped road connections", () => {
     const operation = {
       type: "add_road_connection",
       from: { q: 0, r: 0 },
       to: { q: 1, r: 0 }
-    };
+    } as const;
 
     expect(validateMapOperation(operation)).toBeNull();
 

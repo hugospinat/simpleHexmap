@@ -6,7 +6,6 @@ import {
 import {
   applyGestureUpdate,
   createGestureSession,
-  finishGestureSession,
   type GestureSession
 } from "@/editor/tools/gestureSession";
 
@@ -75,6 +74,3 @@ export function applyRoadGestureCells(gesture: RoadGesture, axials: Axial[]): Ma
   return gesture.world;
 }
 
-export function getFinishedRoadGestureWorld(gesture: RoadGesture): MapState | null {
-  return finishGestureSession(gesture).previewWorld;
-}

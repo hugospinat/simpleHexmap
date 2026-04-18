@@ -23,7 +23,7 @@ describe("features", () => {
       gmLabel: "Blackford"
     });
 
-    expect(getLevelMap(world, 3).get("2,-1")).toEqual({ hidden: false, type: "forest" });
+    expect(getLevelMap(world, 3).get("2,-1")).toEqual({ hidden: true, type: "forest" });
     expect(getFeatureAt(world, 3, { q: 2, r: -1 })).toEqual({
       id: "f1",
       kind: "city",
@@ -147,8 +147,7 @@ describe("features", () => {
     } as const;
 
     expect(getFeatureLabel(feature, "gm")).toBe("Secret shrine");
-    expect(getFeatureLabel(feature, "player")).toBeUndefined();
-    expect(getFeatureLabel({ ...feature, labelRevealed: true }, "player")).toBe("Weathered stones");
+    expect(getFeatureLabel(feature, "player")).toBe("Weathered stones");
   });
 
   it("shows hidden features to GMs but not players", () => {

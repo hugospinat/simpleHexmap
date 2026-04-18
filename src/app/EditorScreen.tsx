@@ -1,26 +1,29 @@
 import { AppShell } from "./AppShell";
 import { BottomBar } from "@/ui/components/BottomBar/BottomBar";
-import { FeatureInspector } from "@/ui/components/FeatureInspector/FeatureInspector";
+import { FeatureLabelPopup } from "@/ui/components/FeatureLabelPopup/FeatureLabelPopup";
 import { MapPane } from "@/ui/components/MapCanvas/MapPane";
+import { PlayerControls } from "@/ui/components/PlayerControls/PlayerControls";
 import { Sidebar } from "@/ui/components/Sidebar/Sidebar";
 import { useEditorController } from "@/editor/hooks/useEditorController";
 import { MapAssetsProvider } from "@/editor/context/MapAssetsContext";
-import { SOURCE_LEVEL } from "@/core/map/mapRules";
 import type { MapState } from "@/core/map/world";
+import type { ProfileRecord } from "@/core/profile/profileTypes";
 import type { ViewerRole } from "@/ui/components/MapMenu/MapMenu";
 
 type EditorScreenProps = {
   initialWorld: MapState;
   mapId: string;
   mapName: string;
+  profile: ProfileRecord;
   role: ViewerRole;
   onBackToMaps: () => void;
 };
 
-export function EditorScreen({ initialWorld, mapId, mapName, role, onBackToMaps }: EditorScreenProps) {
+export function EditorScreen({ initialWorld, mapId, mapName, profile, role, onBackToMaps }: EditorScreenProps) {
   const editor = useEditorController({
     initialWorld,
     mapId,
+    profile,
     role
   });
 
@@ -29,6 +32,11 @@ export function EditorScreen({ initialWorld, mapId, mapName, role, onBackToMaps 
       <MapAssetsProvider>
         <AppShell appRef={editor.appRef} playerMode>
           <MapPane {...editor.canvasProps} />
+          <PlayerControls
+            tokenColor={editor.playerTokenColor}
+            onBackToMaps={onBackToMaps}
+            onTokenColorChange={editor.setPlayerTokenColor}
+          />
         </AppShell>
       </MapAssetsProvider>
     );
@@ -36,7 +44,7 @@ export function EditorScreen({ initialWorld, mapId, mapName, role, onBackToMaps 
 
   return (
     <MapAssetsProvider>
-      <AppShell appRef={editor.appRef} inspectorOpen={Boolean(editor.selectedFeature)}>
+      <AppShell appRef={editor.appRef}>
         <Sidebar
           activeFactionId={editor.activeFactionId}
           activeFeatureKind={editor.activeFeatureKind}
@@ -58,12 +66,10 @@ export function EditorScreen({ initialWorld, mapId, mapName, role, onBackToMaps 
         />
         <MapPane {...editor.canvasProps} />
         {editor.selectedFeature ? (
-          <FeatureInspector
-            canEditStructure={editor.view.level === SOURCE_LEVEL}
+          <FeatureLabelPopup
             feature={editor.selectedFeature}
-            onChange={editor.updateSelectedFeature}
+            onChange={editor.updateSelectedFeatureLabels}
             onClose={editor.clearSelectedFeature}
-            onDelete={editor.deleteSelectedFeature}
           />
         ) : null}
         <BottomBar

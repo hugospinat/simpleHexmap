@@ -14,18 +14,20 @@ export function createPixiStage(app: Application): PixiStageLayers {
   const fog = new Graphics();
   const preview = new Container();
   const overlay = new Graphics();
+  const token = new Graphics();
 
   app.stage.addChild(background);
   app.stage.addChild(camera);
   camera.addChild(terrain);
+  camera.addChild(fog);
   camera.addChild(boundary);
   camera.addChild(river);
-  camera.addChild(faction);
   camera.addChild(road);
+  camera.addChild(faction);
   camera.addChild(feature);
-  camera.addChild(fog);
   camera.addChild(preview);
   camera.addChild(overlay);
+  camera.addChild(token);
 
   return {
     background,
@@ -38,6 +40,7 @@ export function createPixiStage(app: Application): PixiStageLayers {
     preview,
     river,
     road,
-    terrain
+    terrain,
+    token
   };
 }

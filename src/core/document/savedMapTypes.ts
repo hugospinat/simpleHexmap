@@ -7,5 +7,6 @@ export type {
   MapRiverRecord,
   MapRoadRecord,
   MapTileRecord,
+  MapTokenRecord,
   SavedMapContent
-} from "@/core/protocol";
+} from "../protocol/index.js";

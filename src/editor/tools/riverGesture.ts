@@ -7,7 +7,6 @@ import { executeMapEditCommand } from "@/core/map/commands/mapEditCommands";
 import {
   applyGestureUpdate,
   createGestureSession,
-  finishGestureSession,
   type GestureSession
 } from "@/editor/tools/gestureSession";
 
@@ -48,6 +47,3 @@ export function applyRiverGestureEdges(gesture: RiverGesture, edges: RiverEdgeRe
   return gesture.world;
 }
 
-export function getFinishedRiverGestureWorld(gesture: RiverGesture): MapState | null {
-  return finishGestureSession(gesture).previewWorld;
-}

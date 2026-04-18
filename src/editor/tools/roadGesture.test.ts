@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { createEmptyWorld, getRoadEdgesAt, getRoadLevelMap } from "@/core/map/world";
 import {
   applyRoadGestureCells,
-  createRoadGesture,
-  getFinishedRoadGestureWorld
+  createRoadGesture
 } from "./roadGesture";
+import { finishGestureSession } from "./gestureSession";
 
 describe("road gestures", () => {
   it("adds road connections between consecutive dragged hexes", () => {
@@ -16,7 +16,7 @@ describe("road gestures", () => {
       { q: 2, r: 0 }
     ]);
 
-    expect(getFinishedRoadGestureWorld(gesture)).not.toBeNull();
+    expect(finishGestureSession(gesture).changed).toBe(true);
     expect(Array.from(getRoadEdgesAt(gesture.world, 3, { q: 1, r: 0 })).sort()).toEqual([2, 5]);
     expect(getRoadLevelMap(gesture.world, 3).size).toBe(3);
   });
@@ -26,7 +26,7 @@ describe("road gestures", () => {
 
     applyRoadGestureCells(gesture, [{ q: 0, r: 0 }]);
 
-    expect(getFinishedRoadGestureWorld(gesture)).toBeNull();
+    expect(finishGestureSession(gesture).changed).toBe(false);
   });
 
   it("removes road connections touching dragged hexes", () => {
@@ -40,7 +40,7 @@ describe("road gestures", () => {
     const removeGesture = createRoadGesture("remove", addGesture.world, 3);
     applyRoadGestureCells(removeGesture, [{ q: 1, r: 0 }]);
 
-    expect(getFinishedRoadGestureWorld(removeGesture)).not.toBeNull();
+    expect(finishGestureSession(removeGesture).changed).toBe(true);
     expect(getRoadLevelMap(removeGesture.world, 3).size).toBe(0);
   });
 });

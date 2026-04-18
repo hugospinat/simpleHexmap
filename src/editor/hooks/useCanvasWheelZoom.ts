@@ -5,10 +5,12 @@ import { useLatestRef } from "./useLatestRef";
 export function useCanvasWheelZoom(
   canvasRef: RefObject<HTMLCanvasElement | null>,
   visualZoom: number,
-  onVisualZoomChange: (zoom: number) => void
+  onVisualZoomChange: (zoom: number) => void,
+  onToolStep?: (delta: 1 | -1) => void
 ) {
   const zoomRef = useLatestRef(visualZoom);
   const onVisualZoomChangeRef = useLatestRef(onVisualZoomChange);
+  const onToolStepRef = useLatestRef(onToolStep);
   const pendingZoomRef = useRef<number | null>(null);
   const zoomFrameRef = useRef(0);
 
@@ -22,6 +24,12 @@ export function useCanvasWheelZoom(
     const handleWheel = (event: globalThis.WheelEvent) => {
       event.preventDefault();
       event.stopPropagation();
+
+      if (event.shiftKey && onToolStepRef.current) {
+        const wheelDelta = event.deltaY !== 0 ? event.deltaY : event.deltaX;
+        onToolStepRef.current(wheelDelta >= 0 ? 1 : -1);
+        return;
+      }
 
       const baseZoom = pendingZoomRef.current ?? zoomRef.current;
       const zoomFactor = Math.exp(-event.deltaY * 0.0015);
@@ -66,5 +74,5 @@ export function useCanvasWheelZoom(
         zoomFrameRef.current = 0;
       }
     };
-  }, [canvasRef, onVisualZoomChangeRef, zoomRef]);
+  }, [canvasRef, onToolStepRef, onVisualZoomChangeRef, zoomRef]);
 }

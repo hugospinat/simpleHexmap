@@ -8,6 +8,7 @@ The codebase handles map tiles, terrain, features, roads, rivers, factions, fog 
 Core concepts used across the project:
 
 - MapState model: hex cells and per-level map data.
+- Shared document codec: persisted `SavedMapContent` parsing lives in `src/core/document` and is used by both client and server.
 - Incremental operations: map edits are represented as operations, not full world replacements.
 - Rendering pipeline: PixiJS scene cache, active render window, overlays, roads/rivers, and feature visuals are drawn separately.
 - Visibility model: GM mode and player mode differ, especially for hidden cells.
@@ -50,6 +51,7 @@ Core concepts used across the project:
 - Persist safely (atomic writes and clear failure handling where practical).
 - Avoid unnecessary framework complexity.
 - Keep map updates incremental where appropriate.
+- Use `src/core/document/savedMapCodec.ts` for persisted map normalization instead of duplicating server-only compatibility checks.
 - Broadcast authoritative updates in a form clients can apply deterministically.
 
 ## Code quality rules

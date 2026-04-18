@@ -31,7 +31,7 @@ export function commandPaintTerrain(
         q: target.q,
         r: target.r,
         terrain: terrainType,
-        hidden: current?.hidden ?? false
+        hidden: current?.hidden ?? true
       }
     });
   }

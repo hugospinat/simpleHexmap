@@ -1,23 +1,27 @@
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { parseSavedMapContent } from "../../src/core/document/savedMapCodec.js";
+import { normalizeMapPermissions, type MapPermissions } from "../../src/core/profile/profileTypes.js";
 
 export const mapIdPatternSource = "[a-zA-Z0-9_-]{1,64}";
 
 const mapsDir = path.resolve(process.cwd(), "data/maps");
 const mapIdPattern = new RegExp(`^${mapIdPatternSource}$`);
+const legacyOwnerProfileId = "legacy-owner";
 
 export const defaultMapContent = {
   version: 1,
-  tiles: [{ q: 0, r: 0, terrain: "plain", hidden: false }],
+  tiles: [{ q: 0, r: 0, terrain: "plain", hidden: true }],
   features: [],
   rivers: [],
   roads: [],
   factions: [],
-  factionTerritories: []
+  factionTerritories: [],
+  tokens: []
 };
 
-export function isObject(value) {
+export function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
@@ -30,51 +34,28 @@ export function sanitizeName(value) {
   return trimmed ? trimmed.slice(0, 120) : "Untitled map";
 }
 
-export function isValidMapContent(value) {
-  if (!isObject(value)) {
-    return false;
-  }
-
-  return (
-    typeof value.version === "number"
-    && Array.isArray(value.tiles)
-    && Array.isArray(value.features)
-    && Array.isArray(value.rivers)
-    && Array.isArray(value.factions)
-    && Array.isArray(value.factionTerritories)
-  );
+export function normalizeMapContent(content) {
+  return parseSavedMapContent(content);
 }
 
-export function normalizeMapContent(content) {
-  const roads = Array.isArray(content.roads) ? content.roads : [];
-
+export function createDefaultMapPermissions(ownerProfileId: string): MapPermissions {
   return {
-    version: content.version,
-    tiles: Array.isArray(content.tiles)
-      ? content.tiles.map((tile) => {
-          const terrain = typeof tile.terrain === "string" ? tile.terrain : tile.tileId;
-
-          return {
-            ...tile,
-            terrain,
-            hidden: typeof tile.hidden === "boolean" ? tile.hidden : false
-          };
-        })
-      : [],
-    features: Array.isArray(content.features)
-      ? content.features.map((feature, index) => ({
-          ...feature,
-          kind: typeof feature.kind === "string" ? feature.kind : feature.type,
-          id: typeof feature.id === "string" && feature.id.trim()
-            ? feature.id
-            : `loaded-feature-${index}-${feature.q}-${feature.r}`
-        }))
-      : [],
-    rivers: Array.isArray(content.rivers) ? content.rivers : [],
-    roads,
-    factions: Array.isArray(content.factions) ? content.factions : [],
-    factionTerritories: Array.isArray(content.factionTerritories) ? content.factionTerritories : []
+    ownerProfileId,
+    gmProfileIds: []
   };
+}
+
+export function normalizeMapPermissionsFromInput(input: unknown, fallbackOwnerProfileId = legacyOwnerProfileId): MapPermissions {
+  if (!isObject(input) || typeof input.ownerProfileId !== "string" || !input.ownerProfileId.trim()) {
+    return createDefaultMapPermissions(fallbackOwnerProfileId);
+  }
+
+  return normalizeMapPermissions({
+    ownerProfileId: input.ownerProfileId,
+    gmProfileIds: Array.isArray(input.gmProfileIds)
+      ? input.gmProfileIds.filter((profileId): profileId is string => typeof profileId === "string" && profileId.trim().length > 0)
+      : []
+  });
 }
 
 export function mapPathFromId(mapId) {
@@ -101,11 +82,11 @@ export async function ensureStorage() {
   await fs.mkdir(mapsDir, { recursive: true });
 }
 
-export async function readMapFromFile(filePath) {
+export async function readMapFromFile(filePath, fallbackOwnerProfileId = legacyOwnerProfileId) {
   const text = await fs.readFile(filePath, "utf8");
   const parsed = JSON.parse(text);
 
-  if (!isObject(parsed) || typeof parsed.id !== "string" || typeof parsed.name !== "string" || typeof parsed.updatedAt !== "string" || !isValidMapContent(parsed.content)) {
+  if (!isObject(parsed) || typeof parsed.id !== "string" || typeof parsed.name !== "string" || typeof parsed.updatedAt !== "string") {
     throw new Error("Invalid map file format.");
   }
 
@@ -113,11 +94,12 @@ export async function readMapFromFile(filePath) {
     id: parsed.id,
     name: parsed.name,
     updatedAt: parsed.updatedAt,
+    permissions: normalizeMapPermissionsFromInput(parsed.permissions, fallbackOwnerProfileId),
     content: normalizeMapContent(parsed.content)
   };
 }
 
-export async function readDiskMap(mapId) {
+export async function readDiskMap(mapId, fallbackOwnerProfileId = legacyOwnerProfileId) {
   const filePath = mapPathFromId(mapId);
 
   if (!filePath) {
@@ -125,7 +107,7 @@ export async function readDiskMap(mapId) {
   }
 
   try {
-    return await readMapFromFile(filePath);
+    return await readMapFromFile(filePath, fallbackOwnerProfileId);
   } catch {
     return null;
   }
@@ -186,7 +168,7 @@ export async function listDiskMapSummaries() {
 
     try {
       const map = await readMapFromFile(fullPath);
-      summaries.push({ id: map.id, name: map.name, updatedAt: map.updatedAt });
+      summaries.push({ id: map.id, name: map.name, permissions: map.permissions, updatedAt: map.updatedAt });
     } catch {
       // Ignore malformed files.
     }

@@ -1,0 +1,27 @@
+services:
+  simple-hexmap:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: simple-hexmap:latest
+    container_name: simple-hexmap
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 8787
+    expose:
+      - "8787"
+    # Uncomment this if your Caddy runs on the host instead of the Docker network.
+    # ports:
+    #   - "127.0.0.1:8787:8787"
+    volumes:
+      - simple_hexmap_data:/app/data
+    networks:
+      - caddy
+
+volumes:
+  simple_hexmap_data:
+
+networks:
+  caddy:
+    external: true

@@ -110,7 +110,7 @@ export function addTile(world: MapState, level: number, axial: Axial, type: Terr
 
   const nextLevel = new Map(getStoredLevelMap(world, level));
   nextLevel.set(key, {
-    hidden: current?.hidden ?? false,
+    hidden: current?.hidden ?? true,
     type
   });
 

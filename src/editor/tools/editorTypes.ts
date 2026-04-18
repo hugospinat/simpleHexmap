@@ -1,1 +1,3 @@
-export type EditorMode = "terrain" | "feature" | "river" | "road" | "faction" | "fog";
+export const editorModeOrder = ["terrain", "feature", "river", "road", "faction", "fog"] as const;
+
+export type EditorMode = (typeof editorModeOrder)[number];

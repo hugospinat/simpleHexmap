@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { editorConfig } from "@/config/editorConfig";
-import type { EditorMode } from "@/editor/tools/editorTypes";
+import { editorModeOrder, type EditorMode } from "@/editor/tools/editorTypes";
 import type { ViewerRole } from "@/ui/components/MapMenu/MapMenu";
 import { useKeyboardNavigation } from "@/editor/hooks/useKeyboardNavigation";
 import {
@@ -39,6 +39,7 @@ import {
 import {
   getFactionById,
   getFactions,
+  getLevelMap,
   type RiverEdgeRef,
   type TerrainType,
   type MapState
@@ -53,7 +54,6 @@ import { getInteractionLabel } from "@/editor/presentation/interactionLabels";
 import {
   commandAddFeature,
   commandRemoveFeature,
-  commandToggleFeatureHiddenAt,
   commandUpdateFeature
 } from "@/core/map/commands/mapEditCommands";
 import {
@@ -64,10 +64,12 @@ import {
   takeUndoOperations
 } from "@/core/map/history/mapOperationHistory";
 import type { MapOperation } from "@/core/protocol";
+import type { ProfileRecord } from "@/core/profile/profileTypes";
 
 type UseEditorControllerOptions = {
   initialWorld: MapState;
   mapId: string;
+  profile: ProfileRecord;
   role: ViewerRole;
 };
 
@@ -78,7 +80,7 @@ type ActiveEditorGesture =
   | { kind: "road"; gesture: RoadGesture; worldBefore: MapState }
   | { kind: "fog"; gesture: FogGesture; worldBefore: MapState };
 
-export function useEditorController({ initialWorld, mapId, role }: UseEditorControllerOptions) {
+export function useEditorController({ initialWorld, mapId, profile, role }: UseEditorControllerOptions) {
   const maxLevels = editorConfig.maxLevels;
   const appRef = useRef<HTMLElement | null>(null);
   const { changeLevelByDelta, changeVisualZoom, setCenter, view, visualZoom } = useCamera();
@@ -90,6 +92,13 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
   const [showCoordinates, setShowCoordinates] = useState(false);
   const [hoveredHex, setHoveredHex] = useState<Axial | null>(null);
+  const [playerTokenColor, setPlayerTokenColorState] = useState(() => {
+    try {
+      return window.localStorage.getItem("simplehex:token-color") ?? "#2f6fed";
+    } catch {
+      return "#2f6fed";
+    }
+  });
   const activeGestureRef = useRef<ActiveEditorGesture | null>(null);
   const operationHistoryRef = useRef(createOperationHistoryState());
   const featureIdRef = useRef(0);
@@ -106,13 +115,16 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
   const {
     acknowledgeRenderWorldPatch,
     commitLocalOperations,
+    mapTokens,
     renderWorldPatch,
+    sendTokenOperation,
     syncStatus,
     visibleWorld
   } = useMapSocketSync({
     clearPreview: clearToolPreview,
     initialWorld,
-    mapId
+    mapId,
+    profileId: profile.id
   });
 
   const world = visibleWorld;
@@ -138,6 +150,54 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
     [commitLocalOperations, visibleWorld]
   );
 
+  const setPlayerTokenColor = useCallback((color: string) => {
+    setPlayerTokenColorState(color);
+
+    try {
+      window.localStorage.setItem("simplehex:token-color", color);
+    } catch {
+      // Ignore storage failures; the selected color still works for this session.
+    }
+
+    const existingToken = mapTokens.find((token) => token.profileId === profile.id);
+
+    if (existingToken) {
+      sendTokenOperation({
+        type: "set_map_token",
+        token: {
+          ...existingToken,
+          color
+        }
+      });
+    }
+  }, [mapTokens, profile.id, sendTokenOperation]);
+
+  const placePlayerToken = useCallback((axial: Axial) => {
+    if (role !== "player") {
+      return;
+    }
+
+    if (view.level !== SOURCE_LEVEL) {
+      return;
+    }
+
+    const cell = getLevelMap(visibleWorld, view.level).get(hexKey(axial));
+
+    if (!cell || cell.hidden) {
+      return;
+    }
+
+    sendTokenOperation({
+      type: "set_map_token",
+      token: {
+        profileId: profile.id,
+        q: axial.q,
+        r: axial.r,
+        color: playerTokenColor
+      }
+    });
+  }, [playerTokenColor, profile.id, role, sendTokenOperation, view.level, visibleWorld]);
+
   const undoLastOperationBatch = useCallback(() => {
     if (!canEdit) {
       return;
@@ -149,7 +209,6 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
       commitLocalOperations(operations);
     }
   }, [canEdit, commitLocalOperations]);
-
   const redoLastOperationBatch = useCallback(() => {
     if (!canEdit) {
       return;
@@ -358,28 +417,12 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
       }
 
       if (activeMode === "fog") {
-        if (action === "paint") {
-          activeGestureRef.current = {
-            kind: "fog",
-            gesture: createFogGesture(visibleWorld, view.level),
-            worldBefore: visibleWorld
-          };
-          applyActiveGestureCells(axials);
-          return;
-        }
-
-        const axial = axials[0];
-
-        if (!axial) {
-          return;
-        }
-
-        const result = commandToggleFeatureHiddenAt(visibleWorld, view.level, axial);
-
-        if (result.operations.length > 0) {
-          submitLocalOperations(result.operations);
-        }
-
+        activeGestureRef.current = {
+          kind: "fog",
+          gesture: createFogGesture(action === "paint" ? "paint" : "erase", visibleWorld, view.level),
+          worldBefore: visibleWorld
+        };
+        applyActiveGestureCells(axials);
         return;
       }
 
@@ -469,16 +512,22 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
     }
   }, [canEdit]);
 
+  const changeToolByDelta = useCallback((delta: 1 | -1) => {
+    if (!canEdit) {
+      return;
+    }
+
+    const currentIndex = editorModeOrder.indexOf(activeMode);
+    const nextIndex = (currentIndex + delta + editorModeOrder.length) % editorModeOrder.length;
+    changeMode(editorModeOrder[nextIndex]);
+  }, [activeMode, canEdit, changeMode]);
+
   const clearSelectedFeature = useCallback(() => {
     setSelectedFeatureId(null);
   }, []);
 
-  const updateSelectedFeature = useCallback(
-    (
-      updates: Partial<
-        Pick<Feature, "gmLabel" | "hidden" | "kind" | "labelRevealed" | "overrideTerrainTile" | "playerLabel">
-      >
-    ) => {
+  const updateSelectedFeatureLabels = useCallback(
+    (updates: Partial<Pick<Feature, "gmLabel" | "hidden" | "overrideTerrainTile" | "playerLabel">>) => {
       if (!canEdit || !selectedFeatureId) {
         return;
       }
@@ -491,29 +540,6 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
     },
     [canEdit, visibleWorld, selectedFeatureId, submitLocalOperations, view.level]
   );
-
-  const deleteSelectedFeature = useCallback(() => {
-    if (!canEdit) {
-      return;
-    }
-
-    if (!selectedFeature) {
-      return;
-    }
-
-    if (view.level !== SOURCE_LEVEL) {
-      setSelectedFeatureId(null);
-      return;
-    }
-
-    const result = commandRemoveFeature(visibleWorld, selectedFeature.id);
-
-    if (result.operations.length > 0) {
-      submitLocalOperations(result.operations);
-    }
-
-    setSelectedFeatureId(null);
-  }, [canEdit, visibleWorld, selectedFeature, submitLocalOperations, view.level]);
 
   useEffect(() => {
     if (selectedFeatureId && !selectedFeature) {
@@ -584,10 +610,13 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
     level: view.level,
     onRenderWorldPatchApplied: acknowledgeRenderWorldPatch,
     previewOperations: toolPreviewOperations,
+    mapTokens,
+    onToolStep: canEdit ? changeToolByDelta : undefined,
     role,
     renderWorldPatch,
     setCenter,
     setHoveredHex,
+    onPlayerTokenPlace: placePlayerToken,
     showCoordinates,
     startEditGesture,
     startRiverGesture,
@@ -602,12 +631,13 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
     activeType,
     factions,
     hoveredHex,
+    mapTokens,
+    playerTokenColor,
     selectedFeature,
     appRef,
     canvasProps,
     chooseFeatureKind,
     clearSelectedFeature,
-    deleteSelectedFeature,
     deleteFaction,
     maxLevels,
     selectedFeatureId,
@@ -615,11 +645,12 @@ export function useEditorController({ initialWorld, mapId, role }: UseEditorCont
     renameFaction,
     recolorFaction,
     selectFaction: setActiveFactionId,
+    setPlayerTokenColor,
     setActiveMode: changeMode,
     setActiveType,
     syncStatus,
     redoLastOperationBatch,
-    updateSelectedFeature,
+    updateSelectedFeatureLabels,
     undoLastOperationBatch,
     view,
     visualZoom
