@@ -4,7 +4,7 @@ import type { RiverEdgeRef, MapState } from "@/core/map/world";
 import type { FeatureVisibilityMode } from "@/core/map/features";
 import type { EditGestureAction } from "@/editor/tools/editGesture";
 import type { EditorMode } from "@/editor/tools/editorTypes";
-import type { HexCanvasProps } from "@/ui/components/MapCanvas/types";
+import type { MapCanvasProps } from "@/ui/components/MapCanvas/types";
 import type { RenderWorldPatch } from "@/render/renderWorldPatch";
 import type { MapOperation } from "@/core/protocol";
 
@@ -56,7 +56,7 @@ export function useEditorCanvasProps({
   startRiverGesture,
   visualZoom,
   world
-}: UseEditorCanvasPropsOptions): HexCanvasProps {
+}: UseEditorCanvasPropsOptions): MapCanvasProps {
   return useMemo(
     () => ({
       center,

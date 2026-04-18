@@ -6,7 +6,7 @@ import { useCanvasWheelZoom } from "@/editor/hooks/useCanvasWheelZoom";
 import { useMapInteraction } from "@/editor/hooks/useMapInteraction";
 import { createPixiMapRenderer, type PixiMapRenderer } from "@/render/pixi/pixiMapRenderer";
 import type { MapInteractionOverlay, PixiRenderStats } from "@/render/pixi/pixiTypes";
-import type { HexCanvasProps } from "@/ui/components/MapCanvas/types";
+import type { MapCanvasProps } from "@/ui/components/MapCanvas/types";
 import type { MapLevel } from "@/core/map/mapRules";
 
 function isMapRenderDebugEnabled(): boolean {
@@ -21,7 +21,7 @@ function isMapRenderDebugEnabled(): boolean {
   }
 }
 
-export default function PixiHexCanvas({
+export default function MapCanvas({
   world,
   renderWorldPatch,
   previewOperations,
@@ -45,7 +45,7 @@ export default function PixiHexCanvas({
   onRiverGestureEnd,
   onHoveredHexChange,
   onRenderWorldPatchApplied
-}: HexCanvasProps) {
+}: MapCanvasProps) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<PixiMapRenderer | null>(null);

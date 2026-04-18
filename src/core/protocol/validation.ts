@@ -1,7 +1,6 @@
 import type { MapOperation } from "./types.js";
 import {
   getRoadEdgeBetween,
-  getTileOperationTerrain,
   isHexColor,
   isInteger,
   isObject,
@@ -19,14 +18,13 @@ export function validateMapOperation(operation: unknown): string | null {
 
   if (candidate.type === "set_tile") {
     const tile = candidate.tile;
-    const terrain = isObject(tile) ? getTileOperationTerrain(tile) : null;
 
     if (
       !isObject(tile)
       || !isInteger(tile.q)
       || !isInteger(tile.r)
       || typeof tile.hidden !== "boolean"
-      || (terrain === null && tile.terrain !== null && tile.tileId !== null)
+      || (tile.terrain !== null && typeof tile.terrain !== "string")
     ) {
       return "Invalid set_tile operation.";
     }
@@ -46,13 +44,8 @@ export function validateMapOperation(operation: unknown): string | null {
 
   if (candidate.type === "add_feature") {
     const feature = candidate.feature;
-    const kind = isObject(feature) && typeof feature.kind === "string"
-      ? feature.kind
-      : isObject(feature) && typeof feature.type === "string"
-        ? feature.type
-        : null;
 
-    if (!isObject(feature) || typeof feature.id !== "string" || !isInteger(feature.q) || !isInteger(feature.r) || typeof kind !== "string") {
+    if (!isObject(feature) || typeof feature.id !== "string" || !isInteger(feature.q) || !isInteger(feature.r) || typeof feature.kind !== "string") {
       return "Invalid add_feature operation.";
     }
 

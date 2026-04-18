@@ -1,13 +1,10 @@
-import HexCanvas from "./HexCanvas";
-import PixiHexCanvas from "./PixiHexCanvas";
-import type { HexCanvasProps } from "./types";
+import MapCanvas from "./MapCanvas";
+import type { MapCanvasProps } from "./types";
 
-export function MapPane(props: HexCanvasProps) {
-  const renderer = import.meta.env.VITE_RENDERER ?? "pixi";
-
+export function MapPane(props: MapCanvasProps) {
   return (
     <section className="map-pane" aria-label="Map view">
-      {renderer === "pixi" ? <PixiHexCanvas {...props} /> : <HexCanvas {...props} />}
+      <MapCanvas {...props} />
     </section>
   );
 }

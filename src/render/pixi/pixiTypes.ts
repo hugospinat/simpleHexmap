@@ -1,15 +1,12 @@
-import type { Application, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
+import type { Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import type { Axial, HexId, Pixel } from "@/core/geometry/hex";
 import type { FeatureVisibilityMode } from "@/core/map/features";
 import type { MapLevel } from "@/core/map/mapRules";
-import type { HexCell, MapState, MapStateVersions, RiverEdgeRef, RiverEdgeSet } from "@/core/map/worldTypes";
+import type { HexCell, MapState, RiverEdgeRef, RiverEdgeSet } from "@/core/map/worldTypes";
 import type { Feature } from "@/core/map/features";
 import type { RoadEdgeSet } from "@/core/map/roads";
-import type { MapOperation } from "@/core/protocol/types";
 import type { RenderWorldPatch } from "@/render/renderWorldPatch";
 import type { RenderCell, RenderStats, Viewport } from "@/render/renderTypes";
-
-export type RendererBackend = "canvas" | "pixi";
 
 export type PixiLayerTimings = {
   background?: number;
@@ -34,12 +31,6 @@ export type PixiRenderStats = RenderStats & {
   sceneUpdateMs?: number;
   spriteCount: number;
   visibleCellCount: number;
-};
-
-export type PixiRenderBaseOptions = {
-  featureVisibilityMode: FeatureVisibilityMode;
-  fogEditingActive: boolean;
-  showCoordinates: boolean;
 };
 
 export type PixiRenderOverlayOptions = {
@@ -108,23 +99,6 @@ export type PixiSceneRenderFrame = {
   world: MapState;
 };
 
-export type MapRendererAdapter = {
-  destroy: () => void;
-  resize: (width: number, height: number, devicePixelRatio: number) => void;
-  clearPreview: () => PixiRenderStats;
-  setCamera: (camera: PixiCameraState) => PixiRenderStats;
-  setOverlay: (overlay: MapInteractionOverlay, options: PixiRenderOverlayOptions) => PixiRenderStats;
-  setPreviewOperations: (operations: readonly MapOperation[]) => PixiRenderStats;
-  setWorld: (world: MapState, patch?: RenderWorldPatch) => PixiRenderStats;
-};
-
-export type LayerInvalidationKey = {
-  level: number;
-  mapVersions: MapStateVersions;
-  visibilityMode: FeatureVisibilityMode;
-  visibleCellHash: string;
-};
-
 export type PixiAssetCatalog = {
   fallbackTextures: Map<string, Texture>;
   featureTerrainOverrideTextures: Map<string, Texture>;
@@ -141,19 +115,6 @@ export type PixiObjectPools = {
   roadSprites: SpritePool;
   terrainSprites: SpritePool;
   previewTerrainSprites: SpritePool;
-};
-
-export type PixiLayerContext = {
-  app: Application;
-  assets: PixiAssetCatalog;
-  camera: Container;
-  pools: PixiObjectPools;
-};
-
-export type PixiLayer<TInput> = {
-  clear: () => void;
-  destroy: () => void;
-  update: (input: TInput, context: PixiLayerContext) => Partial<PixiRenderStats>;
 };
 
 export type PixiStageLayers = {

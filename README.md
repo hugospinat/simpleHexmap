@@ -1,6 +1,6 @@
 # Hexmap Editor
 
-Hexmap Editor est une application React/TypeScript pour créer, éditer, sauvegarder et synchroniser des cartes hexagonales. Le projet contient un client Vite/React, un serveur Node/WebSocket, un modèle de carte pur, une couche de protocole partagée, un pipeline de rendu canvas et des outils d'édition interactifs.
+Hexmap Editor est une application React/TypeScript pour créer, éditer, sauvegarder et synchroniser des cartes hexagonales. Le projet contient un client Vite/React, un serveur Node/WebSocket, un modèle de carte pur, une couche de protocole partagée, un renderer PixiJS et des outils d'édition interactifs.
 
 Ce README sert de guide d'entrée dans la codebase. Il explique les dossiers, les responsabilités, les flux principaux et les règles d'architecture à respecter.
 
@@ -55,7 +55,7 @@ Action utilisateur
   -> serveur applique sur SavedMapContent
   -> serveur diffuse les operations ordonnees
   -> client applique les operations recues au MapState autoritatif
-  -> rendu canvas depuis MapRenderFrame
+  -> rendu PixiJS depuis le cache de scene et la fenetre active
 ```
 
 Le principe le plus important: les intentions d'édition, les mutations réseau, l'état runtime, le format disque et la projection de rendu sont des concepts séparés.
@@ -83,7 +83,7 @@ src/
     presentation/ Libellés et texte d'interaction.
 
   render/
-    Pipeline de rendu canvas: frame, transform, couches terrain/features/routes/etc.
+    Rendu PixiJS, assets visuels, previews canvas de palettes et primitives de dessin.
 
   assets/
     Registres d'assets terrain/features/routes.
@@ -114,7 +114,7 @@ Les responsabilités attendues:
 - `core`: logique pure, déterministe, testable sans navigateur.
 - `app`: intégration client avec HTTP, WebSocket, fichiers et documents.
 - `editor`: état React et interactions utilisateur.
-- `render`: projection visuelle et dessin canvas.
+- `render`: projection visuelle, scene PixiJS, assets et dessin des previews.
 - `ui`: composants sans logique métier profonde.
 - `server`: persistance disque, sessions, HTTP, WebSocket et diffusion.
 
@@ -283,21 +283,21 @@ Responsabilités:
 - parser le JSON persistant,
 - préserver la compatibilité legacy,
 - convertir `MapState <-> SavedMapContent`,
-- exposer des façades d'application d'operations.
+- garder la frontiere document distincte du protocole et du `MapState`.
 
 Fichiers clés:
 
 - `savedMapCodec.ts`: parse et normalise le contenu sauvegardé.
 - `worldMapCodec.ts`: conversion runtime/persistant.
 - `mapFile.ts`: import/export fichier navigateur.
-- `savedMapOperations.ts`: application d'operations au contenu sauvegardé.
-- `worldMapOperations.ts`: application d'operations au `MapState`.
-- `mapOperations.ts`: façade pratique pour les deux appliers.
+- `savedMapCodec.ts`: compatibilite vieux fichiers uniquement.
+- Les appliers d'operations vivent dans `core/protocol/contentOperations.ts` pour `SavedMapContent` et `core/map/worldOperationApplier.ts` pour `MapState`.
 
-Compatibilité legacy:
+Compatibilité legacy fichier uniquement:
 
-- `tileId` est encore accepté et normalisé vers `terrain`.
-- `feature.type` est encore accepté et normalisé vers `kind`.
+- `tileId` est encore accepté dans les fichiers importés et normalisé vers `terrain`.
+- `feature.type` est encore accepté dans les fichiers importés et normalisé vers `kind`.
+- Le protocole live `MapOperation` n'accepte plus ces formes legacy.
 
 ### Sync client
 
@@ -363,7 +363,7 @@ Le contrat général:
 begin gesture
   -> update gesture with cells/edges
   -> collect MapOperation[]
-  -> preview MapState
+  -> preview operations in Pixi overlay
   -> finish gesture
   -> send operations through sync
 ```
@@ -387,48 +387,59 @@ Ce hook est l'adapter entre les événements canvas et l'intention editor:
 
 Chemin principal: `src/render`.
 
-Le rendu suit trois niveaux:
+Le rendu principal utilise PixiJS et suit quatre niveaux:
 
 ```text
 MapState
   -> MapLevelView
-  -> MapRenderFrame
-  -> couches canvas
+  -> PixiMapSceneCache
+  -> PixiActiveRenderWindow
+  -> couches PixiJS
 ```
 
-`MapRenderFrame` ajoute aux données logiques:
+`PixiMapSceneCache` garde une projection renderable multi-niveau:
 
-- transform écran/carte,
-- cellules visibles,
-- clés visibles,
-- cellules cachées,
-- visibilité GM/player,
-- hover et highlight.
+- donnees terrain/features/factions/routes/rivieres par niveau,
+- index spatial par cellule,
+- versions de `MapState`,
+- patch par `MapOperation[]` quand c'est possible,
+- rebuild lazy d'un niveau seulement quand il devient stale.
 
-`mapRenderer.ts` orchestre les couches:
+`PixiActiveRenderWindow` limite les objets Pixi actifs:
 
-1. fond terrain,
-2. frontières,
-3. rivières,
-4. détails terrain et labels,
-5. overlays faction,
+- recalcul seulement quand la caméra sort de la marge,
+- pan/zoom par transformation du container caméra,
+- hover/preview dans des couches séparées.
+
+`pixiMapRenderer.ts` orchestre les couches:
+
+1. fond,
+2. terrain,
+3. frontières,
+4. rivières,
+5. factions,
 6. routes,
-7. brouillard GM,
-8. hover rivière,
-9. features.
+7. features,
+8. overlay hover/sélection,
+9. preview d'édition.
 
 Les couches sont spécialisées:
 
-- `terrainRenderer.ts`
-- `boundaryRenderer.ts`
-- `riverRenderer.ts`
-- `roadRenderer.ts`
-- `factionRenderer.ts`
-- `featureLayer.ts`
+- `pixiTerrainLayer.ts`
+- `pixiBoundaryLayer.ts`
+- `pixiRiverLayer.ts`
+- `pixiRoadLayer.ts`
+- `pixiFactionLayer.ts`
+- `pixiFeatureLayer.ts`
+- `pixiOverlayLayer.ts`
+- `pixiPreviewLayer.ts`
+
+Les anciens renderers Canvas de carte ont été supprimés. Les modules Canvas restants servent aux previews de palette ou aux primitives partagées:
+
 - `featurePreview.ts`
 - `tileVisuals.ts`
 
-Le contrat `RenderLayer` existe dans `renderLayer.ts`, mais le rendu reste volontairement simple: pas de graphe de scène ni hiérarchie de classes.
+Le rendu reste volontairement simple: pas de hiérarchie de classes ni scene graph maison au-dessus de PixiJS.
 
 ## Assets
 
@@ -457,7 +468,7 @@ Composants principaux:
 
 - `MapMenu`: liste, création, import, export et ouverture des cartes.
 - `MapPane`: zone principale de carte.
-- `HexCanvas`: canvas et branchement du hook d'interaction.
+- `MapCanvas`: canvas PixiJS et branchement du hook d'interaction.
 - `Sidebar`: palettes et outils GM.
 - `FeatureInspector`: édition metadata des features.
 - `BottomBar`: coordonnées, niveau, zoom.
@@ -524,7 +535,7 @@ Tests importants:
 - `src/core/map/commands/mapEditCommands.test.ts`: commandes d'édition.
 - `src/core/map/history/mapOperationHistory.test.ts`: undo/redo par operations.
 - `src/app/document/savedMapCodec.test.ts`: format persistant et compat legacy.
-- `src/app/document/mapOperations.test.ts`: parité world/saved-map appliers.
+- `src/app/document/operationApplierParity.test.ts`: parité `MapState`/`SavedMapContent` appliers.
 - `src/app/sync/*test.ts`: queue, pending ops et session sync.
 - `src/render/*test.ts`: rendu, transform et visibilité.
 - `server/mapContent.test.ts`: validation/application serveur.
@@ -580,7 +591,7 @@ Feature:
 2. Ajouter le label et les règles d'override terrain si besoin.
 3. Ajouter l'asset dans `src/assets/features`.
 4. Mettre à jour `featureAssets.ts`.
-5. Vérifier le rendu dans `featureLayer.ts` et `featurePreview.ts`.
+5. Vérifier le rendu dans `src/render/pixi/pixiFeatureLayer.ts` et les previews dans `featurePreview.ts`.
 
 ## Conventions importantes
 
@@ -589,7 +600,7 @@ Feature:
 - Préférer `MapEditCommand` pour les intentions utilisateur.
 - Préférer `MapOperation` pour la synchronisation et les mutations partagées.
 - Préférer `MapLevelView` pour lire une projection de niveau.
-- Préférer `MapRenderFrame` pour dessiner.
+- Préférer `PixiMapSceneCache` et `PixiActiveRenderWindow` pour le rendu carte.
 - Ne pas mélanger `MapState` et `SavedMapContent`.
 - Ne pas renommer les variantes `MapOperation.type` sans migration.
 - Garder les hooks React dans `editor` ou `app`, jamais dans `core`.
@@ -634,7 +645,9 @@ localStorage.removeItem("hexmap:sync-debug")
 
 `MapLevelView`: projection logique d'une carte pour un niveau.
 
-`MapRenderFrame`: projection prête à dessiner dans un frame canvas.
+`PixiMapSceneCache`: projection renderable multi-niveau utilisée par le renderer PixiJS.
+
+`PixiActiveRenderWindow`: fenêtre active de cellules dont les objets Pixi doivent exister.
 
 `SOURCE_LEVEL`: niveau source éditable directement.
 
@@ -649,7 +662,7 @@ Lecture recommandée:
 3. `src/editor/hooks/useEditorController.ts`: orchestration de l'éditeur.
 4. `src/core/map/commands/mapEditCommands.ts`: point d'entrée des commandes.
 5. `src/app/sync/useMapSocketSync.ts`: synchronisation client.
-6. `src/render/mapRenderer.ts`: pipeline de rendu.
+6. `src/render/pixi/pixiMapRenderer.ts`: pipeline de rendu PixiJS.
 7. `server/src/wsRoutes.ts` puis `server/src/operationService.ts`: sync serveur.
 8. `src/core/protocol/types.ts`: contrat partagé.
 

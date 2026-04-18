@@ -1,4 +1,4 @@
-import type { MapOperation } from "@/app/document/mapOperations";
+import type { MapOperation } from "@/core/protocol";
 import type { SavedMapContent } from "@/app/document/savedMapTypes";
 import { parseSavedMapContent } from "@/app/document/savedMapCodec";
 import { buildApiUrl } from "@/app/api/apiBase";

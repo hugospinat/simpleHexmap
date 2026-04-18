@@ -8,7 +8,7 @@ import {
   getRoadLevelMap
 } from "@/core/map/world";
 import { serializeWorld } from "@/app/document/worldMapCodec";
-import { applyMapOperationToWorld } from "@/app/document/mapOperations";
+import { applyMapOperationToWorld } from "@/core/map/worldOperationApplier";
 import {
   commandAddRoadConnection,
   commandAssignFaction,

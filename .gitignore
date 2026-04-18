@@ -13,6 +13,7 @@ Thumbs.db
 
 # Build output
 dist/
+server/dist/
 build/
 out/
 

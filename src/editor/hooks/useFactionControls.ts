@@ -1,5 +1,5 @@
 import { useCallback, useRef } from "react";
-import type { MapOperation } from "@/app/document/mapOperations";
+import type { MapOperation } from "@/core/protocol";
 import {
   commandAddFaction,
   commandRemoveFaction,

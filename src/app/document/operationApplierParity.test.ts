@@ -9,7 +9,8 @@ import {
   createEmptyWorld,
   type MapState
 } from "@/core/map/world";
-import { applyMapOperation, applyMapOperations, applyMapOperationToWorld, type MapOperation } from "@/app/document/mapOperations";
+import { applyMapOperation, applyMapOperations, type MapOperation } from "@/core/protocol";
+import { applyMapOperationToWorld } from "@/core/map/worldOperationApplier";
 import { deserializeWorld, serializeWorld } from "@/app/document/worldMapCodec";
 
 function createSampleWorld(): MapState {

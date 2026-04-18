@@ -76,8 +76,8 @@ export function normalizeRoad(road: MapRoadRecord): MapRoadRecord {
   };
 }
 
-export function getTileOperationTerrain(tile: { terrain?: string | null; tileId?: string | null }): string | null {
-  return tile.terrain ?? tile.tileId ?? null;
+export function getTileOperationTerrain(tile: { terrain: string | null }): string | null {
+  return tile.terrain;
 }
 
 export function removeFactionTerritory(
@@ -90,10 +90,9 @@ export function removeFactionTerritory(
 
 export function sanitizeFeaturePatch(patch: FeaturePatch): FeaturePatch {
   const next: FeaturePatch = {};
-  const kind = typeof patch.kind === "string" ? patch.kind : patch.type;
 
-  if (typeof kind === "string") {
-    next.kind = kind;
+  if (typeof patch.kind === "string") {
+    next.kind = patch.kind;
   }
   if (patch.visibility === "visible" || patch.visibility === "hidden") {
     next.visibility = patch.visibility;

@@ -57,14 +57,14 @@ export type SavedMapContent = {
 export type FeaturePatch = Partial<Pick<
   MapFeatureRecord,
   "gmLabel" | "kind" | "labelRevealed" | "overrideTerrainTile" | "playerLabel" | "visibility"
->> & { type?: string };
+>>;
 
 export type FactionPatch = Partial<Pick<MapFactionRecord, "color" | "name">>;
 
 export type MapOperation =
-  | { type: "set_tile"; tile: Omit<MapTileRecord, "terrain"> & { terrain: string | null; tileId?: string | null } }
+  | { type: "set_tile"; tile: Omit<MapTileRecord, "terrain"> & { terrain: string | null } }
   | { type: "set_cell_hidden"; cell: { q: number; r: number; hidden: boolean } }
-  | { type: "add_feature"; feature: MapFeatureRecord & { type?: string } }
+  | { type: "add_feature"; feature: MapFeatureRecord }
   | { type: "set_feature_hidden"; featureId: string; hidden: boolean }
   | { type: "update_feature"; featureId: string; patch: FeaturePatch }
   | { type: "remove_feature"; featureId: string }

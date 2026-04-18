@@ -7,9 +7,9 @@ The codebase handles map tiles, terrain, features, roads, rivers, factions, fog 
 
 Core concepts used across the project:
 
-- World model: hex cells and per-level map data.
+- MapState model: hex cells and per-level map data.
 - Incremental operations: map edits are represented as operations, not full world replacements.
-- Rendering pipeline: terrain, overlays, roads/rivers, and feature visuals are drawn separately.
+- Rendering pipeline: PixiJS scene cache, active render window, overlays, roads/rivers, and feature visuals are drawn separately.
 - Visibility model: GM mode and player mode differ, especially for hidden cells.
 - Realtime sync: server-authoritative stream with ordered operation application.
 
@@ -38,7 +38,7 @@ Core concepts used across the project:
 - Apply operations in strict order.
 - Do not re-emit remote operations (avoid feedback loops).
 - Be careful with batching and stale state snapshots.
-- Keep WebSocket/session behavior in `src/app/sync/useMapSync.ts`; editor controllers should send operations and react to sync status, not own socket lifecycle.
+- Keep WebSocket/session behavior in `src/app/sync/useMapSocketSync.ts` and the pure session model in `src/app/sync/mapSyncSession.ts`; editor controllers should send operations and react to sync status, not own socket lifecycle.
 - Prefer correctness first, then optimize.
 - Keep sync debug logging targeted, temporary, and behind a debug flag.
 - Prefer idempotent operation handling and explicit sequence-based flow.
@@ -60,7 +60,7 @@ Core concepts used across the project:
 - Avoid giant files and mixed responsibilities.
 - Refactor when a file starts to mix unrelated concerns.
 - Editor write paths should be command-first: tools and gestures produce explicit `MapOperation` values, then reducers apply those operations to local preview/authoritative worlds.
-- Render paths should use `buildWorldView(world, level)` when they need derived terrain/features/factions/roads/rivers for the same world and level.
+- Render paths should use `MapLevelView` for logical derived map reads. Pixi map rendering should go through `src/render/pixi` scene cache and active window, not rebuild viewport frames on every pan/zoom.
 
 ### File length rule (explicit)
 
@@ -70,7 +70,7 @@ Core concepts used across the project:
   - keep the exception explicit in PR notes or comments,
   - extract one coherent slice in the same or next change,
   - avoid adding unrelated logic to the oversized file.
-- For this repository, `server/index.mjs` is a known oversized file and should be incrementally split by responsibility. Keep `src/editor/hooks/useEditorState.ts` moving toward composition of focused controllers rather than regrowing sync or protocol logic.
+- For this repository, keep `src/editor/hooks/useEditorController.ts`, `src/editor/hooks/useMapInteraction.ts`, `src/app/sync/useMapSocketSync.ts`, and `src/render/pixi/pixiMapRenderer.ts` moving toward composition of focused controllers rather than regrowing mixed responsibilities.
 
 ## UX rules
 

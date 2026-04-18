@@ -5,7 +5,7 @@ import type { RiverEdgeRef, MapState } from "@/core/map/world";
 import type { MapOperation } from "@/core/protocol";
 import type { RenderWorldPatch } from "@/render/renderWorldPatch";
 
-export type HexCanvasProps = {
+export type MapCanvasProps = {
   world: MapState;
   renderWorldPatch?: RenderWorldPatch;
   onRenderWorldPatchApplied?: (revision: number) => void;

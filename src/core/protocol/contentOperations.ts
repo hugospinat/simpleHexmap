@@ -71,15 +71,11 @@ export function applyOperationToSavedMapContent<TSnapshot extends SavedMapConten
         return snapshot;
       }
 
-      const { type, ...feature } = operation.feature;
       return {
         ...snapshot,
         features: [
           ...snapshot.features,
-          {
-            ...feature,
-            kind: feature.kind ?? type
-          }
+          operation.feature
         ]
       };
     }
@@ -325,11 +321,7 @@ export function applyOperationToSavedMapContentIndex(index: SavedMapContentIndex
         return;
       }
 
-      const { type, ...feature } = operation.feature;
-      index.featuresById.set(feature.id, {
-        ...feature,
-        kind: feature.kind ?? type
-      });
+      index.featuresById.set(operation.feature.id, operation.feature);
       return;
     }
     case "set_feature_hidden": {

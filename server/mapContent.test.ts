@@ -54,12 +54,10 @@ describe("server map content operations", () => {
     })).toBe("Invalid add_road_connection operation.");
   });
 
-  it("accepts legacy tileId operations and stores terrain records", () => {
-    const content = applyOperationToContent(createContent(), {
+  it("rejects legacy tileId operations in the live protocol", () => {
+    expect(validateMapOperation({
       type: "set_tile",
       tile: { q: 1, r: 0, tileId: "forest", hidden: false }
-    });
-
-    expect(content.tiles).toContainEqual({ q: 1, r: 0, terrain: "forest", hidden: false });
+    })).toBe("Invalid set_tile operation.");
   });
 });
