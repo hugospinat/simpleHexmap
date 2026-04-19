@@ -1,4 +1,17 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: simple-hexmap-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: simplehex
+      POSTGRES_USER: simplehex
+      POSTGRES_PASSWORD: simplehex
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - caddy
+
   simple-hexmap:
     build:
       context: .
@@ -7,8 +20,11 @@ services:
     container_name: simple-hexmap
     restart: unless-stopped
     environment:
+      DATABASE_URL: postgres://simplehex:simplehex@postgres:5432/simplehex
       NODE_ENV: production
       PORT: 8787
+    depends_on:
+      - postgres
     expose:
       - "8787"
     # Uncomment this if your Caddy runs on the host instead of the Docker network.
@@ -18,6 +34,9 @@ services:
       - ./data:/app/data
     networks:
       - caddy
+
+volumes:
+  postgres-data:
 
 networks:
   caddy:

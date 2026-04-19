@@ -1,0 +1,269 @@
+import { randomBytes, scrypt as scryptCallback, timingSafeEqual, createHash, type ScryptOptions } from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import {
+  createUser,
+  findUserByNormalizedUsername,
+  normalizeUsername,
+  sanitizeUsername,
+  toUserRecord,
+  type DbUser
+} from "../repositories/userRepository.js";
+import {
+  createSession,
+  findActiveSessionByTokenHash,
+  revokeSession,
+  touchSession,
+  type DbSession,
+  sessionDurationMs
+} from "../repositories/sessionRepository.js";
+import type { UserRecord } from "../../../src/core/auth/authTypes.js";
+
+const sessionCookieName = "simplehex_session";
+const passwordKeyLength = 64;
+
+function scryptAsync(password: string, salt: string, keyLength: number, options: ScryptOptions): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    scryptCallback(password, salt, keyLength, options, (error, derivedKey) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(derivedKey);
+    });
+  });
+}
+
+export type AuthContext = {
+  session: DbSession;
+  user: DbUser;
+};
+
+function hashSessionToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function parseCookies(header: string | undefined): Map<string, string> {
+  const cookies = new Map<string, string>();
+
+  if (!header) {
+    return cookies;
+  }
+
+  for (const part of header.split(";")) {
+    const [rawName, ...rawValue] = part.trim().split("=");
+    const name = rawName?.trim();
+
+    if (!name) {
+      continue;
+    }
+
+    cookies.set(name, decodeURIComponent(rawValue.join("=")));
+  }
+
+  return cookies;
+}
+
+function serializeCookie(name: string, value: string, options: {
+  httpOnly?: boolean;
+  maxAge?: number;
+  path?: string;
+  sameSite?: "Lax" | "Strict" | "None";
+  secure?: boolean;
+} = {}): string {
+  const parts = [`${name}=${encodeURIComponent(value)}`];
+
+  if (options.maxAge !== undefined) {
+    parts.push(`Max-Age=${Math.floor(options.maxAge)}`);
+  }
+
+  parts.push(`Path=${options.path ?? "/"}`);
+  parts.push(`SameSite=${options.sameSite ?? "Lax"}`);
+
+  if (options.httpOnly) {
+    parts.push("HttpOnly");
+  }
+
+  if (options.secure) {
+    parts.push("Secure");
+  }
+
+  return parts.join("; ");
+}
+
+function appendSetCookie(response: ServerResponse, cookie: string): void {
+  const previous = response.getHeader("Set-Cookie");
+
+  if (!previous) {
+    response.setHeader("Set-Cookie", cookie);
+    return;
+  }
+
+  if (Array.isArray(previous)) {
+    response.setHeader("Set-Cookie", [...previous, cookie]);
+    return;
+  }
+
+  response.setHeader("Set-Cookie", [String(previous), cookie]);
+}
+
+function isSecureCookie(): boolean {
+  return process.env.NODE_ENV === "production";
+}
+
+function createSessionToken(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+function validateUsername(username: string): string | null {
+  if (username.length < 3 || username.length > 32) {
+    return "Username must be between 3 and 32 characters.";
+  }
+
+  if (!/^[a-zA-Z0-9 _-]+$/.test(username)) {
+    return "Username can only contain letters, numbers, spaces, underscores, and dashes.";
+  }
+
+  return null;
+}
+
+function validatePassword(password: unknown): string | null {
+  if (typeof password !== "string" || password.length < 8) {
+    return "Password must be at least 8 characters.";
+  }
+
+  return null;
+}
+
+export async function hashPassword(password: string): Promise<string> {
+  const salt = randomBytes(16).toString("base64url");
+  const key = await scryptAsync(password, salt, passwordKeyLength, {
+    N: 16384,
+    p: 1,
+    r: 8
+  });
+
+  return `scrypt$16384$8$1$${salt}$${key.toString("base64url")}`;
+}
+
+export async function verifyPassword(password: string, encoded: string): Promise<boolean> {
+  const [kind, rawN, rawR, rawP, salt, expected] = encoded.split("$");
+
+  if (kind !== "scrypt" || !rawN || !rawR || !rawP || !salt || !expected) {
+    return false;
+  }
+
+  const key = await scryptAsync(password, salt, passwordKeyLength, {
+    N: Number(rawN),
+    p: Number(rawP),
+    r: Number(rawR)
+  });
+  const expectedBuffer = Buffer.from(expected, "base64url");
+
+  return expectedBuffer.length === key.length && timingSafeEqual(expectedBuffer, key);
+}
+
+async function issueSession(response: ServerResponse, userId: string): Promise<void> {
+  const token = createSessionToken();
+  await createSession({
+    tokenHash: hashSessionToken(token),
+    userId
+  });
+  appendSetCookie(response, serializeCookie(sessionCookieName, token, {
+    httpOnly: true,
+    maxAge: sessionDurationMs / 1000,
+    path: "/",
+    sameSite: "Lax",
+    secure: isSecureCookie()
+  }));
+}
+
+export function clearSessionCookie(response: ServerResponse): void {
+  appendSetCookie(response, serializeCookie(sessionCookieName, "", {
+    httpOnly: true,
+    maxAge: 0,
+    path: "/",
+    sameSite: "Lax",
+    secure: isSecureCookie()
+  }));
+}
+
+export async function signupUser(input: unknown, response: ServerResponse): Promise<UserRecord> {
+  const record = typeof input === "object" && input !== null ? input as Record<string, unknown> : {};
+  const username = sanitizeUsername(record.username);
+  const usernameError = validateUsername(username);
+
+  if (usernameError) {
+    throw new Error(usernameError);
+  }
+
+  const passwordError = validatePassword(record.password);
+
+  if (passwordError) {
+    throw new Error(passwordError);
+  }
+
+  const existing = await findUserByNormalizedUsername(normalizeUsername(username));
+
+  if (existing) {
+    throw new Error("Username is already taken.");
+  }
+
+  const user = await createUser({
+    passwordHash: await hashPassword(String(record.password)),
+    username
+  });
+  await issueSession(response, user.id);
+  return toUserRecord(user);
+}
+
+export async function loginUser(input: unknown, response: ServerResponse): Promise<UserRecord> {
+  const record = typeof input === "object" && input !== null ? input as Record<string, unknown> : {};
+  const username = sanitizeUsername(record.username);
+  const password = typeof record.password === "string" ? record.password : "";
+  const user = await findUserByNormalizedUsername(normalizeUsername(username));
+
+  if (!user || !(await verifyPassword(password, user.passwordHash))) {
+    throw new Error("Invalid username or password.");
+  }
+
+  await issueSession(response, user.id);
+  return toUserRecord(user);
+}
+
+export async function getAuthContext(request: IncomingMessage): Promise<AuthContext | null> {
+  const token = parseCookies(request.headers.cookie).get(sessionCookieName);
+
+  if (!token) {
+    return null;
+  }
+
+  const result = await findActiveSessionByTokenHash(hashSessionToken(token));
+
+  if (!result) {
+    return null;
+  }
+
+  await touchSession(result.session.id);
+  return result;
+}
+
+export async function requireAuth(request: IncomingMessage): Promise<AuthContext> {
+  const context = await getAuthContext(request);
+
+  if (!context) {
+    throw new Error("Authentication required.");
+  }
+
+  return context;
+}
+
+export async function logoutUser(request: IncomingMessage, response: ServerResponse): Promise<void> {
+  const context = await getAuthContext(request);
+
+  if (context) {
+    await revokeSession(context.session.id);
+  }
+
+  clearSessionCookie(response);
+}

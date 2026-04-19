@@ -1,115 +1,100 @@
-import { useMemo, useState, type FormEvent } from "react";
-import type { ProfileRecord } from "@/core/profile/profileTypes";
+import { useState, type FormEvent } from "react";
 
 type LoginScreenProps = {
   errorMessage: string | null;
   isBusy: boolean;
-  profiles: ProfileRecord[];
-  storedProfileId: string | null;
-  onCreateProfile: (username: string) => Promise<void>;
-  onSelectProfile: (profile: ProfileRecord) => Promise<void>;
+  onLogin: (username: string, password: string) => Promise<void>;
+  onSignup: (username: string, password: string) => Promise<void>;
 };
-
-function formatProfileDate(value: string): string {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleString();
-}
 
 export function LoginScreen({
   errorMessage,
   isBusy,
-  profiles,
-  storedProfileId,
-  onCreateProfile,
-  onSelectProfile
+  onLogin,
+  onSignup
 }: LoginScreenProps) {
+  const [mode, setMode] = useState<"login" | "signup">("login");
   const [username, setUsername] = useState("");
-  const sortedProfiles = useMemo(() => {
-    return [...profiles].sort((left, right) => {
-      if (left.id === storedProfileId) {
-        return -1;
-      }
+  const [password, setPassword] = useState("");
 
-      if (right.id === storedProfileId) {
-        return 1;
-      }
-
-      return left.username.localeCompare(right.username);
-    });
-  }, [profiles, storedProfileId]);
-
-  const submitCreate = async (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const trimmed = username.trim();
+    const trimmedUsername = username.trim();
 
-    if (!trimmed) {
+    if (!trimmedUsername || password.length < 8) {
       return;
     }
 
-    await onCreateProfile(trimmed);
-    setUsername("");
+    if (mode === "login") {
+      await onLogin(trimmedUsername, password);
+    } else {
+      await onSignup(trimmedUsername, password);
+    }
+
+    setPassword("");
   };
 
   return (
-    <main className="map-menu" aria-label="Profile login">
+    <main className="map-menu" aria-label="Account login">
       <section className="map-menu-panel login-panel">
         <header className="map-menu-header">
           <span className="eyebrow">OSR CARTOGRAPHY</span>
           <h1>Simple Hex</h1>
-          <p>Select your player profile before opening maps.</p>
+          <p>Sign in to open maps, edit as GM, and keep player tokens tied to your account.</p>
         </header>
 
-        <form className="map-create-form" onSubmit={submitCreate}>
-          <label htmlFor="new-profile-name">New player</label>
-          <div className="map-create-row">
-            <input
-              id="new-profile-name"
-              type="text"
-              value={username}
-              placeholder="Player name"
-              onChange={(event) => setUsername(event.currentTarget.value)}
-            />
-            <button type="submit" className="compact-button" disabled={isBusy || !username.trim()}>
-              Create
-            </button>
-          </div>
+        <div className="auth-mode-tabs" role="tablist" aria-label="Authentication mode">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "login"}
+            className={mode === "login" ? "tab-button is-active" : "tab-button"}
+            onClick={() => setMode("login")}
+          >
+            Login
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "signup"}
+            className={mode === "signup" ? "tab-button is-active" : "tab-button"}
+            onClick={() => setMode("signup")}
+          >
+            Sign up
+          </button>
+        </div>
+
+        <form className="map-create-form" onSubmit={submit}>
+          <label htmlFor="auth-username">Username</label>
+          <input
+            id="auth-username"
+            type="text"
+            autoComplete="username"
+            value={username}
+            placeholder="Username"
+            onChange={(event) => setUsername(event.currentTarget.value)}
+          />
+
+          <label htmlFor="auth-password">Password</label>
+          <input
+            id="auth-password"
+            type="password"
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
+            value={password}
+            placeholder="At least 8 characters"
+            onChange={(event) => setPassword(event.currentTarget.value)}
+          />
+
+          <button
+            type="submit"
+            className="compact-button"
+            disabled={isBusy || !username.trim() || password.length < 8}
+          >
+            {mode === "login" ? "Login" : "Create account"}
+          </button>
         </form>
 
         {errorMessage ? <p className="map-menu-error">{errorMessage}</p> : null}
-
-        <section className="map-list-panel" aria-label="Available profiles">
-          {sortedProfiles.length === 0 ? (
-            <p>No players yet. Create one to continue.</p>
-          ) : (
-            <ul className="profile-list">
-              {sortedProfiles.map((profile) => {
-                const isStored = profile.id === storedProfileId;
-
-                return (
-                  <li key={profile.id} className="profile-list-item">
-                    <button
-                      type="button"
-                      className="profile-select-button"
-                      onClick={() => void onSelectProfile(profile)}
-                      disabled={isBusy}
-                    >
-                      <span>
-                        <strong>{profile.username}</strong>
-                        {isStored ? <em>Last used</em> : null}
-                      </span>
-                      <small>{formatProfileDate(profile.updatedAt)}</small>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
       </section>
     </main>
   );

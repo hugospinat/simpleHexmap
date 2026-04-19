@@ -1,17 +1,18 @@
 import type { WebSocket } from "ws";
 import type { MapOperation, MapTokenOperation, SavedMapContent } from "../../src/core/protocol/index.js";
-import type { MapPermissions, ProfileRecord } from "../../src/core/profile/profileTypes.js";
-import type { MapDocumentRuntime } from "./mapDocumentRuntime.js";
+import type { UserRecord, WorkspaceRole } from "../../src/core/auth/authTypes.js";
 
 export type MapRecord = {
+  currentUserRole: WorkspaceRole;
   id: string;
   name: string;
+  ownerUserId: string;
   updatedAt: string;
-  permissions: MapPermissions;
+  workspaceId: string;
   content: SavedMapContent;
 };
 
-export type MapSummary = Pick<MapRecord, "id" | "name" | "permissions" | "updatedAt">;
+export type MapSummary = Pick<MapRecord, "currentUserRole" | "id" | "name" | "ownerUserId" | "updatedAt">;
 
 export type AppliedOperationMessage = {
   type: "map_operation_applied";
@@ -35,13 +36,8 @@ export type MapTokenUpdatedMessage = {
 };
 
 export type MapSession = {
-  map: MapRecord;
-  runtime: MapDocumentRuntime;
+  workspaceId: string;
   clients: Set<WebSocket>;
-  persistTimer: ReturnType<typeof setTimeout> | null;
-  appliedOperationPayloads: Map<string, string>;
-  appliedOperationOrder: string[];
-  nextSequence: number;
 };
 
-export type { MapPermissions, ProfileRecord };
+export type { UserRecord, WorkspaceRole };

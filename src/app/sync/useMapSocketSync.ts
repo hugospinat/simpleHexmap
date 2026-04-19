@@ -301,7 +301,7 @@ export function useMapSocketSync({ clearPreview, initialWorld, mapId, profileId 
   }, [mapId, publishSessionState]);
 
   useEffect(() => {
-    const socketUrl = buildWebSocketUrl(`/api/maps/${encodeURIComponent(mapId)}/ws?profileId=${encodeURIComponent(profileId)}`);
+    const socketUrl = buildWebSocketUrl(`/api/maps/${encodeURIComponent(mapId)}/ws`);
     let disposed = false;
     let reconnectTimer: number | null = null;
     let reconnectAttempt = 0;

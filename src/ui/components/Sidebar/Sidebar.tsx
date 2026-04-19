@@ -1,9 +1,8 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { FeatureKind } from "@/core/map/features";
 import type { Faction, TerrainType } from "@/core/map/world";
 import type { EditorMode } from "@/editor/tools/editorTypes";
 import type { MapTokenRecord } from "@/core/protocol";
-import type { ProfileRecord } from "@/core/profile/profileTypes";
 import { FeaturePalette } from "../FeaturePalette/FeaturePalette";
 import { TilePalette } from "../TilePalette/TilePalette";
 import { ToolTabs } from "../ToolTabs/ToolTabs";
@@ -16,7 +15,6 @@ type SidebarProps = {
   activeType: TerrainType;
   factions: Faction[];
   mapTokens: MapTokenRecord[];
-  profiles: ProfileRecord[];
   mapName: string;
   onBackToMaps: () => void;
   onCreateFaction: () => void;
@@ -41,7 +39,6 @@ export function Sidebar({
   activeType,
   factions,
   mapTokens,
-  profiles,
   mapName,
   onBackToMaps,
   onCreateFaction,
@@ -59,13 +56,9 @@ export function Sidebar({
 }: SidebarProps) {
   const [editingFactionId, setEditingFactionId] = useState<string | null>(null);
   const [editingFactionName, setEditingFactionName] = useState("");
-  const tokenUsernamesByProfileId = useMemo(
-    () => new Map(profiles.map((entry) => [entry.id, entry.username])),
-    [profiles]
-  );
 
   const getTokenDisplayName = (profileId: string): string => {
-    return tokenUsernamesByProfileId.get(profileId) ?? profileId;
+    return profileId;
   };
 
   const startFactionNameEdit = (factionId: string, currentName: string) => {

@@ -1,15 +1,15 @@
 import { WebSocket } from "ws";
-import {
-  nowIso,
-  sanitizeName
-} from "./mapStorage.js";
-import { applyOperationToRuntime } from "./mapDocumentRuntime.js";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { db } from "./db/client.js";
+import { hexCells, mapTokens, opLog, workspaces } from "./db/schema.js";
+import { materializeWorkspaceContent, replaceWorkspaceContent } from "./repositories/mapContentRepository.js";
+import { canOpenAsGm, getMapRecordForUser, getMapRoleForUser, getWorkspaceIdForMap, touchWorkspaceUpdatedAt } from "./repositories/workspaceRepository.js";
 import { broadcastPayload } from "./broadcastService.js";
-import { parseAppliedOperationPayload, rememberAppliedOperation } from "./appliedOperationLog.js";
-import { schedulePersist } from "./persistenceScheduler.js";
-import { getOrCreateSession, getSessionMapRecord } from "./sessionStore.js";
-import { canOpenMapAsGM } from "../../src/core/profile/profileTypes.js";
+import { getOrCreateSession } from "./sessionStore.js";
 import {
+  applyOperationToSavedMapContentIndex,
+  indexSavedMapContent,
+  materializeSavedMapContent,
   validateMapOperation,
   validateMapTokenOperation,
   type MapOperation,
@@ -17,21 +17,38 @@ import {
 } from "../../src/core/protocol/index.js";
 import type {
   AppliedOperationMessage,
-  MapTokenUpdatedMessage,
   MapRecord,
+  MapTokenUpdatedMessage,
   OperationEnvelope
 } from "./types.js";
 
-function applyOperationToMap(map: MapRecord, operation: MapOperation, updatedAt: string): MapRecord {
-  if (operation.type === "rename_map") {
-    return {
-      ...map,
-      name: sanitizeName(operation.name),
-      updatedAt
-    };
+function operationLogRowToMessage(row: typeof opLog.$inferSelect): AppliedOperationMessage {
+  return {
+    type: "map_operation_applied",
+    operation: row.operation,
+    operationId: row.operationId,
+    sequence: row.sequence,
+    sourceClientId: row.sourceClientId,
+    updatedAt: row.createdAt.toISOString()
+  };
+}
+
+async function getWorkspaceRecordForActor(workspaceId: string, actorUserId: string): Promise<MapRecord> {
+  const map = await getMapRecordForUser(workspaceId, actorUserId);
+
+  if (!map) {
+    throw new Error("Map not found.");
   }
 
-  return { ...map, updatedAt };
+  return {
+    content: map.content,
+    currentUserRole: map.currentUserRole,
+    id: map.id,
+    name: map.name,
+    ownerUserId: map.ownerUserId,
+    updatedAt: map.updatedAt,
+    workspaceId: map.workspaceId
+  };
 }
 
 function shouldLogServerPerf(durationMs: number): boolean {
@@ -58,97 +75,21 @@ export async function applyOperationToSession(
   sourceClientId: string,
   operationId: string,
   sourceSocket: WebSocket | null = null,
-  actorProfileId?: string
+  actorUserId: string
 ): Promise<MapRecord> {
-  if (typeof operationId !== "string" || !operationId.trim()) {
-    throw new Error("Invalid operation id.");
-  }
-
-  const validationError = validateMapOperation(operation);
-
-  if (validationError) {
-    throw new Error(validationError);
-  }
-
-  const session = await getOrCreateSession(mapId, actorProfileId);
-
-  if (!session) {
-    throw new Error("Map not found.");
-  }
-
-  if (actorProfileId && !canOpenMapAsGM(actorProfileId, session.map.permissions)) {
-    throw new Error("GM access denied.");
-  }
-
-  const existingPayload = session.appliedOperationPayloads.get(operationId);
-
-  if (existingPayload) {
-    console.info("[MapSyncServer] operation_duplicate", {
-      mapId,
-      operationId,
-      sourceClientId,
-      operationType: operation.type
-    });
-
-    if (sourceSocket && sourceSocket.readyState === WebSocket.OPEN) {
-      sourceSocket.send(existingPayload);
-    } else {
-      broadcastPayload(session, existingPayload);
-    }
-
-    return getSessionMapRecord(session);
-  }
-
-  console.info("[MapSyncServer] operation_received", {
+  return applyOperationBatchToSession(
     mapId,
-    operationId,
+    [{ operation, operationId }],
     sourceClientId,
-    operationType: operation.type
-  });
-
-  const applyStartedAt = performance.now();
-  session.map = applyOperationToMap(session.map, operation, nowIso());
-  if (operation.type !== "rename_map") {
-    applyOperationToRuntime(session.runtime, operation);
-  }
-  logServerPerf("operation_apply", applyStartedAt, {
-    mapId,
-    operationType: operation.type,
-    operationCount: 1,
-    tileCount: session.runtime.contentIndex.tilesByHex.size
-  });
-  schedulePersist(session);
-
-  const payload = JSON.stringify({
-    type: "map_operation_applied",
-    sequence: session.nextSequence,
-    operationId,
-    operation,
-    sourceClientId,
-    updatedAt: session.map.updatedAt
-  });
-
-  session.nextSequence += 1;
-
-  rememberAppliedOperation(session, operationId, payload);
-  broadcastPayload(session, payload);
-
-  console.info("[MapSyncServer] operation_broadcast", {
-    mapId,
-    operationId,
-    sourceClientId,
-    operationType: operation.type,
-    clients: session.clients.size,
-    updatedAt: session.map.updatedAt
-  });
-
-  return getSessionMapRecord(session);
+    sourceSocket,
+    actorUserId
+  );
 }
 
 export async function applyTokenOperationToSession(
   mapId: string,
   operation: MapTokenOperation,
-  sourceProfileId: string
+  sourceUserId: string
 ): Promise<MapRecord> {
   const validationError = validateMapTokenOperation(operation);
 
@@ -156,60 +97,86 @@ export async function applyTokenOperationToSession(
     throw new Error(validationError);
   }
 
-  const session = await getOrCreateSession(mapId, sourceProfileId);
+  const role = await getMapRoleForUser(mapId, sourceUserId);
 
-  if (!session) {
+  if (!role) {
     throw new Error("Map not found.");
   }
 
-  const canManageOtherProfileTokens = canOpenMapAsGM(sourceProfileId, session.map.permissions);
+  const canManageOtherUserTokens = canOpenAsGm(role);
 
   if (
     operation.type === "set_map_token"
-    && operation.token.profileId !== sourceProfileId
-    && !canManageOtherProfileTokens
+    && operation.token.profileId !== sourceUserId
+    && !canManageOtherUserTokens
   ) {
-    throw new Error("Cannot move another profile token.");
+    throw new Error("Cannot move another user token.");
   }
 
   if (
     operation.type === "remove_map_token"
-    && operation.profileId !== sourceProfileId
-    && !canManageOtherProfileTokens
+    && operation.profileId !== sourceUserId
+    && !canManageOtherUserTokens
   ) {
-    throw new Error("Cannot remove another profile token.");
+    throw new Error("Cannot remove another user token.");
   }
 
-  if (operation.type === "set_map_token") {
-    const tile = session.runtime.contentIndex.tilesByHex.get(`${operation.token.q},${operation.token.r}`);
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select id from ${workspaces} where id = ${mapId} for update`);
+    const now = new Date();
 
-    if (!tile || tile.hidden) {
-      throw new Error("Token can only be placed on visible terrain.");
+    if (operation.type === "set_map_token") {
+      const tileRows = await tx.select()
+        .from(hexCells)
+        .where(and(
+          eq(hexCells.workspaceId, mapId),
+          eq(hexCells.q, operation.token.q),
+          eq(hexCells.r, operation.token.r)
+        ))
+        .limit(1);
+      const tile = tileRows[0];
+
+      if (!tile || tile.hidden === 1) {
+        throw new Error("Token can only be placed on visible terrain.");
+      }
+
+      await tx.insert(mapTokens).values({
+        color: operation.token.color,
+        q: operation.token.q,
+        r: operation.token.r,
+        userId: operation.token.profileId,
+        workspaceId: mapId
+      }).onConflictDoUpdate({
+        target: [mapTokens.workspaceId, mapTokens.userId],
+        set: {
+          color: operation.token.color,
+          q: operation.token.q,
+          r: operation.token.r
+        }
+      });
+    } else {
+      await tx.delete(mapTokens)
+        .where(and(eq(mapTokens.workspaceId, mapId), eq(mapTokens.userId, operation.profileId)));
     }
+
+    await tx.update(workspaces).set({ updatedAt: now }).where(eq(workspaces.id, mapId));
+  });
+
+  const workspaceId = await getWorkspaceIdForMap(mapId);
+
+  if (workspaceId) {
+    await touchWorkspaceUpdatedAt(workspaceId);
   }
 
-  const updatedAt = nowIso();
-
-  if (operation.type === "set_map_token") {
-    session.runtime.contentIndex.tokensByProfileId.set(operation.token.profileId, operation.token);
-  } else {
-    session.runtime.contentIndex.tokensByProfileId.delete(operation.profileId);
-  }
-
-  session.map = {
-    ...session.map,
-    updatedAt
-  };
-  schedulePersist(session);
-
+  const updated = await getWorkspaceRecordForActor(mapId, sourceUserId);
   const message: MapTokenUpdatedMessage = {
     type: "map_token_updated",
     operation,
-    sourceProfileId,
-    updatedAt
+    sourceProfileId: sourceUserId,
+    updatedAt: updated.updatedAt
   };
-  broadcastPayload(session, JSON.stringify(message));
-  return getSessionMapRecord(session);
+  broadcastPayload(getOrCreateSession(mapId), JSON.stringify(message));
+  return updated;
 }
 
 export async function applyOperationBatchToSession(
@@ -217,123 +184,154 @@ export async function applyOperationBatchToSession(
   envelopes: OperationEnvelope[],
   sourceClientId: string,
   sourceSocket: WebSocket | null = null,
-  actorProfileId?: string
+  actorUserId: string
 ): Promise<MapRecord> {
-  const session = await getOrCreateSession(mapId, actorProfileId);
+  const role = await getMapRoleForUser(mapId, actorUserId);
 
-  if (!session) {
+  if (!role) {
     throw new Error("Map not found.");
   }
 
-  if (actorProfileId && !canOpenMapAsGM(actorProfileId, session.map.permissions)) {
+  if (!canOpenAsGm(role)) {
     throw new Error("GM access denied.");
   }
 
-  const resolvedMessages: AppliedOperationMessage[] = [];
-  const newMessages: AppliedOperationMessage[] = [];
-  let mutated = false;
-  let batchUpdatedAt = session.map.updatedAt;
-  let nextName = session.map.name;
   const applyStartedAt = performance.now();
+  const result = await db.transaction(async (tx) => {
+    const workspaceRows = await tx.select().from(workspaces).where(eq(workspaces.id, mapId)).limit(1);
+    const workspace = workspaceRows[0];
 
-  for (const envelope of envelopes) {
-    const operationId = envelope.operationId;
-    const operation = envelope.operation;
-
-    if (typeof operationId !== "string" || !operationId.trim()) {
-      throw new Error("Invalid operation id.");
+    if (!workspace) {
+      throw new Error("Map not found.");
     }
 
-    const validationError = validateMapOperation(operation);
+    await tx.execute(sql`select id from ${workspaces} where id = ${mapId} for update`);
 
-    if (validationError) {
-      throw new Error(validationError);
-    }
+    const operationIds = envelopes.map((envelope) => envelope.operationId);
+    const duplicateRows = operationIds.length === 0
+      ? []
+      : await tx.select().from(opLog).where(and(
+        eq(opLog.workspaceId, mapId),
+        inArray(opLog.operationId, operationIds)
+      ));
+    const duplicateByOperationId = new Map(duplicateRows.map((row) => [row.operationId, row]));
+    const resolvedMessages: AppliedOperationMessage[] = [];
+    const newMessages: AppliedOperationMessage[] = [];
+    const content = await materializeWorkspaceContent(mapId, tx);
+    const index = indexSavedMapContent(content);
+    let nextName = workspace.name;
+    let nextSequence = workspace.nextSequence;
+    let mutated = false;
+    let updatedAt = workspace.updatedAt;
 
-    const existingPayload = session.appliedOperationPayloads.get(operationId);
-
-    if (existingPayload) {
-      const existingMessage = parseAppliedOperationPayload(existingPayload);
-
-      if (existingMessage) {
-        resolvedMessages.push(existingMessage);
+    for (const envelope of envelopes) {
+      if (typeof envelope.operationId !== "string" || !envelope.operationId.trim()) {
+        throw new Error("Invalid operation id.");
       }
 
-      continue;
+      const validationError = validateMapOperation(envelope.operation);
+
+      if (validationError) {
+        throw new Error(validationError);
+      }
+
+      const duplicate = duplicateByOperationId.get(envelope.operationId);
+
+      if (duplicate) {
+        resolvedMessages.push(operationLogRowToMessage(duplicate));
+        continue;
+      }
+
+      if (!mutated) {
+        updatedAt = new Date();
+        mutated = true;
+      }
+
+      if (envelope.operation.type === "rename_map") {
+        nextName = envelope.operation.name.trim().slice(0, 120) || "Untitled map";
+      } else {
+        applyOperationToSavedMapContentIndex(index, envelope.operation);
+      }
+
+      const message: AppliedOperationMessage = {
+        type: "map_operation_applied",
+        operation: envelope.operation,
+        operationId: envelope.operationId,
+        sequence: nextSequence,
+        sourceClientId,
+        updatedAt: updatedAt.toISOString()
+      };
+      nextSequence += 1;
+      resolvedMessages.push(message);
+      newMessages.push(message);
+
+      await tx.insert(opLog).values({
+        actorUserId,
+        createdAt: updatedAt,
+        operation: envelope.operation,
+        operationId: envelope.operationId,
+        sequence: message.sequence,
+        sourceClientId,
+        workspaceId: mapId
+      });
     }
 
-    if (!mutated) {
-      batchUpdatedAt = nowIso();
-      mutated = true;
+    if (mutated) {
+      await replaceWorkspaceContent(mapId, materializeSavedMapContent(content, index), tx);
+      await tx.update(workspaces)
+        .set({
+          name: nextName,
+          nextSequence,
+          updatedAt
+        })
+        .where(eq(workspaces.id, mapId));
     }
 
-    if (operation.type === "rename_map") {
-      nextName = sanitizeName(operation.name);
-    } else {
-      applyOperationToRuntime(session.runtime, operation);
-    }
-
-    const appliedMessage: AppliedOperationMessage = {
-      type: "map_operation_applied",
-      sequence: session.nextSequence,
-      operationId,
-      operation,
-      sourceClientId,
-      updatedAt: batchUpdatedAt
+    return {
+      newMessages,
+      resolvedMessages,
+      updatedAt
     };
+  });
 
-    session.nextSequence += 1;
+  if (result.newMessages.length > 0) {
+    const workspaceId = await getWorkspaceIdForMap(mapId);
 
-    const payload = JSON.stringify(appliedMessage);
-    rememberAppliedOperation(session, operationId, payload);
-    resolvedMessages.push(appliedMessage);
-    newMessages.push(appliedMessage);
+    if (workspaceId) {
+      await touchWorkspaceUpdatedAt(workspaceId);
+    }
   }
 
-  if (mutated) {
-    session.map = {
-      ...session.map,
-      name: nextName,
-      updatedAt: batchUpdatedAt
-    };
-    logServerPerf("operation_batch_apply", applyStartedAt, {
-      mapId,
-      operationCount: newMessages.length,
-      totalEnvelopeCount: envelopes.length,
-      tileCount: session.runtime.contentIndex.tilesByHex.size
-    });
-    schedulePersist(session);
-  }
-
-  if (newMessages.length === 1) {
-    broadcastPayload(session, JSON.stringify(newMessages[0]));
-  } else if (newMessages.length > 1) {
-    const payload = JSON.stringify({
+  if (result.newMessages.length === 1) {
+    broadcastPayload(getOrCreateSession(mapId), JSON.stringify(result.newMessages[0]));
+  } else if (result.newMessages.length > 1) {
+    broadcastPayload(getOrCreateSession(mapId), JSON.stringify({
       type: "map_operation_batch_applied",
-      operations: newMessages.map(({ type, ...entry }) => entry),
-      updatedAt: session.map.updatedAt
-    });
-
-    broadcastPayload(session, payload);
+      operations: result.newMessages.map(({ type, ...entry }) => entry),
+      updatedAt: result.updatedAt.toISOString()
+    }));
   }
 
-  // Duplicates are not rebroadcast to every client. Return them only to the source so
-  // it can clear local pending state after reconnect/retry.
   if (sourceSocket && sourceSocket.readyState === WebSocket.OPEN) {
-    const newIds = new Set(newMessages.map((message) => message.operationId));
-    const duplicateMessages = resolvedMessages.filter((message) => !newIds.has(message.operationId));
+    const newIds = new Set(result.newMessages.map((message) => message.operationId));
+    const duplicates = result.resolvedMessages.filter((message) => !newIds.has(message.operationId));
 
-    if (duplicateMessages.length === 1) {
-      sourceSocket.send(JSON.stringify(duplicateMessages[0]));
-    } else if (duplicateMessages.length > 1) {
+    if (duplicates.length === 1) {
+      sourceSocket.send(JSON.stringify(duplicates[0]));
+    } else if (duplicates.length > 1) {
       sourceSocket.send(JSON.stringify({
         type: "map_operation_batch_applied",
-        operations: duplicateMessages.map(({ type, ...entry }) => entry),
-        updatedAt: session.map.updatedAt
+        operations: duplicates.map(({ type, ...entry }) => entry),
+        updatedAt: result.updatedAt.toISOString()
       }));
     }
   }
 
-  return getSessionMapRecord(session);
-}
+  logServerPerf("operation_batch_apply", applyStartedAt, {
+    mapId,
+    operationCount: result.newMessages.length,
+    totalEnvelopeCount: envelopes.length
+  });
 
+  return getWorkspaceRecordForActor(mapId, actorUserId);
+}

@@ -635,6 +635,12 @@ input::placeholder {
   gap: 8px;
 }
 
+.auth-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 .map-create-form label {
   color: #555555;
   font-size: 12px;
@@ -746,6 +752,115 @@ input::placeholder {
   white-space: nowrap;
 }
 
+.workspace-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workspace-role-chip {
+  border: 1px solid #b8b8b8;
+  padding: 2px 6px;
+  color: #4d4d4d;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.workspace-management-panel {
+  width: min(1120px, 100%);
+}
+
+.workspace-management-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+}
+
+.workspace-management-columns.is-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workspace-panel-column {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #d6d6d6;
+  padding: 12px;
+}
+
+.workspace-panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.workspace-panel-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 400;
+}
+
+.map-list-panel-text {
+  margin: 0;
+  color: #5d5d5d;
+  font-size: 13px;
+}
+
+.workspace-inline-form {
+  gap: 6px;
+}
+
+.workspace-inline-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.workspace-members-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.workspace-row-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  cursor: default;
+}
+
+.workspace-row-primary {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.workspace-row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.workspace-row-subline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.workspace-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.workspace-inline-note {
+  color: #666666;
+  font-size: 12px;
+}
+
 .map-list-item .compact-button {
   justify-self: end;
 }
@@ -812,6 +927,19 @@ input::placeholder {
 }
 
 @media (max-width: 680px) {
+  .workspace-management-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace-inline-row,
+  .workspace-members-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace-row-actions {
+    justify-content: flex-start;
+  }
+
   .app-shell {
     grid-template-columns: 260px minmax(0, 1fr);
   }

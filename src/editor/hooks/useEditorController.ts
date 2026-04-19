@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { editorConfig } from "@/config/editorConfig";
 import { editorModeOrder, type EditorMode } from "@/editor/tools/editorTypes";
-import type { ViewerRole } from "@/ui/components/MapMenu/MapMenu";
 import { useKeyboardNavigation } from "@/editor/hooks/useKeyboardNavigation";
 import {
   applyEditGestureCells,
@@ -64,13 +63,14 @@ import {
   takeUndoOperations
 } from "@/core/map/history/mapOperationHistory";
 import type { MapOperation, MapTokenRecord } from "@/core/protocol";
+import type { MapOpenMode } from "@/core/auth/authTypes";
 import type { ProfileRecord } from "@/core/profile/profileTypes";
 
 type UseEditorControllerOptions = {
   initialWorld: MapState;
   mapId: string;
   profile: ProfileRecord;
-  role: ViewerRole;
+  role: MapOpenMode;
 };
 
 type ActiveEditorGesture =

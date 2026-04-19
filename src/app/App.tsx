@@ -1,81 +1,129 @@
 import { useCallback, useEffect, useState } from "react";
 import { editorConfig } from "@/config/editorConfig";
-import { createEmptyWorld, createInitialWorld, type MapState } from "@/core/map/world";
+import { createInitialWorld, type MapState } from "@/core/map/world";
 import { EditorScreen } from "@/app/EditorScreen";
-import { MapMenu, type ViewerRole } from "@/ui/components/MapMenu/MapMenu";
+import { WorkspaceListScreen } from "@/ui/components/WorkspaceListScreen/WorkspaceListScreen";
+import { WorkspaceManagementScreen } from "@/ui/components/WorkspaceManagementScreen/WorkspaceManagementScreen";
 import { LoginScreen } from "@/ui/components/LoginScreen/LoginScreen";
 import {
-  createProfile,
-  getStoredProfileId,
-  listProfiles as listUserProfiles,
-  rememberProfileId
-} from "@/app/api/profileApi";
+  getCurrentUser,
+  login as loginAccount,
+  logout as logoutAccount,
+  signup as signupAccount
+} from "@/app/api/authApi";
 import {
-  createMap,
-  deleteMapById as deleteMapRecordById,
-  listMaps,
+  addWorkspaceMemberByUsername,
+  createWorkspace,
+  createWorkspaceMapById,
+  deleteMapById,
+  deleteWorkspaceById,
+  exportMapById,
+  importWorkspaceMapById,
+  listWorkspaceMapsById,
+  listWorkspaceMembersById,
+  listWorkspaces,
   loadMapById,
-  renameMapById as renameMapRecordById,
-  type MapSummary
-} from "@/app/api/mapApi";
-import type { ProfileRecord } from "@/core/profile/profileTypes";
-import { downloadSavedMapContentFile, readSavedMapContentFile } from "@/app/document/mapFile";
+  removeWorkspaceMemberById,
+  renameWorkspaceById,
+  updateWorkspaceMemberRoleById,
+  type WorkspaceMapSummary,
+  type WorkspaceSummary
+} from "@/app/api/workspaceApi";
+import { canOpenWorkspaceAsGM, type MapOpenMode, type UserRecord, type WorkspaceMemberRecord } from "@/core/auth/authTypes";
+import { parseSavedMapContent } from "@/core/document/savedMapCodec";
 import { serializeWorld } from "@/app/document/worldMapCodec";
+import { deserializeWorld } from "@/app/document/worldMapCodec";
 
 type OpenMapState = {
   id: string;
   name: string;
-  role: ViewerRole;
+  role: MapOpenMode;
   updatedAt: string;
+  workspaceId: string;
   world: MapState;
 };
 
-function getDefaultMapName(baseName: string): string {
-  const trimmed = baseName.trim();
-  return trimmed || "Untitled map";
+function getDefaultName(value: string, fallback: string): string {
+  const trimmed = value.trim();
+  return trimmed || fallback;
 }
 
-function fileBaseName(fileName: string): string {
-  return fileName.replace(/\.[^/.]+$/, "");
+async function readFileText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onerror = () => {
+      reject(new Error("Could not read file."));
+    };
+
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("Invalid file content."));
+        return;
+      }
+
+      resolve(reader.result);
+    };
+
+    reader.readAsText(file);
+  });
 }
 
-function toOpenMap(map: MapSummary, role: ViewerRole): OpenMapState {
-  return {
-    id: map.id,
-    name: map.name,
-    role,
-    updatedAt: map.updatedAt,
-    world: createEmptyWorld()
-  };
+function triggerJsonDownload(fileName: string, payload: unknown): void {
+  const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${fileName}.json`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 export default function App() {
-  const [maps, setMaps] = useState<MapSummary[]>([]);
-  const [selectedMapId, setSelectedMapId] = useState<string | null>(null);
-  const [busyMessage, setBusyMessage] = useState<string | null>(null);
+  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
+  const [busyMessage, setBusyMessage] = useState<string | null>("Checking account...");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [managedWorkspaceId, setManagedWorkspaceId] = useState<string | null>(null);
+  const [managedWorkspaceMembers, setManagedWorkspaceMembers] = useState<WorkspaceMemberRecord[]>([]);
+  const [managedWorkspaceMaps, setManagedWorkspaceMaps] = useState<WorkspaceMapSummary[]>([]);
   const [openMap, setOpenMap] = useState<OpenMapState | null>(null);
-  const [profile, setProfile] = useState<ProfileRecord | null>(null);
-  const [profiles, setProfiles] = useState<ProfileRecord[]>([]);
-  const [storedProfileId, setStoredProfileId] = useState<string | null>(() => getStoredProfileId());
+  const [user, setUser] = useState<UserRecord | null>(null);
 
   const isBusy = busyMessage !== null;
 
-  const refreshMaps = useCallback(async () => {
-    const nextMaps = await listMaps();
-    setMaps(nextMaps);
+  const syncWorkspaceSummary = useCallback((summary: WorkspaceSummary) => {
+    setWorkspaces((current) => current.map((workspace) => (
+      workspace.id === summary.id ? summary : workspace
+    )));
+  }, []);
 
-    if (nextMaps.length === 0) {
-      setSelectedMapId(null);
+  const refreshWorkspaces = useCallback(async () => {
+    const nextWorkspaces = await listWorkspaces();
+    setWorkspaces(nextWorkspaces);
+
+    if (nextWorkspaces.length === 0) {
+      setSelectedWorkspaceId(null);
+      setManagedWorkspaceId(null);
       return;
     }
 
-    setSelectedMapId((current) => {
-      if (current && nextMaps.some((map) => map.id === current)) {
+    setSelectedWorkspaceId((current) => {
+      if (current && nextWorkspaces.some((workspace) => workspace.id === current)) {
         return current;
       }
 
-      return nextMaps[0].id;
+      return nextWorkspaces[0].id;
+    });
+
+    setManagedWorkspaceId((current) => {
+      if (current && nextWorkspaces.some((workspace) => workspace.id === current)) {
+        return current;
+      }
+
+      return null;
     });
   }, []);
 
@@ -93,185 +141,345 @@ export default function App() {
     }
   }, []);
 
-  const refreshProfiles = useCallback(async () => {
-    const nextProfiles = await listUserProfiles();
-    setProfiles(nextProfiles);
-    setStoredProfileId(getStoredProfileId());
-  }, []);
-
   useEffect(() => {
-    void withBusyState("Loading profiles...", refreshProfiles);
-  }, [refreshProfiles, withBusyState]);
+    void withBusyState("Checking account...", async () => {
+      const currentUser = await getCurrentUser();
+      setUser(currentUser);
 
-  const selectProfile = useCallback(async (nextProfile: ProfileRecord) => {
-    await withBusyState("Opening profile...", async () => {
-      rememberProfileId(nextProfile.id);
-      setStoredProfileId(nextProfile.id);
-      setProfile(nextProfile);
-      await refreshMaps();
+      if (currentUser) {
+        await refreshWorkspaces();
+      }
     });
-  }, [refreshMaps, withBusyState]);
+  }, [refreshWorkspaces, withBusyState]);
 
-  const createNewProfile = useCallback(async (username: string) => {
-    await withBusyState("Creating player...", async () => {
-      const createdProfile = await createProfile(username);
-      setProfiles((current) => {
-        const others = current.filter((candidate) => candidate.id !== createdProfile.id);
-        return [...others, createdProfile];
+  const login = useCallback(async (username: string, password: string) => {
+    await withBusyState("Signing in...", async () => {
+      const authenticated = await loginAccount(username, password);
+      setUser(authenticated);
+      await refreshWorkspaces();
+    });
+  }, [refreshWorkspaces, withBusyState]);
+
+  const signup = useCallback(async (username: string, password: string) => {
+    await withBusyState("Creating account...", async () => {
+      const authenticated = await signupAccount(username, password);
+      setUser(authenticated);
+      await refreshWorkspaces();
+    });
+  }, [refreshWorkspaces, withBusyState]);
+
+  const logout = useCallback(async () => {
+    await withBusyState("Signing out...", async () => {
+      await logoutAccount();
+      setOpenMap(null);
+      setManagedWorkspaceId(null);
+      setManagedWorkspaceMembers([]);
+      setManagedWorkspaceMaps([]);
+      setUser(null);
+      setWorkspaces([]);
+      setSelectedWorkspaceId(null);
+    });
+  }, [withBusyState]);
+
+  const createNewWorkspace = useCallback(async (name: string) => {
+    if (!user) {
+      return;
+    }
+
+    await withBusyState("Creating workspace...", async () => {
+      const created = await createWorkspace({
+        name: getDefaultName(name, "Untitled workspace")
       });
-      setStoredProfileId(createdProfile.id);
-      setProfile(createdProfile);
-      await refreshMaps();
-    });
-  }, [refreshMaps, withBusyState]);
 
-  const createNewMap = useCallback(async (name: string) => {
-    if (!profile) {
+      await refreshWorkspaces();
+      setSelectedWorkspaceId(created.id);
+    });
+  }, [refreshWorkspaces, user, withBusyState]);
+
+  const renameWorkspace = useCallback(async (workspaceId: string, name: string) => {
+    if (!user) {
+      return;
+    }
+
+    await withBusyState("Renaming workspace...", async () => {
+      const updated = await renameWorkspaceById(workspaceId, getDefaultName(name, "Untitled workspace"));
+
+      syncWorkspaceSummary(updated);
+      await refreshWorkspaces();
+      setSelectedWorkspaceId(workspaceId);
+    });
+  }, [refreshWorkspaces, syncWorkspaceSummary, user, withBusyState]);
+
+  const deleteWorkspace = useCallback(async (workspaceId: string) => {
+    if (!user) {
+      return;
+    }
+
+    await withBusyState("Removing workspace...", async () => {
+      await deleteWorkspaceById(workspaceId);
+      await refreshWorkspaces();
+
+      if (managedWorkspaceId === workspaceId) {
+        setManagedWorkspaceId(null);
+        setManagedWorkspaceMembers([]);
+        setManagedWorkspaceMaps([]);
+      }
+    });
+  }, [managedWorkspaceId, refreshWorkspaces, user, withBusyState]);
+
+  const refreshWorkspaceMembers = useCallback(async (workspaceId: string) => {
+    const payload = await listWorkspaceMembersById(workspaceId);
+    setManagedWorkspaceMembers(payload.members);
+    syncWorkspaceSummary(payload.workspace);
+  }, [syncWorkspaceSummary]);
+
+  const refreshWorkspaceMaps = useCallback(async (workspaceId: string) => {
+    const payload = await listWorkspaceMapsById(workspaceId);
+    setManagedWorkspaceMaps(payload.maps);
+    syncWorkspaceSummary(payload.workspace);
+  }, [syncWorkspaceSummary]);
+
+  const refreshWorkspaceManagement = useCallback(async (workspaceId: string) => {
+    await Promise.all([
+      refreshWorkspaceMembers(workspaceId),
+      refreshWorkspaceMaps(workspaceId)
+    ]);
+  }, [refreshWorkspaceMaps, refreshWorkspaceMembers]);
+
+  const openWorkspaceManagement = useCallback(async (workspaceId: string) => {
+    if (!user) {
+      return;
+    }
+
+    await withBusyState("Loading workspace management...", async () => {
+      await refreshWorkspaceManagement(workspaceId);
+      setManagedWorkspaceId(workspaceId);
+      setSelectedWorkspaceId(workspaceId);
+    });
+  }, [refreshWorkspaceManagement, user, withBusyState]);
+
+  const refreshManagedWorkspace = useCallback(async (workspaceId: string) => {
+    await withBusyState("Refreshing workspace...", async () => {
+      await refreshWorkspaceManagement(workspaceId);
+      await refreshWorkspaces();
+    });
+  }, [refreshWorkspaceManagement, refreshWorkspaces, withBusyState]);
+
+  const addWorkspaceMember = useCallback(async (workspaceId: string, username: string, role: "gm" | "player") => {
+    if (!user) {
+      return;
+    }
+
+    await withBusyState("Adding workspace member...", async () => {
+      const payload = await addWorkspaceMemberByUsername(workspaceId, username, role);
+      setManagedWorkspaceMembers(payload.members);
+      syncWorkspaceSummary(payload.workspace);
+      await refreshWorkspaces();
+    });
+  }, [refreshWorkspaces, syncWorkspaceSummary, user, withBusyState]);
+
+  const removeWorkspaceMember = useCallback(async (workspaceId: string, memberUserId: string) => {
+    if (!user) {
+      return;
+    }
+
+    await withBusyState("Removing workspace member...", async () => {
+      const payload = await removeWorkspaceMemberById(workspaceId, memberUserId);
+      setManagedWorkspaceMembers(payload.members);
+      syncWorkspaceSummary(payload.workspace);
+      await refreshWorkspaces();
+    });
+  }, [refreshWorkspaces, syncWorkspaceSummary, user, withBusyState]);
+
+  const updateWorkspaceMemberRole = useCallback(async (workspaceId: string, memberUserId: string, role: "gm" | "player") => {
+    if (!user) {
+      return;
+    }
+
+    await withBusyState("Updating workspace member role...", async () => {
+      const payload = await updateWorkspaceMemberRoleById(workspaceId, memberUserId, role);
+      setManagedWorkspaceMembers(payload.members);
+      syncWorkspaceSummary(payload.workspace);
+      await refreshWorkspaces();
+    });
+  }, [refreshWorkspaces, syncWorkspaceSummary, user, withBusyState]);
+
+  const createWorkspaceMap = useCallback(async (workspaceId: string, name: string) => {
+    if (!user) {
       return;
     }
 
     await withBusyState("Creating map...", async () => {
-      const created = await createMap({
-        name: getDefaultMapName(name),
-        content: serializeWorld(createInitialWorld(editorConfig.maxLevels))
-      }, profile.id);
-
-      await refreshMaps();
-      setSelectedMapId(created.id);
+      await createWorkspaceMapById(workspaceId, {
+        content: serializeWorld(createInitialWorld(editorConfig.maxLevels)),
+        name: getDefaultName(name, "Untitled map")
+      });
+      await refreshWorkspaceMaps(workspaceId);
+      await refreshWorkspaces();
     });
-  }, [profile, refreshMaps, withBusyState]);
+  }, [refreshWorkspaceMaps, refreshWorkspaces, user, withBusyState]);
 
-  const openExistingMap = useCallback(async (mapId: string, role: ViewerRole) => {
-    if (!profile) {
-      return;
-    }
-
-    await withBusyState("Opening map...", async () => {
-      const map = maps.find((candidate) => candidate.id === mapId);
-
-      if (!map) {
-        throw new Error("Map not found.");
-      }
-
-      setOpenMap(toOpenMap(map, role));
-      setSelectedMapId(map.id);
-    });
-  }, [maps, profile, withBusyState]);
-
-  const importMapFile = useCallback(async (file: File) => {
-    if (!profile) {
+  const importWorkspaceMap = useCallback(async (workspaceId: string, file: File) => {
+    if (!user) {
       return;
     }
 
     await withBusyState("Importing map...", async () => {
-      const map = await readSavedMapContentFile(file);
-      const created = await createMap({
-        name: getDefaultMapName(fileBaseName(file.name)),
-        content: map
-      }, profile.id);
+      const text = await readFileText(file);
+      let raw: unknown;
 
-      await refreshMaps();
-      setSelectedMapId(created.id);
+      try {
+        raw = JSON.parse(text);
+      } catch {
+        throw new Error("Invalid JSON map file.");
+      }
+
+      const content = parseSavedMapContent(raw);
+      const normalizedName = file.name.replace(/\.json$/i, "").trim();
+
+      await importWorkspaceMapById(workspaceId, {
+        content,
+        name: getDefaultName(normalizedName, "Imported map")
+      });
+      await refreshWorkspaceMaps(workspaceId);
+      await refreshWorkspaces();
     });
-  }, [profile, refreshMaps, withBusyState]);
+  }, [refreshWorkspaceMaps, refreshWorkspaces, user, withBusyState]);
 
-  const exportMapById = useCallback(async (mapId: string) => {
-    if (!profile) {
+  const exportWorkspaceMap = useCallback(async (mapId: string) => {
+    if (!user) {
       return;
     }
 
     await withBusyState("Exporting map...", async () => {
-      const map = await loadMapById(mapId, "player", profile.id);
-      downloadSavedMapContentFile(map.name, map.content);
+      const payload = await exportMapById(mapId);
+      const fileName = payload.name.trim().replace(/\s+/g, "-").toLowerCase() || "map-export";
+      triggerJsonDownload(fileName, payload.content);
     });
-  }, [profile, withBusyState]);
+  }, [user, withBusyState]);
 
-  const renameMapById = useCallback(async (mapId: string, name: string) => {
-    if (!profile) {
-      return;
-    }
-
-    await withBusyState("Renaming map...", async () => {
-      await renameMapRecordById(mapId, getDefaultMapName(name), profile.id);
-
-      await refreshMaps();
-      setSelectedMapId(mapId);
-    });
-  }, [profile, refreshMaps, withBusyState]);
-
-  const deleteMapById = useCallback(async (mapId: string) => {
-    if (!profile) {
+  const deleteWorkspaceMap = useCallback(async (workspaceId: string, mapId: string) => {
+    if (!user) {
       return;
     }
 
     await withBusyState("Removing map...", async () => {
-      await deleteMapRecordById(mapId, profile.id);
-      await refreshMaps();
+      await deleteMapById(mapId);
+      await refreshWorkspaceMaps(workspaceId);
+      await refreshWorkspaces();
     });
-  }, [profile, refreshMaps, withBusyState]);
+  }, [refreshWorkspaceMaps, refreshWorkspaces, user, withBusyState]);
+
+  const openWorkspaceMap = useCallback(async (mapId: string, mode: MapOpenMode) => {
+    if (!user) {
+      return;
+    }
+
+    await withBusyState("Opening map...", async () => {
+      const loadedMap = await loadMapById(mapId, mode);
+
+      if (mode === "gm" && !canOpenWorkspaceAsGM(loadedMap)) {
+        throw new Error("GM access denied.");
+      }
+
+      setOpenMap({
+        id: loadedMap.id,
+        name: loadedMap.name,
+        role: mode,
+        updatedAt: loadedMap.updatedAt,
+        workspaceId: loadedMap.workspaceId,
+        world: deserializeWorld(loadedMap.content)
+      });
+      setSelectedWorkspaceId(loadedMap.workspaceId);
+      setManagedWorkspaceId(loadedMap.workspaceId);
+    });
+  }, [user, withBusyState]);
+
+  const closeWorkspaceManagement = useCallback(() => {
+    setManagedWorkspaceId(null);
+    setManagedWorkspaceMembers([]);
+    setManagedWorkspaceMaps([]);
+  }, []);
 
   const closeEditor = useCallback(() => {
     if (openMap) {
-      setSelectedMapId(openMap.id);
+      setSelectedWorkspaceId(openMap.workspaceId);
+      setManagedWorkspaceId(openMap.workspaceId);
+      void withBusyState("Refreshing workspace...", async () => {
+        await refreshWorkspaceManagement(openMap.workspaceId);
+        await refreshWorkspaces();
+      });
     }
 
     setOpenMap(null);
-    void withBusyState("Refreshing maps...", refreshMaps);
-  }, [openMap, refreshMaps, withBusyState]);
+  }, [openMap, refreshWorkspaceManagement, refreshWorkspaces, withBusyState]);
 
-  const returnToLogin = useCallback(() => {
-    setOpenMap(null);
-    setProfile(null);
-    setMaps([]);
-    setSelectedMapId(null);
-    setErrorMessage(null);
-    void withBusyState("Loading profiles...", refreshProfiles);
-  }, [refreshProfiles, withBusyState]);
+  const managedWorkspace = managedWorkspaceId
+    ? workspaces.find((workspace) => workspace.id === managedWorkspaceId) ?? null
+    : null;
 
-  if (openMap && profile) {
+  if (openMap && user) {
     return (
       <EditorScreen
         key={openMap.id}
         initialWorld={openMap.world}
         mapId={openMap.id}
         mapName={openMap.name}
-        profiles={profiles}
-        profile={profile}
+        user={user}
         role={openMap.role}
         onBackToMaps={closeEditor}
       />
     );
   }
 
-  if (!profile) {
+  if (!user) {
     return (
       <LoginScreen
         errorMessage={errorMessage}
         isBusy={isBusy}
-        profiles={profiles}
-        storedProfileId={storedProfileId}
-        onCreateProfile={createNewProfile}
-        onSelectProfile={selectProfile}
+        onLogin={login}
+        onSignup={signup}
+      />
+    );
+  }
+
+  if (managedWorkspace) {
+    return (
+      <WorkspaceManagementScreen
+        currentUser={user}
+        errorMessage={errorMessage}
+        isBusy={isBusy}
+        maps={managedWorkspaceMaps}
+        members={managedWorkspaceMembers}
+        onAddMember={addWorkspaceMember}
+        onBackToWorkspaces={closeWorkspaceManagement}
+        onCreateMap={createWorkspaceMap}
+        onDeleteMap={deleteWorkspaceMap}
+        onExportMap={exportWorkspaceMap}
+        onImportMap={importWorkspaceMap}
+        onOpenMapAs={openWorkspaceMap}
+        onRefresh={refreshManagedWorkspace}
+        onRemoveMember={removeWorkspaceMember}
+        onUpdateRole={updateWorkspaceMemberRole}
+        workspace={managedWorkspace}
       />
     );
   }
 
   return (
-    <MapMenu
+    <WorkspaceListScreen
       errorMessage={errorMessage}
       isBusy={isBusy}
-      maps={maps}
-      onCreateMap={createNewMap}
-      onExportMap={exportMapById}
-      onImportMap={importMapFile}
-      onDeleteMap={deleteMapById}
-      onChangeProfile={returnToLogin}
-      onOpenMap={openExistingMap}
-      onRenameMap={renameMapById}
-      onRefresh={refreshMaps}
-      onSelectMap={setSelectedMapId}
-      profile={profile}
-      selectedMapId={selectedMapId}
+      onCreateWorkspace={createNewWorkspace}
+      onDeleteWorkspace={deleteWorkspace}
+      onLogout={logout}
+      onManageWorkspace={openWorkspaceManagement}
+      onRefresh={refreshWorkspaces}
+      onRenameWorkspace={renameWorkspace}
+      onSelectWorkspace={setSelectedWorkspaceId}
+      selectedWorkspaceId={selectedWorkspaceId}
+      user={user}
+      workspaces={workspaces}
     />
   );
 }

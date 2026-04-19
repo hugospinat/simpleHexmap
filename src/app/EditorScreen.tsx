@@ -7,24 +7,22 @@ import { Sidebar } from "@/ui/components/Sidebar/Sidebar";
 import { useEditorController } from "@/editor/hooks/useEditorController";
 import { MapAssetsProvider } from "@/editor/context/MapAssetsContext";
 import type { MapState } from "@/core/map/world";
-import type { ProfileRecord } from "@/core/profile/profileTypes";
-import type { ViewerRole } from "@/ui/components/MapMenu/MapMenu";
+import type { MapOpenMode, UserRecord } from "@/core/auth/authTypes";
 
 type EditorScreenProps = {
   initialWorld: MapState;
   mapId: string;
   mapName: string;
-  profiles: ProfileRecord[];
-  profile: ProfileRecord;
-  role: ViewerRole;
+  user: UserRecord;
+  role: MapOpenMode;
   onBackToMaps: () => void;
 };
 
-export function EditorScreen({ initialWorld, mapId, mapName, profiles, profile, role, onBackToMaps }: EditorScreenProps) {
+export function EditorScreen({ initialWorld, mapId, mapName, user, role, onBackToMaps }: EditorScreenProps) {
   const editor = useEditorController({
     initialWorld,
     mapId,
-    profile,
+    profile: user,
     role
   });
 
@@ -55,7 +53,6 @@ export function EditorScreen({ initialWorld, mapId, mapName, profiles, profile, 
           factions={editor.factions}
           mapTokens={editor.mapTokens}
           mapName={mapName}
-          profiles={profiles}
           onBackToMaps={onBackToMaps}
           onCreateFaction={editor.createFaction}
           onDeleteFaction={editor.deleteFaction}

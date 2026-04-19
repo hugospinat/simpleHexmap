@@ -1,0 +1,36 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hexmap-dev-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: simplehex
+      POSTGRES_USER: simplehex
+      POSTGRES_PASSWORD: simplehex
+    volumes:
+      - postgres-data-dev:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  # Optional: Uncomment to run backend in Docker for dev
+  # backend:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   image: hexmap-dev-backend:latest
+  #   container_name: hexmap-dev-backend
+  #   environment:
+  #     DATABASE_URL: postgres://simplehex:simplehex@postgres:5432/simplehex
+  #     NODE_ENV: development
+  #     PORT: 8787
+  #   depends_on:
+  #     - postgres
+  #   ports:
+  #     - "8787:8787"
+  #   volumes:
+  #     - ./data:/app/data
+  #   command: ["npm", "run", "dev"]
+
+volumes:
+  postgres-data-dev:

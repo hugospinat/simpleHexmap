@@ -10,6 +10,6 @@
     "esModuleInterop": true,
     "types": ["node"]
   },
-  "include": ["server/src/**/*.ts", "src/core/protocol/**/*.ts", "src/core/document/**/*.ts", "src/core/profile/**/*.ts"],
+  "include": ["server/src/**/*.ts", "src/core/protocol/**/*.ts", "src/core/document/**/*.ts", "src/core/profile/**/*.ts", "src/core/auth/**/*.ts"],
   "exclude": ["**/*.test.ts", "**/*.test.tsx"]
 }

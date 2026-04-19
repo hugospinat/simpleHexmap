@@ -1,13 +1,14 @@
 import type { MapOperation, MapTokenOperation } from "@/core/protocol";
-import type { MapPermissions } from "@/core/profile/profileTypes";
+import type { WorkspaceRole } from "@/core/auth/authTypes";
 import type { SavedMapContent } from "@/core/document/savedMapTypes";
 import { parseSavedMapContent } from "@/core/document/savedMapCodec";
 import { buildApiUrl } from "@/app/api/apiBase";
 
 export type MapSummary = {
+  currentUserRole: WorkspaceRole;
   id: string;
   name: string;
-  permissions: MapPermissions;
+  ownerUserId: string;
   updatedAt: string;
 };
 
@@ -22,6 +23,7 @@ type CreateMapInput = {
 
 async function requestJson(path: string, init?: RequestInit): Promise<unknown> {
   const response = await fetch(buildApiUrl(path), {
+    credentials: "include",
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -45,58 +47,42 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function withProfileHeader(profileId: string, init?: RequestInit): RequestInit {
-  return {
-    ...init,
-    headers: {
-      "X-Profile-Id": profileId,
-      ...(init?.headers ?? {})
-    }
-  };
-}
-
-function parseMapPermissions(raw: unknown): MapPermissions {
-  if (!isObject(raw) || typeof raw.ownerProfileId !== "string") {
-    throw new Error("Invalid map permissions response.");
-  }
-
-  return {
-    ownerProfileId: raw.ownerProfileId,
-    gmProfileIds: Array.isArray(raw.gmProfileIds)
-      ? raw.gmProfileIds.filter((profileId): profileId is string => typeof profileId === "string")
-      : []
-  };
-}
-
 function parseMapSummary(raw: unknown): MapSummary {
-  if (!isObject(raw) || typeof raw.id !== "string" || typeof raw.name !== "string" || typeof raw.updatedAt !== "string") {
+  if (
+    !isObject(raw)
+    || typeof raw.currentUserRole !== "string"
+    || typeof raw.id !== "string"
+    || typeof raw.name !== "string"
+    || typeof raw.ownerUserId !== "string"
+    || typeof raw.updatedAt !== "string"
+  ) {
     throw new Error("Invalid map summary response.");
   }
 
   return {
+    currentUserRole: raw.currentUserRole === "owner" || raw.currentUserRole === "gm" ? raw.currentUserRole : "player",
     id: raw.id,
     name: raw.name,
-    permissions: parseMapPermissions(raw.permissions),
+    ownerUserId: raw.ownerUserId,
     updatedAt: raw.updatedAt
   };
 }
 
 function parseMapRecord(raw: unknown): MapRecord {
-  if (!isObject(raw) || typeof raw.id !== "string" || typeof raw.name !== "string" || typeof raw.updatedAt !== "string") {
+  if (!isObject(raw)) {
     throw new Error("Invalid map response.");
   }
 
+  const summary = parseMapSummary(raw);
+
   return {
-    id: raw.id,
-    name: raw.name,
-    updatedAt: raw.updatedAt,
-    permissions: parseMapPermissions(raw.permissions),
+    ...summary,
     content: parseSavedMapContent(raw.content)
   };
 }
 
 export async function listMaps(): Promise<MapSummary[]> {
-  const payload = await requestJson("/api/maps", { method: "GET" });
+  const payload = await requestJson("/api/workspaces", { method: "GET" });
 
   if (!isObject(payload) || !Array.isArray(payload.maps)) {
     throw new Error("Invalid maps list response.");
@@ -105,9 +91,8 @@ export async function listMaps(): Promise<MapSummary[]> {
   return payload.maps.map(parseMapSummary);
 }
 
-export async function createMap(input: CreateMapInput, profileId: string): Promise<MapRecord> {
-  const payload = await requestJson("/api/maps", {
-    ...withProfileHeader(profileId),
+export async function createMap(input: CreateMapInput): Promise<MapRecord> {
+  const payload = await requestJson("/api/workspaces", {
     method: "POST",
     body: JSON.stringify(input)
   });
@@ -119,10 +104,10 @@ export async function createMap(input: CreateMapInput, profileId: string): Promi
   return parseMapRecord(payload.map);
 }
 
-export async function loadMapById(mapId: string, role: "gm" | "player", profileId: string): Promise<MapRecord> {
+export async function loadMapById(mapId: string, role: "gm" | "player"): Promise<MapRecord> {
   const payload = await requestJson(
-    `/api/maps/${encodeURIComponent(mapId)}?role=${encodeURIComponent(role)}`,
-    withProfileHeader(profileId, { method: "GET" })
+    `/api/workspaces/${encodeURIComponent(mapId)}?role=${encodeURIComponent(role)}`,
+    { method: "GET" }
   );
 
   if (!isObject(payload) || !("map" in payload)) {
@@ -132,9 +117,8 @@ export async function loadMapById(mapId: string, role: "gm" | "player", profileI
   return parseMapRecord(payload.map);
 }
 
-export async function renameMapById(mapId: string, name: string, profileId: string): Promise<MapRecord> {
-  const payload = await requestJson(`/api/maps/${encodeURIComponent(mapId)}`, {
-    ...withProfileHeader(profileId),
+export async function renameMapById(mapId: string, name: string): Promise<MapRecord> {
+  const payload = await requestJson(`/api/workspaces/${encodeURIComponent(mapId)}`, {
     method: "PATCH",
     body: JSON.stringify({ name })
   });
@@ -146,10 +130,10 @@ export async function renameMapById(mapId: string, name: string, profileId: stri
   return parseMapRecord(payload.map);
 }
 
-export async function deleteMapById(mapId: string, profileId: string): Promise<void> {
-  const payload = await requestJson(`/api/maps/${encodeURIComponent(mapId)}`, withProfileHeader(profileId, {
+export async function deleteMapById(mapId: string): Promise<void> {
+  const payload = await requestJson(`/api/workspaces/${encodeURIComponent(mapId)}`, {
     method: "DELETE"
-  }));
+  });
 
   if (!isObject(payload) || payload.deleted !== true) {
     throw new Error("Invalid map delete response.");

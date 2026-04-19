@@ -1,18 +1,21 @@
 import { WebSocket, WebSocketServer } from "ws";
-import { isObject, mapIdPatternSource } from "./mapStorage.js";
 import {
   applyOperationBatchToSession,
   applyOperationToSession,
   applyTokenOperationToSession
 } from "./operationService.js";
-import {
-  getOrCreateSession,
-  getSessionMapRecord
-} from "./sessionStore.js";
+import { getOrCreateSession } from "./sessionStore.js";
+import { getMapRecordForUser } from "./repositories/workspaceRepository.js";
+import { getAuthContext } from "./services/authService.js";
 import type { MapOperation, MapTokenOperation } from "../../src/core/protocol/index.js";
 
 const maxOperationsPerBatch = 500;
-const mapSocketPattern = new RegExp(`^/api/maps/(${mapIdPatternSource})/ws$`);
+const idPatternSource = "[a-zA-Z0-9_-]{1,80}";
+const mapSocketPattern = new RegExp(`^/api/maps/(${idPatternSource})/ws$`);
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
 
 function isValidOperationEnvelope(value) {
   return isObject(value)
@@ -21,22 +24,27 @@ function isValidOperationEnvelope(value) {
     && isObject(value.operation);
 }
 
-function sendSnapshot(client, session) {
+async function sendSnapshot(client, mapId: string, userId: string): Promise<void> {
   if (client.readyState !== WebSocket.OPEN) {
     return;
   }
 
-  const map = getSessionMapRecord(session);
+  const map = await getMapRecordForUser(mapId, userId);
+
+  if (!map) {
+    client.close(1008, "map_not_found");
+    return;
+  }
 
   client.send(JSON.stringify({
     type: "sync_snapshot",
-    lastSequence: session.nextSequence - 1,
+    lastSequence: map.nextSequence - 1,
     updatedAt: map.updatedAt,
     content: map.content
   }));
 }
 
-async function handleClientMessage(mapId, client, raw, profileId) {
+async function handleClientMessage(mapId: string, client: WebSocket, raw, userId: string) {
   const message = JSON.parse(raw.toString("utf8"));
 
   if (
@@ -45,7 +53,7 @@ async function handleClientMessage(mapId, client, raw, profileId) {
     && isObject(message.operation)
   ) {
     try {
-      await applyTokenOperationToSession(mapId, message.operation as MapTokenOperation, profileId);
+      await applyTokenOperationToSession(mapId, message.operation as MapTokenOperation, userId);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Invalid token operation.";
 
@@ -78,7 +86,7 @@ async function handleClientMessage(mapId, client, raw, profileId) {
       return;
     }
 
-    await applyOperationBatchToSession(mapId, message.operations, message.clientId, client, profileId);
+    await applyOperationBatchToSession(mapId, message.operations, message.clientId, client, userId);
     return;
   }
 
@@ -97,12 +105,13 @@ async function handleClientMessage(mapId, client, raw, profileId) {
     return;
   }
 
-  await applyOperationToSession(mapId, message.operation as MapOperation, message.clientId, message.operationId, client, profileId);
+  await applyOperationToSession(mapId, message.operation as MapOperation, message.clientId, message.operationId, client, userId);
 }
 
-function attachClientHandlers(mapId, session, client, profileId) {
+async function attachClientHandlers(mapId: string, client: WebSocket, userId: string) {
+  const session = getOrCreateSession(mapId);
   session.clients.add(client);
-  sendSnapshot(client, session);
+  await sendSnapshot(client, mapId, userId);
 
   client.on("close", () => {
     session.clients.delete(client);
@@ -110,7 +119,7 @@ function attachClientHandlers(mapId, session, client, profileId) {
 
   client.on("message", async (raw) => {
     try {
-      await handleClientMessage(mapId, client, raw, profileId);
+      await handleClientMessage(mapId, client, raw, userId);
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Invalid map operation.";
       if (client.readyState === WebSocket.OPEN) {
@@ -138,23 +147,23 @@ export function attachWebSocketRoutes(server) {
         return;
       }
 
-      const mapId = match[1];
-      const profileId = url.searchParams.get("profileId");
+      const auth = await getAuthContext(request);
 
-      if (!profileId) {
+      if (!auth) {
         socket.destroy();
         return;
       }
 
-      const session = await getOrCreateSession(mapId, profileId);
+      const mapId = match[1];
+      const map = await getMapRecordForUser(mapId, auth.user.id);
 
-      if (!session) {
+      if (!map) {
         socket.destroy();
         return;
       }
 
       webSocketServer.handleUpgrade(request, socket, head, (client) => {
-        attachClientHandlers(mapId, session, client, profileId);
+        void attachClientHandlers(mapId, client, auth.user.id);
       });
     } catch {
       socket.destroy();
@@ -163,4 +172,3 @@ export function attachWebSocketRoutes(server) {
 
   return webSocketServer;
 }
-

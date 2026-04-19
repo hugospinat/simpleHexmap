@@ -8,12 +8,17 @@
     "server": "npm run build:server && node server/dist/server/src/index.js",
     "build": "tsc && vite build",
     "build:server": "tsc -p tsconfig.server.json && node --check server/dist/server/src/index.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "npm run build:server && node server/dist/server/src/db/migrations.js",
+    "migrate:json-data": "npm run build:server && node server/dist/server/src/migration/jsonImport.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
+    "drizzle-orm": "^0.45.2",
     "pixi.js": "^8.18.1",
+    "postgres": "^3.4.9",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "ws": "^8.20.0"
@@ -24,6 +29,7 @@
     "@types/react-dom": "^19.0.0",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^5.0.0",
+    "drizzle-kit": "^0.31.10",
     "typescript": "^5.8.0",
     "vite": "^7.0.0",
     "vitest": "^3.2.0"

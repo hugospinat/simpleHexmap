@@ -1,11 +1,8 @@
-export type ProfileId = string;
+import type { UserId, UserRecord } from "../auth/authTypes.js";
 
-export type ProfileRecord = {
-  id: ProfileId;
-  username: string;
-  createdAt: string;
-  updatedAt: string;
-};
+export type ProfileId = UserId;
+
+export type ProfileRecord = UserRecord;
 
 export type MapPermissions = {
   ownerProfileId: ProfileId;
