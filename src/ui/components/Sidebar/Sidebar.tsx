@@ -12,7 +12,7 @@ type SidebarProps = {
   activeFactionId: string | null;
   activeFeatureKind: FeatureKind;
   activeMode: EditorMode;
-  activeTokenProfileId: string | null;
+  activeTokenUserId: string | null;
   activeType: TerrainType;
   factions: Faction[];
   mapTokens: MapTokenRecord[];
@@ -37,7 +37,7 @@ export function Sidebar({
   activeFactionId,
   activeFeatureKind,
   activeMode,
-  activeTokenProfileId,
+  activeTokenUserId,
   activeType,
   factions,
   mapTokens,
@@ -60,8 +60,8 @@ export function Sidebar({
   const [editingFactionId, setEditingFactionId] = useState<string | null>(null);
   const [editingFactionName, setEditingFactionName] = useState("");
 
-  const getTokenDisplayName = (profileId: string): string => {
-    return tokenMembers.find((member) => member.userId === profileId)?.username ?? profileId;
+  const getTokenDisplayName = (userId: string): string => {
+    return tokenMembers.find((member) => member.userId === userId)?.username ?? userId;
   };
 
   const startFactionNameEdit = (factionId: string, currentName: string) => {
@@ -131,11 +131,11 @@ export function Sidebar({
             <span>Brush</span>
             <strong>Visibility</strong>
           </div>
-          {activeTokenProfileId ? (
+          {activeTokenUserId ? (
             <>
               <div className="active-tile">
                 <span>Selected token</span>
-                <strong>{getTokenDisplayName(activeTokenProfileId)}</strong>
+                <strong>{getTokenDisplayName(activeTokenUserId)}</strong>
               </div>
               <div className="faction-actions">
                 <button type="button" className="compact-button" onClick={onClearMapTokenSelection}>Clear selection</button>
@@ -151,12 +151,12 @@ export function Sidebar({
           ) : (
             <ul className="token-list" aria-label="Map token list">
               {tokenMembers.map((member) => {
-                const placedToken = mapTokens.find((token) => token.profileId === member.userId);
+                const placedToken = mapTokens.find((token) => token.userId === member.userId);
 
                 return (
                 <li
                   key={member.userId}
-                  className={activeTokenProfileId === member.userId ? "token-item is-active" : "token-item"}
+                  className={activeTokenUserId === member.userId ? "token-item is-active" : "token-item"}
                 >
                   <button
                     type="button"

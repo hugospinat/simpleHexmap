@@ -10,7 +10,7 @@ import type { MapOperation, MapTokenRecord } from "@/core/protocol";
 
 type UseEditorCanvasPropsOptions = {
   activeMode: EditorMode;
-  activeTokenProfileId: string | null;
+  activeTokenUserId: string | null;
   applyActiveGestureCells: (axials: Axial[]) => void;
   applyActiveRiverGestureEdges: (edges: RiverEdgeRef[]) => void;
   canEdit: boolean;
@@ -30,7 +30,7 @@ type UseEditorCanvasPropsOptions = {
   setCenter: (center: Axial) => void;
   setHoveredHex: (axial: Axial | null) => void;
   onGmTokenPlace: (axial: Axial) => void;
-  onGmTokenRemove: (profileId: string) => void;
+  onGmTokenRemove: (userId: string) => void;
   onPlayerTokenPlace: (axial: Axial) => void;
   showCoordinates: boolean;
   startEditGesture: (action: EditGestureAction, axials: Axial[]) => void;
@@ -41,7 +41,7 @@ type UseEditorCanvasPropsOptions = {
 
 export function useEditorCanvasProps({
   activeMode,
-  activeTokenProfileId,
+  activeTokenUserId,
   applyActiveGestureCells,
   applyActiveRiverGestureEdges,
   canEdit,
@@ -67,11 +67,11 @@ export function useEditorCanvasProps({
   startEditGesture,
   startRiverGesture,
   visualZoom,
-  world
+  world,
 }: UseEditorCanvasPropsOptions): MapCanvasProps {
   return useMemo(
     () => ({
-      activeTokenProfileId,
+      activeTokenUserId,
       center,
       canEdit,
       playerMode: role === "player",
@@ -100,11 +100,11 @@ export function useEditorCanvasProps({
       hoveredHex,
       showCoordinates,
       visualZoom,
-      world
+      world,
     }),
     [
       activeMode,
-      activeTokenProfileId,
+      activeTokenUserId,
       applyActiveGestureCells,
       applyActiveRiverGestureEdges,
       canEdit,
@@ -130,7 +130,7 @@ export function useEditorCanvasProps({
       startEditGesture,
       startRiverGesture,
       visualZoom,
-      world
-    ]
+      world,
+    ],
   );
 }

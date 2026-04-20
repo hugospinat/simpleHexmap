@@ -26,7 +26,7 @@ export default function MapCanvas({
   renderWorldPatch,
   previewOperations,
   mapTokens,
-  activeTokenProfileId,
+  activeTokenUserId,
   canEdit,
   playerMode,
   fogEditingActive,
@@ -73,7 +73,7 @@ export default function MapCanvas({
   useCanvasWheelZoom(overlayCanvasRef, visualZoom, onVisualZoomChange, onToolStep);
 
   const { handlers, hoverRiverEdge } = useMapInteraction({
-    activeTokenProfileId,
+    activeTokenUserId,
     canEdit,
     canvasRef: overlayCanvasRef,
     center,

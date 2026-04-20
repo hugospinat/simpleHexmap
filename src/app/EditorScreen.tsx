@@ -50,7 +50,7 @@ export function EditorScreen({ initialWorld, mapId, mapName, tokenMembers, user,
           activeFactionId={editor.activeFactionId}
           activeFeatureKind={editor.activeFeatureKind}
           activeMode={editor.activeMode}
-          activeTokenProfileId={editor.activeTokenProfileId}
+          activeTokenUserId={editor.activeTokenUserId}
           activeType={editor.activeType}
           factions={editor.factions}
           tokenMembers={editor.tokenMembers}

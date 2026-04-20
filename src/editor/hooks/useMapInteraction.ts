@@ -5,32 +5,36 @@ import {
   useState,
   type PointerEvent,
   type RefObject,
-  type SyntheticEvent
+  type SyntheticEvent,
 } from "react";
 import {
   getNearestRiverEdgeAtPoint,
   getRiverEdgesAlongPointerMove,
-  riverEdgesEqual
+  riverEdgesEqual,
 } from "@/core/geometry/edgeDetection";
 import type { Viewport } from "@/render/renderTypes";
-import { findMapTokenProfileAtPoint } from "@/editor/tokens/mapTokenHitTest";
+import { findMapTokenUserAtPoint } from "@/editor/tokens/mapTokenHitTest";
 import {
   getAxialLine,
   panCenterByScreenDelta,
   roundAxial,
   screenPixelToAxial,
   type Axial,
-  type Pixel
+  type Pixel,
 } from "@/core/geometry/hex";
 import type { EditGestureAction } from "@/editor/tools/editGesture";
 import type { EditorMode } from "@/editor/tools/editorTypes";
 import type { RiverEdgeRef, MapState } from "@/core/map/world";
 import type { MapTokenRecord } from "@/core/protocol";
 import { useLatestRef } from "./useLatestRef";
-import { getPointerAction, getPointerTarget, type PointerSession } from "./mapPointerIntent";
+import {
+  getPointerAction,
+  getPointerTarget,
+  type PointerSession,
+} from "./mapPointerIntent";
 
 type UseMapInteractionOptions = {
-  activeTokenProfileId: string | null;
+  activeTokenUserId: string | null;
   canEdit: boolean;
   canvasRef: RefObject<HTMLCanvasElement | null>;
   center: Axial;
@@ -42,10 +46,13 @@ type UseMapInteractionOptions = {
   onEditGestureStart: (action: EditGestureAction, axials: Axial[]) => void;
   onRiverGestureEnd: () => void;
   onRiverGestureMove: (edges: RiverEdgeRef[]) => void;
-  onRiverGestureStart: (action: EditGestureAction, edges: RiverEdgeRef[]) => void;
+  onRiverGestureStart: (
+    action: EditGestureAction,
+    edges: RiverEdgeRef[],
+  ) => void;
   onHoveredHexChange: (axial: Axial | null) => void;
   onGmTokenPlace: (axial: Axial) => void;
-  onGmTokenRemove: (profileId: string) => void;
+  onGmTokenRemove: (userId: string) => void;
   onPlayerTokenPlace: (axial: Axial) => void;
   mapTokens: readonly MapTokenRecord[];
   playerMode: boolean;
@@ -55,7 +62,7 @@ type UseMapInteractionOptions = {
 };
 
 export function useMapInteraction({
-  activeTokenProfileId,
+  activeTokenUserId,
   canEdit,
   canvasRef,
   center,
@@ -76,9 +83,11 @@ export function useMapInteraction({
   playerMode,
   viewport,
   visualZoom,
-  world
+  world,
 }: UseMapInteractionOptions) {
-  const [hoverRiverEdge, setHoverRiverEdge] = useState<RiverEdgeRef | null>(null);
+  const [hoverRiverEdge, setHoverRiverEdge] = useState<RiverEdgeRef | null>(
+    null,
+  );
   const pointerRef = useRef<PointerSession | null>(null);
   const hoveredHexRef = useRef<Axial | null>(null);
   const hoverRiverEdgeRef = useRef<RiverEdgeRef | null>(null);
@@ -91,7 +100,7 @@ export function useMapInteraction({
 
   const centerRef = useLatestRef(center);
   const editModeRef = useLatestRef(editMode);
-  const activeTokenProfileIdRef = useLatestRef(activeTokenProfileId);
+  const activeTokenUserIdRef = useLatestRef(activeTokenUserId);
   const levelRef = useLatestRef(level);
   const zoomRef = useLatestRef(visualZoom);
   const viewportRef = useLatestRef(viewport);
@@ -106,28 +115,34 @@ export function useMapInteraction({
   const mapTokensRef = useLatestRef(mapTokens);
   const worldRef = useLatestRef(world);
 
-  const setHoveredHexIfChanged = useCallback((next: Axial | null) => {
-    const previous = hoveredHexRef.current;
+  const setHoveredHexIfChanged = useCallback(
+    (next: Axial | null) => {
+      const previous = hoveredHexRef.current;
 
-    if (
-      (!previous && !next) ||
-      (previous && next && previous.q === next.q && previous.r === next.r)
-    ) {
-      return;
-    }
+      if (
+        (!previous && !next) ||
+        (previous && next && previous.q === next.q && previous.r === next.r)
+      ) {
+        return;
+      }
 
-    hoveredHexRef.current = next;
-    onHoveredHexChangeRef.current(next);
-  }, [onHoveredHexChangeRef]);
+      hoveredHexRef.current = next;
+      onHoveredHexChangeRef.current(next);
+    },
+    [onHoveredHexChangeRef],
+  );
 
-  const setHoverRiverEdgeIfChanged = useCallback((next: RiverEdgeRef | null) => {
-    if (riverEdgesEqual(hoverRiverEdgeRef.current, next)) {
-      return;
-    }
+  const setHoverRiverEdgeIfChanged = useCallback(
+    (next: RiverEdgeRef | null) => {
+      if (riverEdgesEqual(hoverRiverEdgeRef.current, next)) {
+        return;
+      }
 
-    hoverRiverEdgeRef.current = next;
-    setHoverRiverEdge(next);
-  }, []);
+      hoverRiverEdgeRef.current = next;
+      setHoverRiverEdge(next);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (editMode === "river") {
@@ -148,10 +163,10 @@ export function useMapInteraction({
       const rect = canvas.getBoundingClientRect();
       return {
         x: event.clientX - rect.left,
-        y: event.clientY - rect.top
+        y: event.clientY - rect.top,
       };
     },
-    [canvasRef]
+    [canvasRef],
   );
 
   const pointToAxial = useCallback(
@@ -159,13 +174,19 @@ export function useMapInteraction({
       const latestViewport = viewportRef.current;
 
       return roundAxial(
-        screenPixelToAxial(point, centerRef.current, levelRef.current, zoomRef.current, {
-          x: latestViewport.width,
-          y: latestViewport.height
-        })
+        screenPixelToAxial(
+          point,
+          centerRef.current,
+          levelRef.current,
+          zoomRef.current,
+          {
+            x: latestViewport.width,
+            y: latestViewport.height,
+          },
+        ),
       );
     },
-    [centerRef, levelRef, viewportRef, zoomRef]
+    [centerRef, levelRef, viewportRef, zoomRef],
   );
 
   const updateHoveredHexFromPoint = useCallback(
@@ -177,15 +198,24 @@ export function useMapInteraction({
 
       setHoveredHexIfChanged(pointToAxial(point));
     },
-    [editModeRef, pointToAxial, setHoveredHexIfChanged]
+    [editModeRef, pointToAxial, setHoveredHexIfChanged],
   );
 
-  const getEditLine = useCallback((pointer: PointerSession, axial: Axial): Axial[] => {
-    return pointer.lastAxial ? getAxialLine(pointer.lastAxial, axial) : [axial];
-  }, []);
+  const getEditLine = useCallback(
+    (pointer: PointerSession, axial: Axial): Axial[] => {
+      return pointer.lastAxial
+        ? getAxialLine(pointer.lastAxial, axial)
+        : [axial];
+    },
+    [],
+  );
 
   const getRiverEdgesFromPointerMove = useCallback(
-    (pointer: PointerSession, fromPoint: Pixel, point: Pixel): RiverEdgeRef[] => {
+    (
+      pointer: PointerSession,
+      fromPoint: Pixel,
+      point: Pixel,
+    ): RiverEdgeRef[] => {
       const result = getRiverEdgesAlongPointerMove(
         fromPoint,
         point,
@@ -193,12 +223,12 @@ export function useMapInteraction({
         levelRef.current,
         zoomRef.current,
         viewportRef.current,
-        pointer.lastRiverEdge
+        pointer.lastRiverEdge,
       );
       pointer.lastRiverEdge = result.lastEdge;
       return result.edges;
     },
-    [centerRef, levelRef, viewportRef, zoomRef]
+    [centerRef, levelRef, viewportRef, zoomRef],
   );
 
   const flushPendingEditMoves = useCallback(() => {
@@ -263,7 +293,7 @@ export function useMapInteraction({
         centerRef.current,
         delta,
         levelRef.current,
-        zoomRef.current
+        zoomRef.current,
       );
       centerRef.current = nextCenter;
       onCenterChangeRef.current(nextCenter);
@@ -300,7 +330,12 @@ export function useMapInteraction({
         onEditGestureEndRef.current();
       }
     }
-  }, [flushPendingEditMoves, flushPendingRiverMoves, onEditGestureEndRef, onRiverGestureEndRef]);
+  }, [
+    flushPendingEditMoves,
+    flushPendingRiverMoves,
+    onEditGestureEndRef,
+    onRiverGestureEndRef,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -336,7 +371,7 @@ export function useMapInteraction({
           lastAxial: null,
           lastRiverEdge: null,
           moved: false,
-          target: "cells"
+          target: "cells",
         };
         return;
       }
@@ -358,24 +393,28 @@ export function useMapInteraction({
         return;
       }
 
-      if (editModeRef.current === "fog" && activeTokenProfileIdRef.current && (event.button === 0 || event.button === 2)) {
+      if (
+        editModeRef.current === "fog" &&
+        activeTokenUserIdRef.current &&
+        (event.button === 0 || event.button === 2)
+      ) {
         if (event.button === 0) {
           const axial = pointToAxial(point);
           setHoveredHexIfChanged(axial);
           onGmTokenPlaceRef.current(axial);
         } else {
-          const profileId = findMapTokenProfileAtPoint({
+          const userId = findMapTokenUserAtPoint({
             center: centerRef.current,
             level: levelRef.current,
             point,
             tokens: mapTokensRef.current,
             viewport: viewportRef.current,
             visualZoom: zoomRef.current,
-            world: worldRef.current
+            world: worldRef.current,
           });
 
-          if (profileId) {
-            onGmTokenRemoveRef.current(profileId);
+          if (userId) {
+            onGmTokenRemoveRef.current(userId);
           }
         }
 
@@ -394,7 +433,7 @@ export function useMapInteraction({
           centerRef.current,
           levelRef.current,
           zoomRef.current,
-          viewportRef.current
+          viewportRef.current,
         );
 
         if (!riverEdge) {
@@ -410,7 +449,7 @@ export function useMapInteraction({
           lastAxial: null,
           lastRiverEdge: riverEdge,
           moved: false,
-          target: "river"
+          target: "river",
         };
         setHoverRiverEdgeIfChanged(riverEdge);
         onRiverGestureStart(action, [riverEdge]);
@@ -425,13 +464,13 @@ export function useMapInteraction({
         lastAxial: axial,
         lastRiverEdge: null,
         moved: false,
-        target: "cells"
+        target: "cells",
       };
       onEditGestureStart(action, [axial]);
     },
     [
       canEdit,
-      activeTokenProfileIdRef,
+      activeTokenUserIdRef,
       centerRef,
       editModeRef,
       getCanvasPoint,
@@ -448,8 +487,8 @@ export function useMapInteraction({
       setHoverRiverEdgeIfChanged,
       viewportRef,
       worldRef,
-      zoomRef
-    ]
+      zoomRef,
+    ],
   );
 
   const handlePointerMove = useCallback(
@@ -464,7 +503,7 @@ export function useMapInteraction({
             centerRef.current,
             levelRef.current,
             zoomRef.current,
-            viewportRef.current
+            viewportRef.current,
           );
           setHoverRiverEdgeIfChanged(riverEdge);
         } else {
@@ -480,7 +519,7 @@ export function useMapInteraction({
       const fromPoint = { x: pointer.x, y: pointer.y };
       const delta = {
         x: point.x - pointer.x,
-        y: point.y - pointer.y
+        y: point.y - pointer.y,
       };
 
       pointer.x = point.x;
@@ -490,7 +529,7 @@ export function useMapInteraction({
         pointer.moved = true;
         pendingPanRef.current = {
           x: pendingPanRef.current.x + delta.x,
-          y: pendingPanRef.current.y + delta.y
+          y: pendingPanRef.current.y + delta.y,
         };
         schedulePanCenterUpdate();
         return;
@@ -537,8 +576,8 @@ export function useMapInteraction({
       setHoverRiverEdgeIfChanged,
       updateHoveredHexFromPoint,
       viewportRef,
-      zoomRef
-    ]
+      zoomRef,
+    ],
   );
 
   const handlePointerUp = useCallback(
@@ -557,7 +596,11 @@ export function useMapInteraction({
 
       if (pointer.action === "paint" || pointer.action === "erase") {
         if (pointer.target === "river") {
-          const edges = getRiverEdgesFromPointerMove(pointer, { x: pointer.x, y: pointer.y }, point);
+          const edges = getRiverEdgesFromPointerMove(
+            pointer,
+            { x: pointer.x, y: pointer.y },
+            point,
+          );
 
           if (edges.length > 0) {
             pendingRiverEdgesRef.current.push(...edges);
@@ -588,8 +631,8 @@ export function useMapInteraction({
       pointToAxial,
       setHoveredHexIfChanged,
       setHoverRiverEdgeIfChanged,
-      stopPointerSession
-    ]
+      stopPointerSession,
+    ],
   );
 
   const handlePointerLeave = useCallback(() => {
@@ -618,13 +661,21 @@ export function useMapInteraction({
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
     },
-    [editModeRef, setHoveredHexIfChanged, setHoverRiverEdgeIfChanged, stopPointerSession]
+    [
+      editModeRef,
+      setHoveredHexIfChanged,
+      setHoverRiverEdgeIfChanged,
+      stopPointerSession,
+    ],
   );
 
-  const preventDefault = useCallback((event: SyntheticEvent<HTMLCanvasElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-  }, []);
+  const preventDefault = useCallback(
+    (event: SyntheticEvent<HTMLCanvasElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    [],
+  );
 
   return {
     handlers: {
@@ -634,8 +685,8 @@ export function useMapInteraction({
       onPointerDown: handlePointerDown,
       onPointerLeave: handlePointerLeave,
       onPointerMove: handlePointerMove,
-      onPointerUp: handlePointerUp
+      onPointerUp: handlePointerUp,
     },
-    hoverRiverEdge
+    hoverRiverEdge,
   };
 }

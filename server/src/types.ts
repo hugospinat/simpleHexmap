@@ -43,7 +43,7 @@ export type OperationEnvelope = {
 export type MapTokenUpdatedMessage = {
   type: "map_token_updated";
   operation: MapTokenOperation;
-  sourceProfileId: string;
+  sourceUserId: string;
   updatedAt: string;
 };
 

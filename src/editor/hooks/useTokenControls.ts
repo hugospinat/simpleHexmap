@@ -15,19 +15,19 @@ type UseTokenControlsOptions = {
   mapId: string;
   mapTokens: readonly MapTokenRecord[];
   role: MapOpenMode;
-  profileId: string;
+  userId: string;
   sendTokenOperation: (operation: MapTokenOperation) => void;
   viewLevel: number;
   visibleWorld: MapState;
 };
 
 type UseTokenControlsResult = {
-  activeTokenProfileId: string | null;
+  activeTokenUserId: string | null;
   clearMapTokenSelection: () => void;
   placePlayerToken: (axial: Axial) => void;
   placeSelectedMapToken: (axial: Axial) => void;
   playerTokenColor: string;
-  removeMapToken: (profileId: string) => void;
+  removeMapToken: (userId: string) => void;
   selectMapTokenMember: (member: WorkspaceTokenMemberRecord) => void;
   setPlayerTokenColor: (color: string) => void;
 };
@@ -36,15 +36,15 @@ export function useTokenControls({
   canEdit,
   mapId,
   mapTokens,
-  profileId,
+  userId,
   role,
   sendTokenOperation,
   viewLevel,
   visibleWorld,
 }: UseTokenControlsOptions): UseTokenControlsResult {
-  const [activeTokenProfileId, setActiveTokenProfileId] = useState<
-    string | null
-  >(null);
+  const [activeTokenUserId, setActiveTokenUserId] = useState<string | null>(
+    null,
+  );
   const [activeTokenColor, setActiveTokenColor] = useState(
     defaultWorkspaceTokenColor,
   );
@@ -71,11 +71,11 @@ export function useTokenControls({
 
       sendTokenOperation({
         type: "set_map_token_color",
-        profileId,
+        userId,
         color,
       });
     },
-    [profileId, sendTokenOperation],
+    [sendTokenOperation, userId],
   );
 
   const placePlayerToken = useCallback(
@@ -97,7 +97,7 @@ export function useTokenControls({
       sendTokenOperation({
         type: "set_map_token",
         token: {
-          profileId,
+          userId,
           q: axial.q,
           r: axial.r,
           color: playerTokenColor,
@@ -106,9 +106,9 @@ export function useTokenControls({
     },
     [
       playerTokenColor,
-      profileId,
       role,
       sendTokenOperation,
+      userId,
       viewLevel,
       visibleWorld,
     ],
@@ -120,15 +120,15 @@ export function useTokenControls({
         return;
       }
 
-      if (activeTokenProfileId === member.userId) {
-        setActiveTokenProfileId(null);
+      if (activeTokenUserId === member.userId) {
+        setActiveTokenUserId(null);
         return;
       }
 
-      setActiveTokenProfileId(member.userId);
+      setActiveTokenUserId(member.userId);
       setActiveTokenColor(member.color);
     },
-    [activeTokenProfileId, canEdit],
+    [activeTokenUserId, canEdit],
   );
 
   const clearMapTokenSelection = useCallback(() => {
@@ -136,12 +136,12 @@ export function useTokenControls({
       return;
     }
 
-    setActiveTokenProfileId(null);
+    setActiveTokenUserId(null);
   }, [canEdit]);
 
   const placeSelectedMapToken = useCallback(
     (axial: Axial) => {
-      if (!canEdit || !activeTokenProfileId) {
+      if (!canEdit || !activeTokenUserId) {
         return;
       }
 
@@ -158,7 +158,7 @@ export function useTokenControls({
       sendTokenOperation({
         type: "set_map_token",
         token: {
-          profileId: activeTokenProfileId,
+          userId: activeTokenUserId,
           q: axial.q,
           r: axial.r,
           color: activeTokenColor,
@@ -167,7 +167,7 @@ export function useTokenControls({
     },
     [
       activeTokenColor,
-      activeTokenProfileId,
+      activeTokenUserId,
       canEdit,
       sendTokenOperation,
       viewLevel,
@@ -176,35 +176,35 @@ export function useTokenControls({
   );
 
   const removeMapToken = useCallback(
-    (tokenProfileId: string) => {
+    (tokenUserId: string) => {
       if (!canEdit) {
         return;
       }
 
       const token = mapTokens.find(
-        (candidate) => candidate.profileId === tokenProfileId,
+        (candidate) => candidate.userId === tokenUserId,
       );
 
       if (token) {
-        setActiveTokenProfileId(token.profileId);
+        setActiveTokenUserId(token.userId);
         setActiveTokenColor(token.color);
       }
 
       sendTokenOperation({
         type: "remove_map_token",
-        profileId: tokenProfileId,
+        userId: tokenUserId,
       });
     },
     [canEdit, mapTokens, sendTokenOperation],
   );
 
   useEffect(() => {
-    setActiveTokenProfileId(null);
+    setActiveTokenUserId(null);
     setActiveTokenColor(defaultWorkspaceTokenColor);
   }, [mapId]);
 
   return {
-    activeTokenProfileId,
+    activeTokenUserId,
     clearMapTokenSelection,
     placePlayerToken,
     placeSelectedMapToken,

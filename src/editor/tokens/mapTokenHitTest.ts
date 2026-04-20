@@ -5,7 +5,7 @@ import {
   hexKey,
   type Axial,
   type HexId,
-  type Pixel
+  type Pixel,
 } from "@/core/geometry/hex";
 import { SOURCE_LEVEL } from "@/core/map/mapRules";
 import { getLevelMap, type MapState } from "@/core/map/world";
@@ -23,7 +23,7 @@ type MapTokenHitTestInput = {
 };
 
 type TokenScreenRecord = {
-  profileId: string;
+  userId: string;
   screenCenter: Pixel;
 };
 
@@ -31,16 +31,22 @@ function distanceBetween(left: Pixel, right: Pixel): number {
   return Math.hypot(left.x - right.x, left.y - right.y);
 }
 
-function getTokenOffset(index: number, count: number, boundsWidth: number, boundsHeight: number): Pixel {
+function getTokenOffset(
+  index: number,
+  count: number,
+  boundsWidth: number,
+  boundsHeight: number,
+): Pixel {
   if (count <= 1) {
     return { x: 0, y: 0 };
   }
 
-  const ringRadius = Math.min(boundsWidth, boundsHeight) * (count === 2 ? 0.11 : 0.13);
+  const ringRadius =
+    Math.min(boundsWidth, boundsHeight) * (count === 2 ? 0.11 : 0.13);
   const angle = -Math.PI / 2 + (Math.PI * 2 * index) / count;
   return {
     x: Math.cos(angle) * ringRadius,
-    y: Math.sin(angle) * ringRadius
+    y: Math.sin(angle) * ringRadius,
   };
 }
 
@@ -59,7 +65,7 @@ function getScreenBounds(corners: Pixel[]): { height: number; width: number } {
 
   return {
     height: maxY - minY,
-    width: maxX - minX
+    width: maxX - minX,
   };
 }
 
@@ -74,14 +80,14 @@ function tokenFrameAxial(token: MapTokenRecord, level: number): Axial {
     : getAncestorAtLevel(sourceAxial, SOURCE_LEVEL, level);
 }
 
-export function findMapTokenProfileAtPoint({
+export function findMapTokenUserAtPoint({
   center,
   level,
   point,
   tokens,
   viewport,
   visualZoom,
-  world
+  world,
 }: MapTokenHitTestInput): string | null {
   const sourceCells = getLevelMap(world, SOURCE_LEVEL);
   const levelCells = getLevelMap(world, level);
@@ -107,36 +113,59 @@ export function findMapTokenProfileAtPoint({
     tokensByHex.set(frameKey, group);
   }
 
-  let nearest: { distance: number; profileId: string } | null = null;
+  let nearest: { distance: number; userId: string } | null = null;
   const viewportPixel = { x: viewport.width, y: viewport.height };
 
   for (const group of tokensByHex.values()) {
     const frameAxial = tokenFrameAxial(group[0], level);
-    const corners = getHexCorners(frameAxial, center, level, visualZoom, viewportPixel);
+    const corners = getHexCorners(
+      frameAxial,
+      center,
+      level,
+      visualZoom,
+      viewportPixel,
+    );
     const bounds = getScreenBounds(corners);
-    const screenCenter = axialToScreenPixel(frameAxial, center, level, visualZoom, viewportPixel);
-    const sorted = [...group].sort((left, right) => left.profileId.localeCompare(right.profileId));
-    const radius = Math.max(2.5, Math.min(bounds.width, bounds.height) * (sorted.length > 4 ? 0.065 : 0.08));
+    const screenCenter = axialToScreenPixel(
+      frameAxial,
+      center,
+      level,
+      visualZoom,
+      viewportPixel,
+    );
+    const sorted = [...group].sort((left, right) =>
+      left.userId.localeCompare(right.userId),
+    );
+    const radius = Math.max(
+      2.5,
+      Math.min(bounds.width, bounds.height) *
+        (sorted.length > 4 ? 0.065 : 0.08),
+    );
 
     for (const [index, token] of sorted.entries()) {
-      const offset = getTokenOffset(index, sorted.length, bounds.width, bounds.height);
+      const offset = getTokenOffset(
+        index,
+        sorted.length,
+        bounds.width,
+        bounds.height,
+      );
       const tokenRecord: TokenScreenRecord = {
-        profileId: token.profileId,
+        userId: token.userId,
         screenCenter: {
           x: screenCenter.x + offset.x,
-          y: screenCenter.y + offset.y
-        }
+          y: screenCenter.y + offset.y,
+        },
       };
       const distance = distanceBetween(point, tokenRecord.screenCenter);
 
       if (distance <= radius + 3 && (!nearest || distance < nearest.distance)) {
         nearest = {
           distance,
-          profileId: tokenRecord.profileId
+          userId: tokenRecord.userId,
         };
       }
     }
   }
 
-  return nearest?.profileId ?? null;
+  return nearest?.userId ?? null;
 }

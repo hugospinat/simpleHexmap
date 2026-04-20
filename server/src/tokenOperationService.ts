@@ -65,12 +65,12 @@ export async function applyTokenOperationToSession(
   }
 
   const canManageOtherUserTokens = canOpenAsGm(role);
-  const targetProfileId =
+  const targetUserId =
     operation.type === "set_map_token"
-      ? operation.token.profileId
-      : operation.profileId;
+      ? operation.token.userId
+      : operation.userId;
 
-  if (targetProfileId !== sourceUserId && !canManageOtherUserTokens) {
+  if (targetUserId !== sourceUserId && !canManageOtherUserTokens) {
     throw new Error(
       operation.type === "remove_map_token"
         ? "Cannot remove another user token."
@@ -100,13 +100,13 @@ export async function applyTokenOperationToSession(
       .where(
         and(
           eq(workspaceMembers.workspaceId, workspaceId),
-          eq(workspaceMembers.userId, targetProfileId),
+          eq(workspaceMembers.userId, targetUserId),
         ),
       )
       .limit(1);
 
     if (membershipRows.length === 0) {
-      throw new Error("Token profile is not in this workspace.");
+      throw new Error("Token user is not in this workspace.");
     }
 
     await tx.execute(
@@ -137,7 +137,7 @@ export async function applyTokenOperationToSession(
         .values({
           color: operation.token.color,
           updatedAt: now,
-          userId: operation.token.profileId,
+          userId: operation.token.userId,
           workspaceId,
         })
         .onConflictDoUpdate({
@@ -156,7 +156,7 @@ export async function applyTokenOperationToSession(
         .values({
           q: operation.token.q,
           r: operation.token.r,
-          userId: operation.token.profileId,
+          userId: operation.token.userId,
           mapId,
         })
         .onConflictDoUpdate({
@@ -172,7 +172,7 @@ export async function applyTokenOperationToSession(
         .where(
           and(
             eq(mapTokens.mapId, mapId),
-            eq(mapTokens.userId, operation.profileId),
+            eq(mapTokens.userId, operation.userId),
           ),
         );
     } else {
@@ -181,7 +181,7 @@ export async function applyTokenOperationToSession(
         .values({
           color: operation.color,
           updatedAt: now,
-          userId: operation.profileId,
+          userId: operation.userId,
           workspaceId,
         })
         .onConflictDoUpdate({
@@ -209,7 +209,7 @@ export async function applyTokenOperationToSession(
   const message: MapTokenUpdatedMessage = {
     type: "map_token_updated",
     operation,
-    sourceProfileId: sourceUserId,
+    sourceUserId,
     updatedAt: updated.updatedAt,
   };
 

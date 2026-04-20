@@ -479,9 +479,7 @@ export function createPixiMapRenderer(): PixiMapRenderer {
       activeWindow?.key ?? visibleCellHash,
       cameraState.featureVisibilityMode,
       mapTokens
-        .map(
-          (token) => `${token.profileId}:${token.q},${token.r}:${token.color}`,
-        )
+        .map((token) => `${token.userId}:${token.q},${token.r}:${token.color}`)
         .sort()
         .join(";"),
     ].join("|");
@@ -739,8 +737,7 @@ export function createPixiMapRenderer(): PixiMapRenderer {
       tokenCache = {
         key: `${activeFrame.transform.level}|manual|${mapTokens
           .map(
-            (token) =>
-              `${token.profileId}:${token.q},${token.r}:${token.color}`,
+            (token) => `${token.userId}:${token.q},${token.r}:${token.color}`,
           )
           .sort()
           .join(";")}`,

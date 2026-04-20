@@ -390,6 +390,7 @@ Available scripts:
 - `scripts/ws-sequence-smoke.mjs`
 - `scripts/ws-multi-client-check.mjs`
 - `scripts/ws-stress.mjs`
+- `scripts/ws-player-visibility-smoke.mjs`
 
 These scripts assume the backend is already running.
 

@@ -11,7 +11,7 @@ export type MapCanvasProps = {
   onRenderWorldPatchApplied?: (revision: number) => void;
   previewOperations: MapOperation[];
   mapTokens: MapTokenRecord[];
-  activeTokenProfileId: string | null;
+  activeTokenUserId: string | null;
   canEdit: boolean;
   playerMode: boolean;
   fogEditingActive: boolean;
@@ -27,13 +27,16 @@ export type MapCanvasProps = {
   onVisualZoomChange: (zoom: number) => void;
   onEditGestureStart: (action: EditGestureAction, axials: Axial[]) => void;
   onEditGestureMove: (axials: Axial[]) => void;
-  onRiverGestureStart: (action: EditGestureAction, edges: RiverEdgeRef[]) => void;
+  onRiverGestureStart: (
+    action: EditGestureAction,
+    edges: RiverEdgeRef[],
+  ) => void;
   onRiverGestureMove: (edges: RiverEdgeRef[]) => void;
   onEditGestureEnd: () => void;
   onRiverGestureEnd: () => void;
   onHoveredHexChange: (axial: Axial | null) => void;
   onGmTokenPlace: (axial: Axial) => void;
-  onGmTokenRemove: (profileId: string) => void;
+  onGmTokenRemove: (userId: string) => void;
   onPlayerTokenPlace: (axial: Axial) => void;
   onToolStep?: (delta: 1 | -1) => void;
 };

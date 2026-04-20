@@ -66,14 +66,14 @@ import {
 import type { MapOperation } from "@/core/protocol";
 import type {
   MapOpenMode,
+  UserRecord,
   WorkspaceTokenMemberRecord,
 } from "@/core/auth/authTypes";
-import type { ProfileRecord } from "@/core/profile/profileTypes";
 
 type UseEditorControllerOptions = {
   initialWorld: MapState;
   mapId: string;
-  profile: ProfileRecord;
+  profile: UserRecord;
   role: MapOpenMode;
   tokenMembers: WorkspaceTokenMemberRecord[];
 };
@@ -153,11 +153,11 @@ export function useEditorController({
     mapId,
     onAuthoritativeResync: handleAuthoritativeResync,
     onRemoteOperationsApplied: clearUndoRedoHistory,
-    profileId: profile.id,
+    userId: profile.id,
     initialTokenMembers,
   });
   const {
-    activeTokenProfileId,
+    activeTokenUserId,
     clearMapTokenSelection,
     placePlayerToken,
     placeSelectedMapToken,
@@ -169,7 +169,7 @@ export function useEditorController({
     canEdit: role === "gm",
     mapId,
     mapTokens,
-    profileId: profile.id,
+    userId: profile.id,
     role,
     sendTokenOperation,
     viewLevel: view.level,
@@ -645,7 +645,7 @@ export function useEditorController({
         activeFactionId,
         activeFeatureKind,
         activeMode,
-        activeTokenProfileId,
+        activeTokenUserId,
         activeType,
         canEdit,
         level: view.level,
@@ -655,7 +655,7 @@ export function useEditorController({
       activeFactionId,
       activeFeatureKind,
       activeMode,
-      activeTokenProfileId,
+      activeTokenUserId,
       activeType,
       canEdit,
       selectedFaction,
@@ -667,7 +667,7 @@ export function useEditorController({
 
   const canvasProps = useEditorCanvasProps({
     activeMode,
-    activeTokenProfileId,
+    activeTokenUserId,
     applyActiveGestureCells,
     applyActiveRiverGestureEdges,
     canEdit,
@@ -700,7 +700,7 @@ export function useEditorController({
     activeFeatureKind,
     activeFactionId,
     activeMode,
-    activeTokenProfileId,
+    activeTokenUserId,
     activeType,
     factions,
     hoveredHex,

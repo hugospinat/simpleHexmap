@@ -62,8 +62,8 @@ describe("mapVisibility", () => {
         { q: 1, r: 0, factionId: "hidden-faction" },
       ],
       tokens: [
-        { profileId: "visible-user", q: 0, r: 0, color: "#123456" },
-        { profileId: "hidden-user", q: 1, r: 0, color: "#654321" },
+        { userId: "visible-user", q: 0, r: 0, color: "#123456" },
+        { userId: "hidden-user", q: 1, r: 0, color: "#654321" },
       ],
     });
 
@@ -93,7 +93,7 @@ describe("mapVisibility", () => {
       { q: 0, r: 0, factionId: "visible-faction" },
     ]);
     expect(filtered.tokens).toEqual([
-      { profileId: "visible-user", q: 0, r: 0, color: "#123456" },
+      { userId: "visible-user", q: 0, r: 0, color: "#123456" },
     ]);
   });
 });

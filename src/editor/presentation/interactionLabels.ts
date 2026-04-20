@@ -8,7 +8,7 @@ type InteractionLabelOptions = {
   activeFactionId: string | null;
   activeFeatureKind: FeatureKind;
   activeMode: EditorMode;
-  activeTokenProfileId: string | null;
+  activeTokenUserId: string | null;
   activeType: TerrainType;
   canEdit: boolean;
   level: number;
@@ -19,11 +19,11 @@ export function getInteractionLabel({
   activeFactionId,
   activeFeatureKind,
   activeMode,
-  activeTokenProfileId,
+  activeTokenUserId,
   activeType,
   canEdit,
   level,
-  selectedFaction
+  selectedFaction,
 }: InteractionLabelOptions): string {
   if (!canEdit) {
     return "Read-only map view.";
@@ -59,7 +59,7 @@ export function getInteractionLabel({
   }
 
   if (activeMode === "fog") {
-    if (!activeTokenProfileId) {
+    if (!activeTokenUserId) {
       return "Left adds fog to terrain, then features. Right reveals hidden features, then terrain. Middle drag pans.";
     }
 

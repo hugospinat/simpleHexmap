@@ -45,7 +45,7 @@ export type MapFactionTerritoryRecord = {
 };
 
 export type MapTokenRecord = {
-  profileId: string;
+  userId: string;
   q: number;
   r: number;
   color: string;
@@ -78,8 +78,8 @@ export type SavedMapContent = {
 
 export type MapTokenOperation =
   | { type: "set_map_token"; token: MapTokenRecord }
-  | { type: "remove_map_token"; profileId: string }
-  | { type: "set_map_token_color"; profileId: string; color: string };
+  | { type: "remove_map_token"; userId: string }
+  | { type: "set_map_token_color"; userId: string; color: string };
 
 export type FeaturePatch = Partial<
   Pick<

@@ -185,7 +185,7 @@ export async function materializeMapContent(
     tokens: tokenRows.map(
       (token): MapTokenRecord => ({
         color: colorByUserId.get(token.userId) ?? defaultWorkspaceTokenColor,
-        profileId: token.userId,
+        userId: token.userId,
         q: token.q,
         r: token.r,
       }),
@@ -296,7 +296,7 @@ export async function replaceMapContent(
     const tokenRows = content.tokens.map((token) => ({
       q: token.q,
       r: token.r,
-      userId: token.profileId,
+      userId: token.userId,
       mapId,
     }));
     await insertInBatches(tokenRows, async (batch) => {

@@ -200,7 +200,7 @@ export type SavedMapContentIndex = {
   riversByKey: Map<string, MapRiverRecord>;
   roads: MapRoadRecord[];
   tilesByHex: Map<string, MapTileRecord>;
-  tokensByProfileId: Map<string, MapTokenRecord>;
+  tokensByUserId: Map<string, MapTokenRecord>;
 };
 
 export function indexSavedMapContent(
@@ -224,8 +224,8 @@ export function indexSavedMapContent(
     ),
     roads: snapshot.roads,
     tilesByHex: new Map(snapshot.tiles.map((tile) => [tileKey(tile), tile])),
-    tokensByProfileId: new Map(
-      snapshot.tokens.map((token) => [token.profileId, token]),
+    tokensByUserId: new Map(
+      snapshot.tokens.map((token) => [token.userId, token]),
     ),
   };
 }
@@ -242,7 +242,7 @@ export function materializeSavedMapContent<TSnapshot extends SavedMapContent>(
     roads: index.roads,
     factions: Array.from(index.factionsById.values()),
     factionTerritories: Array.from(index.factionTerritoriesByHex.values()),
-    tokens: Array.from(index.tokensByProfileId.values()),
+    tokens: Array.from(index.tokensByUserId.values()),
   };
 }
 

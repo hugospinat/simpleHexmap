@@ -51,7 +51,7 @@ type UseMapSyncOptions = {
   mapId: string;
   onAuthoritativeResync?: () => void;
   onRemoteOperationsApplied?: (count: number) => void;
-  profileId: string;
+  userId: string;
 };
 
 export type UseMapSocketSyncResult = {
@@ -99,7 +99,7 @@ function applyTokenOperationToTokenMembers(
 ): WorkspaceTokenMemberRecord[] {
   if (operation.type === "set_map_token") {
     return tokenMembers.map((member) =>
-      member.userId === operation.token.profileId
+      member.userId === operation.token.userId
         ? { ...member, color: operation.token.color }
         : member,
     );
@@ -107,7 +107,7 @@ function applyTokenOperationToTokenMembers(
 
   if (operation.type === "set_map_token_color") {
     return tokenMembers.map((member) =>
-      member.userId === operation.profileId
+      member.userId === operation.userId
         ? { ...member, color: operation.color }
         : member,
     );
@@ -123,7 +123,7 @@ export function useMapSocketSync({
   mapId,
   onAuthoritativeResync,
   onRemoteOperationsApplied,
-  profileId,
+  userId,
 }: UseMapSyncOptions): UseMapSocketSyncResult {
   const clientIdRef = useRef(createClientId());
   const sessionRef = useRef(
@@ -598,9 +598,9 @@ export function useMapSocketSync({
     flushOperations,
     mapId,
     onAuthoritativeResync,
-    profileId,
     publishRenderWorldPatch,
     publishSessionState,
+    userId,
   ]);
 
   return {

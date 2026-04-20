@@ -7,7 +7,7 @@ import {
   type MapRoadRecord,
   type MapTileRecord,
   type MapTokenRecord,
-  type SavedMapContent
+  type SavedMapContent,
 } from "./savedMapTypes.js";
 
 const terrainTypes = [
@@ -20,7 +20,7 @@ const terrainTypes = [
   "desert",
   "swamp",
   "tundra",
-  "wasteland"
+  "wasteland",
 ] as const;
 
 const featureKinds = [
@@ -32,7 +32,7 @@ const featureKinds = [
   "tower",
   "dungeon",
   "marker",
-  "label"
+  "label",
 ] as const;
 
 type TerrainType = (typeof terrainTypes)[number];
@@ -72,23 +72,35 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
     throw new Error(`Unsupported map version: ${String(raw.version)}.`);
   }
 
-  if (!Array.isArray(raw.tiles) || !Array.isArray(raw.features) || !Array.isArray(raw.rivers)) {
+  if (
+    !Array.isArray(raw.tiles) ||
+    !Array.isArray(raw.features) ||
+    !Array.isArray(raw.rivers)
+  ) {
     throw new Error("Map file is missing required arrays.");
   }
 
   const rawRoads = Array.isArray(raw.roads) ? raw.roads : [];
   const rawFactions = Array.isArray(raw.factions) ? raw.factions : [];
-  const rawFactionTerritories = Array.isArray(raw.factionTerritories) ? raw.factionTerritories : [];
+  const rawFactionTerritories = Array.isArray(raw.factionTerritories)
+    ? raw.factionTerritories
+    : [];
   const rawTokens = Array.isArray(raw.tokens) ? raw.tokens : [];
 
   const tiles = raw.tiles.map((tile, index): MapTileRecord => {
-    const terrain = isObject(tile) && typeof tile.terrain === "string"
-      ? tile.terrain
-      : isObject(tile) && typeof tile.tileId === "string"
-        ? tile.tileId
-        : null;
+    const terrain =
+      isObject(tile) && typeof tile.terrain === "string"
+        ? tile.terrain
+        : isObject(tile) && typeof tile.tileId === "string"
+          ? tile.tileId
+          : null;
 
-    if (!isObject(tile) || !isInteger(tile.q) || !isInteger(tile.r) || typeof terrain !== "string") {
+    if (
+      !isObject(tile) ||
+      !isInteger(tile.q) ||
+      !isInteger(tile.r) ||
+      typeof terrain !== "string"
+    ) {
       throw new Error(`Invalid tile entry at index ${index}.`);
     }
 
@@ -100,18 +112,24 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
       q: tile.q,
       r: tile.r,
       terrain,
-      hidden: typeof tile.hidden === "boolean" ? tile.hidden : false
+      hidden: typeof tile.hidden === "boolean" ? tile.hidden : false,
     };
   });
 
   const features = raw.features.map((feature, index): MapFeatureRecord => {
-    const kind = isObject(feature) && typeof feature.kind === "string"
-      ? feature.kind
-      : isObject(feature) && typeof feature.type === "string"
-        ? feature.type
-        : null;
+    const kind =
+      isObject(feature) && typeof feature.kind === "string"
+        ? feature.kind
+        : isObject(feature) && typeof feature.type === "string"
+          ? feature.type
+          : null;
 
-    if (!isObject(feature) || !isInteger(feature.q) || !isInteger(feature.r) || typeof kind !== "string") {
+    if (
+      !isObject(feature) ||
+      !isInteger(feature.q) ||
+      !isInteger(feature.r) ||
+      typeof kind !== "string"
+    ) {
       throw new Error(`Invalid feature entry at index ${index}.`);
     }
 
@@ -139,9 +157,10 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
       throw new Error(`Invalid labelRevealed at index ${index}.`);
     }
 
-    const id = typeof feature.id === "string" && feature.id.trim()
-      ? feature.id
-      : `loaded-feature-${index}-${feature.q}-${feature.r}`;
+    const id =
+      typeof feature.id === "string" && feature.id.trim()
+        ? feature.id
+        : `loaded-feature-${index}-${feature.q}-${feature.r}`;
 
     return {
       id,
@@ -152,28 +171,40 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
       overrideTerrainTile: feature.overrideTerrainTile,
       gmLabel: feature.gmLabel,
       playerLabel: feature.playerLabel,
-      labelRevealed: feature.labelRevealed
+      labelRevealed: feature.labelRevealed,
     };
   });
 
   const rivers = raw.rivers.map((river, index): MapRiverRecord => {
-    if (!isObject(river) || !isInteger(river.q) || !isInteger(river.r) || !isRiverEdgeIndex(river.edge)) {
+    if (
+      !isObject(river) ||
+      !isInteger(river.q) ||
+      !isInteger(river.r) ||
+      !isRiverEdgeIndex(river.edge)
+    ) {
       throw new Error(`Invalid river entry at index ${index}.`);
     }
 
     return {
       q: river.q,
       r: river.r,
-      edge: river.edge
+      edge: river.edge,
     };
   });
 
   const roads = rawRoads.map((road, index): MapRoadRecord => {
-    if (!isObject(road) || !isInteger(road.q) || !isInteger(road.r) || !Array.isArray(road.edges)) {
+    if (
+      !isObject(road) ||
+      !isInteger(road.q) ||
+      !isInteger(road.r) ||
+      !Array.isArray(road.edges)
+    ) {
       throw new Error(`Invalid road entry at index ${index}.`);
     }
 
-    const edges = road.edges.filter((edge): edge is RoadEdgeIndex => isRoadEdgeIndex(edge));
+    const edges = road.edges.filter((edge): edge is RoadEdgeIndex =>
+      isRoadEdgeIndex(edge),
+    );
 
     if (edges.length !== road.edges.length) {
       throw new Error(`Invalid road edges at index ${index}.`);
@@ -182,12 +213,17 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
     return {
       q: road.q,
       r: road.r,
-      edges: Array.from(new Set(edges)).sort((left, right) => left - right)
+      edges: Array.from(new Set(edges)).sort((left, right) => left - right),
     };
   });
 
   const factions = rawFactions.map((faction, index): MapFactionRecord => {
-    if (!isObject(faction) || typeof faction.id !== "string" || typeof faction.name !== "string" || typeof faction.color !== "string") {
+    if (
+      !isObject(faction) ||
+      typeof faction.id !== "string" ||
+      typeof faction.name !== "string" ||
+      typeof faction.color !== "string"
+    ) {
       throw new Error(`Invalid faction entry at index ${index}.`);
     }
 
@@ -196,46 +232,55 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
     }
 
     if (!isHexColor(faction.color)) {
-      throw new Error(`Invalid faction color '${faction.color}' at index ${index}.`);
+      throw new Error(
+        `Invalid faction color '${faction.color}' at index ${index}.`,
+      );
     }
 
     return {
       id: faction.id,
       name: faction.name,
-      color: faction.color
+      color: faction.color,
     };
   });
 
-  const factionTerritories = rawFactionTerritories.map((territory, index): MapFactionTerritoryRecord => {
-    if (!isObject(territory) || !isInteger(territory.q) || !isInteger(territory.r) || typeof territory.factionId !== "string") {
-      throw new Error(`Invalid faction territory entry at index ${index}.`);
-    }
+  const factionTerritories = rawFactionTerritories.map(
+    (territory, index): MapFactionTerritoryRecord => {
+      if (
+        !isObject(territory) ||
+        !isInteger(territory.q) ||
+        !isInteger(territory.r) ||
+        typeof territory.factionId !== "string"
+      ) {
+        throw new Error(`Invalid faction territory entry at index ${index}.`);
+      }
 
-    return {
-      q: territory.q,
-      r: territory.r,
-      factionId: territory.factionId
-    };
-  });
+      return {
+        q: territory.q,
+        r: territory.r,
+        factionId: territory.factionId,
+      };
+    },
+  );
 
   const tokens = rawTokens.map((token, index): MapTokenRecord => {
     if (
-      !isObject(token)
-      || typeof token.profileId !== "string"
-      || !token.profileId.trim()
-      || !isInteger(token.q)
-      || !isInteger(token.r)
-      || typeof token.color !== "string"
-      || !isHexColor(token.color)
+      !isObject(token) ||
+      typeof token.userId !== "string" ||
+      !token.userId.trim() ||
+      !isInteger(token.q) ||
+      !isInteger(token.r) ||
+      typeof token.color !== "string" ||
+      !isHexColor(token.color)
     ) {
       throw new Error(`Invalid token entry at index ${index}.`);
     }
 
     return {
-      profileId: token.profileId,
+      userId: token.userId,
       q: token.q,
       r: token.r,
-      color: token.color
+      color: token.color,
     };
   });
 
@@ -247,7 +292,7 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
     roads,
     factions,
     factionTerritories,
-    tokens
+    tokens,
   };
 }
 
