@@ -29,7 +29,13 @@ import {
   type WorkspaceMapSummary,
   type WorkspaceSummary
 } from "@/app/api/workspaceApi";
-import { canOpenWorkspaceAsGM, type MapOpenMode, type UserRecord, type WorkspaceMemberRecord } from "@/core/auth/authTypes";
+import {
+  canOpenWorkspaceAsGM,
+  type MapOpenMode,
+  type UserRecord,
+  type WorkspaceMemberRecord,
+  type WorkspaceTokenMemberRecord
+} from "@/core/auth/authTypes";
 import { parseSavedMapContent } from "@/core/document/savedMapCodec";
 import { serializeWorld } from "@/app/document/worldMapCodec";
 import { deserializeWorld } from "@/app/document/worldMapCodec";
@@ -38,6 +44,7 @@ type OpenMapState = {
   id: string;
   name: string;
   role: MapOpenMode;
+  tokenMembers: WorkspaceTokenMemberRecord[];
   updatedAt: string;
   workspaceId: string;
   world: MapState;
@@ -386,6 +393,7 @@ export default function App() {
         id: loadedMap.id,
         name: loadedMap.name,
         role: mode,
+        tokenMembers: loadedMap.tokenMembers,
         updatedAt: loadedMap.updatedAt,
         workspaceId: loadedMap.workspaceId,
         world: deserializeWorld(loadedMap.content)
@@ -425,6 +433,7 @@ export default function App() {
         initialWorld={openMap.world}
         mapId={openMap.id}
         mapName={openMap.name}
+        tokenMembers={openMap.tokenMembers}
         user={user}
         role={openMap.role}
         onBackToMaps={closeEditor}

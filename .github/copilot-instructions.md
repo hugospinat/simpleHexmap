@@ -1,96 +1,87 @@
 # Copilot Instructions - hexmap_editor
 
-## Project overview
+This file defines coding discipline and contribution standards for the repository. It is intentionally architecture-independent.
 
-hexmap_editor is a collaborative hex-map editor for tabletop and strategy workflows.
-The codebase handles map tiles, terrain, features, roads, rivers, factions, fog of war, GM/player visibility modes, and live map synchronization.
+For project architecture, subsystem responsibilities, runtime flow, persistence workflow, and design choices, always read `README.md` first.
 
-Core concepts used across the project:
+## Read this first
 
-- MapState model: hex cells and per-level map data.
-- Shared document codec: persisted `SavedMapContent` parsing lives in `src/core/document` and is used by both client and server.
-- Incremental operations: map edits are represented as operations, not full world replacements.
-- Rendering pipeline: PixiJS scene cache, active render window, overlays, roads/rivers, and feature visuals are drawn separately.
-- Visibility model: GM mode and player mode differ, especially for hidden cells.
-- Realtime sync: server-authoritative stream with ordered operation application.
+- Use `README.md` as the source of truth for architecture and technical choices.
+- Do not encode architecture-specific guidance here when it belongs in the README.
+- If a code change affects architecture, boundaries, runtime setup, migrations, or system behavior, update the README in the same change.
 
-## Architectural rules
-
-- Keep domain logic separate from UI logic.
-- Keep rendering logic separate from world state logic.
-- Treat the server as authoritative for collaborative state.
-- Prefer incremental operations/events over full-state rewrites for live updates.
-- Avoid hidden side effects; mutations and transitions must be explicit.
-- Prefer explicit data flow over implicit coupling.
-- Keep pure logic in domain modules and keep I/O at boundaries (UI, server, persistence).
-
-## React and frontend rules
-
-- Prefer small, focused components and hooks.
-- Prefer readable local state over premature abstractions.
-- Use functional state updates when sequencing matters.
-- Avoid stale state bugs in async and realtime paths.
-- Avoid duplicated controls or duplicated source of truth in the UI.
-- Keep the UI minimal, dense, and practical for map editing workflows.
-- Preserve existing interaction patterns unless intentionally changed.
-
-## Realtime and sync rules
-
-- Apply operations in strict order.
-- Do not re-emit remote operations (avoid feedback loops).
-- Be careful with batching and stale state snapshots.
-- Keep WebSocket/session behavior in `src/app/sync/useMapSocketSync.ts` and the pure session model in `src/app/sync/mapSyncSession.ts`; editor controllers should send operations and react to sync status, not own socket lifecycle.
-- Prefer correctness first, then optimize.
-- Keep sync debug logging targeted, temporary, and behind a debug flag.
-- Prefer idempotent operation handling and explicit sequence-based flow.
-
-## Server rules
-
-- Validate all client inputs.
-- Keep server logic simple, explicit, and predictable.
-- Persist safely (atomic writes and clear failure handling where practical).
-- Avoid unnecessary framework complexity.
-- Keep map updates incremental where appropriate.
-- Use `src/core/document/savedMapCodec.ts` for persisted map normalization instead of duplicating server-only compatibility checks.
-- Broadcast authoritative updates in a form clients can apply deterministically.
-
-## Code quality rules
+## Core engineering standards
 
 - Prefer clarity over cleverness.
-- Remove dead code during refactors.
-- Keep naming explicit and intention-revealing.
-- Avoid giant files and mixed responsibilities.
-- Refactor when a file starts to mix unrelated concerns.
-- Editor write paths should be command-first: tools and gestures produce explicit `MapOperation` values, then reducers apply those operations to local preview/authoritative worlds.
-- Render paths should use `MapLevelView` for logical derived map reads. Pixi map rendering should go through `src/render/pixi` scene cache and active window, not rebuild viewport frames on every pan/zoom.
+- Make data flow explicit.
+- Avoid hidden side effects.
+- Keep mutations and transitions obvious.
+- Fix problems at the correct boundary instead of layering ad hoc patches.
+- Remove dead code while refactoring.
+- Preserve determinism where the code depends on ordering, replay, or reduction.
+- Treat public types, wire contracts, and persisted formats as explicit compatibility surfaces.
 
-### File length rule (explicit)
+## Module design rules
 
-- No source file should be longer than 600 lines.
-- If a file is approaching 600 lines, split it before adding more logic.
-- Temporary exceptions are allowed only when splitting would create immediate regression risk; in that case:
-  - keep the exception explicit in PR notes or comments,
-  - extract one coherent slice in the same or next change,
-  - avoid adding unrelated logic to the oversized file.
-- For this repository, keep `src/editor/hooks/useEditorController.ts`, `src/editor/hooks/useMapInteraction.ts`, `src/app/sync/useMapSocketSync.ts`, and `src/render/pixi/pixiMapRenderer.ts` moving toward composition of focused controllers rather than regrowing mixed responsibilities.
+- Keep modules focused on one strong responsibility.
+- Split large files before they become hard to reason about.
+- No source file should exceed 600 lines unless a smaller split would create immediate regression risk.
+- If a file approaches the limit, extract one coherent slice instead of adding more unrelated logic.
+- Prefer composition over catch-all controller modules.
+- Keep pure logic in pure modules and keep I/O at boundaries.
+- Avoid utility dumping grounds with vague names like `helpers`, `misc`, or `data`.
 
-## UX rules
+## Naming rules
 
-- Keep editing direct and fast.
-- Prefer inline editing when sensible.
-- Avoid awkward multi-step workflows.
-- Keep GM/player behavior clear and predictable.
-- Hidden player information must not leak through rendering (terrain, features, edges, overlays).
+- Use explicit, intention-revealing names.
+- Name by domain meaning, not by implementation accident.
+- Avoid overloaded terms for distinct concepts.
+- If a name is ambiguous, rename it rather than document around it.
 
-## Testing and verification rules
+## Refactoring rules
 
-- For behavior changes, add or update targeted tests when practical.
-- Run relevant tests after refactors.
-- Prefer small, verifiable refactors over broad rewrites.
+- Refactor toward smaller seams with tests.
+- Prefer narrow extractions over broad rewrites unless a broad rewrite is clearly safer.
+- Do not preserve historical complexity just because it already exists.
+- When a module mixes responsibilities, separate orchestration from pure logic.
+- When a representation boundary exists, keep conversions explicit and testable.
 
-## Maintenance rule (important)
+## Frontend and React rules
 
-This file (`.github/copilot-instructions.md`) is a living source of truth and must be updated whenever architecture, conventions, patterns, workflows, or major design decisions change.
+- Prefer small hooks and components.
+- Keep React hooks as orchestration layers, not domain containers.
+- Prefer readable local state to premature abstraction.
+- Use functional state updates when sequencing matters.
+- Guard against stale closures in async or realtime code.
+- Avoid duplicated sources of truth in UI state.
+- Preserve established interaction patterns unless the change intentionally redesigns them.
 
-Any significant refactor must also update this file if guidance changed.
-Do not let this document drift from the real codebase.
+## Server and API rules
+
+- Validate all external input.
+- Keep routes thin and predictable.
+- Keep authorization explicit.
+- Keep persistence logic separate from transport handling.
+- Fail fast on invalid configuration and invalid requests.
+- Prefer deterministic responses and stable error handling.
+
+## Persistence and migration rules
+
+- Use the repository migration workflow documented in `README.md`.
+- Do not introduce ad hoc schema mutation paths outside the documented workflow.
+- Treat persistence changes as reviewable, explicit changes.
+- Keep data migrations and schema changes understandable and auditable.
+
+## Testing rules
+
+- Add or update targeted tests when behavior changes.
+- Run the relevant checks after refactors.
+- Prefer small, verifiable refactors over broad unverified rewrites.
+- When fixing a regression, add a test near the broken seam when practical.
+
+## Documentation maintenance
+
+- Keep this file up to date when coding standards or contributor expectations change.
+- Keep `README.md` up to date when architecture or technical choices change.
+- Significant refactors should usually update both files: README for architecture, this file for coding discipline if the working rules changed.
+- Do not let either document drift from the codebase.

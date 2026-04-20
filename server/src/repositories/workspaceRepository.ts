@@ -1,11 +1,32 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { users, workspaceGroupMembers, workspaceGroups, workspaces } from "../db/schema.js";
-import { materializeWorkspaceContent, replaceWorkspaceContent } from "./mapContentRepository.js";
-import { findUserByNormalizedUsername, normalizeUsername, sanitizeUsername } from "./userRepository.js";
+import {
+  users,
+  workspaceMembers,
+  workspaces,
+  workspaceMemberTokens,
+  maps,
+} from "../db/schema.js";
+import {
+  findUserByNormalizedUsername,
+  normalizeUsername,
+  sanitizeUsername,
+} from "./userRepository.js";
+import {
+  BadRequestError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+} from "../errors.js";
 import type { SavedMapContent } from "../../../src/core/protocol/index.js";
-import type { UserId, WorkspaceMemberRecord, WorkspaceRole } from "../../../src/core/auth/authTypes.js";
+import {
+  defaultWorkspaceTokenColor,
+  type UserId,
+  type WorkspaceMemberRecord,
+  type WorkspaceRole,
+  type WorkspaceTokenMemberRecord,
+} from "../../../src/core/auth/authTypes.js";
 
 export type WorkspaceSummary = {
   currentUserRole: WorkspaceRole;
@@ -27,6 +48,7 @@ export type WorkspaceMapRecord = WorkspaceMapSummary & {
   currentUserRole: WorkspaceRole;
   nextSequence: number;
   ownerUserId: string;
+  tokenMembers: WorkspaceTokenMemberRecord[];
   workspaceName: string;
 };
 
@@ -39,7 +61,7 @@ export type WorkspaceMembersView = {
   ownerUserId: string;
 };
 
-function toRole(role: string | null | undefined): WorkspaceRole | null {
+export function toRole(role: string | null | undefined): WorkspaceRole | null {
   if (role === "owner" || role === "gm" || role === "player") {
     return role;
   }
@@ -47,22 +69,27 @@ function toRole(role: string | null | undefined): WorkspaceRole | null {
   return null;
 }
 
-function toWorkspaceSummary(workspace: typeof workspaceGroups.$inferSelect, role: WorkspaceRole): WorkspaceSummary {
+function toWorkspaceSummary(
+  workspace: typeof workspaces.$inferSelect,
+  role: WorkspaceRole,
+): WorkspaceSummary {
   return {
     currentUserRole: role,
     id: workspace.id,
     name: workspace.name,
     ownerUserId: workspace.ownerUserId,
-    updatedAt: workspace.updatedAt.toISOString()
+    updatedAt: workspace.updatedAt.toISOString(),
   };
 }
 
-function toMapSummary(map: typeof workspaces.$inferSelect): WorkspaceMapSummary {
+export function toMapSummary(
+  map: typeof maps.$inferSelect,
+): WorkspaceMapSummary {
   return {
     id: map.id,
     name: map.name,
     updatedAt: map.updatedAt.toISOString(),
-    workspaceId: map.workspaceGroupId ?? map.id
+    workspaceId: map.workspaceId ?? map.id,
   };
 }
 
@@ -74,7 +101,10 @@ function isMutableWorkspaceRole(role: unknown): role is "gm" | "player" {
   return role === "gm" || role === "player";
 }
 
-function compareMembers(left: WorkspaceMemberRecord, right: WorkspaceMemberRecord): number {
+function compareMembers(
+  left: WorkspaceMemberRecord,
+  right: WorkspaceMemberRecord,
+): number {
   if (left.isOwner !== right.isOwner) {
     return left.isOwner ? -1 : 1;
   }
@@ -93,69 +123,66 @@ function compareMembers(left: WorkspaceMemberRecord, right: WorkspaceMemberRecor
 }
 
 async function getWorkspaceRow(workspaceId: string) {
-  const rows = await db.select().from(workspaceGroups).where(eq(workspaceGroups.id, workspaceId)).limit(1);
+  const rows = await db
+    .select()
+    .from(workspaces)
+    .where(eq(workspaces.id, workspaceId))
+    .limit(1);
   return rows[0] ?? null;
 }
 
-async function requireWorkspaceAndRole(workspaceId: string, userId: UserId): Promise<{
+export async function requireWorkspaceAndRole(
+  workspaceId: string,
+  userId: UserId,
+): Promise<{
   role: WorkspaceRole;
-  workspace: typeof workspaceGroups.$inferSelect;
+  workspace: typeof workspaces.$inferSelect;
 }> {
   const workspace = await getWorkspaceRow(workspaceId);
 
   if (!workspace) {
-    throw new Error("Workspace not found.");
+    throw new NotFoundError("Workspace not found.");
   }
 
   const role = await getWorkspaceRole(workspaceId, userId);
 
   if (!role) {
-    throw new Error("Workspace not found.");
+    throw new NotFoundError("Workspace not found.");
   }
 
   return { role, workspace };
 }
 
-async function getMapRowsForUser(mapId: string, userId: UserId) {
-  return db.select({
-    map: workspaces,
-    workspace: workspaceGroups,
-    role: workspaceGroupMembers.role
-  })
-    .from(workspaces)
-    .innerJoin(workspaceGroups, eq(workspaces.workspaceGroupId, workspaceGroups.id))
-    .innerJoin(
-      workspaceGroupMembers,
+export async function getWorkspaceRole(
+  workspaceId: string,
+  userId: UserId,
+): Promise<WorkspaceRole | null> {
+  const rows = await db
+    .select()
+    .from(workspaceMembers)
+    .where(
       and(
-        eq(workspaceGroupMembers.workspaceGroupId, workspaceGroups.id),
-        eq(workspaceGroupMembers.userId, userId)
-      )
+        eq(workspaceMembers.workspaceId, workspaceId),
+        eq(workspaceMembers.userId, userId),
+      ),
     )
-    .where(eq(workspaces.id, mapId))
-    .limit(1);
-}
-
-export async function getWorkspaceRole(workspaceId: string, userId: UserId): Promise<WorkspaceRole | null> {
-  const rows = await db.select()
-    .from(workspaceGroupMembers)
-    .where(and(
-      eq(workspaceGroupMembers.workspaceGroupId, workspaceId),
-      eq(workspaceGroupMembers.userId, userId)
-    ))
     .limit(1);
 
   return toRole(rows[0]?.role);
 }
 
-export async function listWorkspacesForUser(userId: UserId): Promise<WorkspaceSummary[]> {
-  const rows = await db.select({
-    role: workspaceGroupMembers.role,
-    workspace: workspaceGroups
-  })
-    .from(workspaceGroupMembers)
-    .innerJoin(workspaceGroups, eq(workspaceGroupMembers.workspaceGroupId, workspaceGroups.id))
-    .where(eq(workspaceGroupMembers.userId, userId))
-    .orderBy(desc(workspaceGroups.updatedAt));
+export async function listWorkspacesForUser(
+  userId: UserId,
+): Promise<WorkspaceSummary[]> {
+  const rows = await db
+    .select({
+      role: workspaceMembers.role,
+      workspace: workspaces,
+    })
+    .from(workspaceMembers)
+    .innerJoin(workspaces, eq(workspaceMembers.workspaceId, workspaces.id))
+    .where(eq(workspaceMembers.userId, userId))
+    .orderBy(desc(workspaces.updatedAt));
 
   return rows
     .map((row) => {
@@ -170,7 +197,10 @@ export async function listWorkspacesForUser(userId: UserId): Promise<WorkspaceSu
     .filter((summary): summary is WorkspaceSummary => summary !== null);
 }
 
-export async function getWorkspaceSummary(workspaceId: string, userId: UserId): Promise<WorkspaceSummary | null> {
+export async function getWorkspaceSummary(
+  workspaceId: string,
+  userId: UserId,
+): Promise<WorkspaceSummary | null> {
   const workspace = await getWorkspaceRow(workspaceId);
 
   if (!workspace) {
@@ -189,45 +219,25 @@ export async function getWorkspaceSummary(workspaceId: string, userId: UserId): 
 export async function listWorkspaceMaps(input: {
   userId: UserId;
   workspaceId: string;
-}): Promise<{ currentUserRole: WorkspaceRole; maps: WorkspaceMapSummary[]; workspace: WorkspaceSummary }> {
-  const { role, workspace } = await requireWorkspaceAndRole(input.workspaceId, input.userId);
-  const maps = await db.select().from(workspaces)
-    .where(eq(workspaces.workspaceGroupId, input.workspaceId))
-    .orderBy(desc(workspaces.updatedAt));
+}): Promise<{
+  currentUserRole: WorkspaceRole;
+  maps: WorkspaceMapSummary[];
+  workspace: WorkspaceSummary;
+}> {
+  const { role, workspace } = await requireWorkspaceAndRole(
+    input.workspaceId,
+    input.userId,
+  );
+  const mapRows = await db
+    .select()
+    .from(maps)
+    .where(eq(maps.workspaceId, input.workspaceId))
+    .orderBy(desc(maps.updatedAt));
 
   return {
     currentUserRole: role,
-    maps: maps.map(toMapSummary),
-    workspace: toWorkspaceSummary(workspace, role)
-  };
-}
-
-export async function getMapRoleForUser(mapId: string, userId: UserId): Promise<WorkspaceRole | null> {
-  const rows = await getMapRowsForUser(mapId, userId);
-  return toRole(rows[0]?.role);
-}
-
-export async function getMapRecordForUser(mapId: string, userId: UserId): Promise<WorkspaceMapRecord | null> {
-  const rows = await getMapRowsForUser(mapId, userId);
-  const row = rows[0];
-
-  if (!row) {
-    return null;
-  }
-
-  const role = toRole(row.role);
-
-  if (!role) {
-    return null;
-  }
-
-  return {
-    ...toMapSummary(row.map),
-    content: await materializeWorkspaceContent(row.map.id),
-    currentUserRole: role,
-    nextSequence: row.map.nextSequence,
-    ownerUserId: row.workspace.ownerUserId,
-    workspaceName: row.workspace.name
+    maps: mapRows.map(toMapSummary),
+    workspace: toWorkspaceSummary(workspace, role),
   };
 }
 
@@ -239,183 +249,80 @@ export async function createWorkspace(input: {
   const workspaceId = randomUUID();
 
   await db.transaction(async (tx) => {
-    await tx.insert(workspaceGroups).values({
+    await tx.insert(workspaces).values({
       createdAt: now,
       id: workspaceId,
       name: input.name,
       ownerUserId: input.ownerUserId,
-      updatedAt: now
+      updatedAt: now,
     });
-    await tx.insert(workspaceGroupMembers).values({
+    await tx.insert(workspaceMembers).values({
       role: "owner",
       userId: input.ownerUserId,
-      workspaceGroupId: workspaceId
+      workspaceId,
+    });
+    await tx.insert(workspaceMemberTokens).values({
+      color: defaultWorkspaceTokenColor,
+      updatedAt: now,
+      userId: input.ownerUserId,
+      workspaceId,
     });
   });
 
   const created = await getWorkspaceSummary(workspaceId, input.ownerUserId);
 
   if (!created) {
-    throw new Error("Could not create workspace.");
+    throw new NotFoundError("Could not create workspace.");
   }
 
   return created;
 }
 
-export async function createMapInWorkspace(input: {
-  actorUserId: UserId;
-  content: SavedMapContent;
-  name: string;
-  workspaceId: string;
-}): Promise<WorkspaceMapRecord> {
-  const { role, workspace } = await requireWorkspaceAndRole(input.workspaceId, input.actorUserId);
-
-  if (!canOpenAsGm(role)) {
-    throw new Error("GM access denied.");
-  }
-
-  const now = new Date();
-  const mapId = randomUUID();
-
-  await db.transaction(async (tx) => {
-    await tx.insert(workspaces).values({
-      createdAt: now,
-      id: mapId,
-      legacyId: null,
-      name: input.name,
-      nextSequence: 1,
-      ownerUserId: workspace.ownerUserId,
-      settings: {},
-      updatedAt: now,
-      workspaceGroupId: input.workspaceId
-    });
-    await replaceWorkspaceContent(mapId, input.content, tx);
-    await tx.update(workspaceGroups)
-      .set({ updatedAt: now })
-      .where(eq(workspaceGroups.id, input.workspaceId));
-  });
-
-  const created = await getMapRecordForUser(mapId, input.actorUserId);
-
-  if (!created) {
-    throw new Error("Could not create map.");
-  }
-
-  return created;
-}
-
-export async function renameWorkspaceMap(input: {
-  actorUserId: UserId;
-  mapId: string;
-  name: string;
-}): Promise<WorkspaceMapRecord> {
-  const map = await getMapRecordForUser(input.mapId, input.actorUserId);
-
-  if (!map) {
-    throw new Error("Map not found.");
-  }
-
-  if (!canOpenAsGm(map.currentUserRole)) {
-    throw new Error("GM access denied.");
-  }
-
-  const now = new Date();
-  await db.transaction(async (tx) => {
-    await tx.update(workspaces)
-      .set({
-        name: input.name,
-        updatedAt: now
-      })
-      .where(eq(workspaces.id, input.mapId));
-
-    await tx.update(workspaceGroups)
-      .set({ updatedAt: now })
-      .where(eq(workspaceGroups.id, map.workspaceId));
-  });
-
-  const updated = await getMapRecordForUser(input.mapId, input.actorUserId);
-
-  if (!updated) {
-    throw new Error("Map not found.");
-  }
-
-  return updated;
-}
-
-export async function deleteWorkspaceMap(input: {
-  actorUserId: UserId;
-  mapId: string;
-}): Promise<boolean> {
-  const map = await getMapRecordForUser(input.mapId, input.actorUserId);
-
-  if (!map) {
-    throw new Error("Map not found.");
-  }
-
-  if (!canOpenAsGm(map.currentUserRole)) {
-    throw new Error("GM access denied.");
-  }
-
-  const now = new Date();
-  const deleted = await db.transaction(async (tx) => {
-    const rows = await tx.delete(workspaces)
-      .where(eq(workspaces.id, input.mapId))
-      .returning({ id: workspaces.id });
-
-    if (rows.length > 0) {
-      await tx.update(workspaceGroups)
-        .set({ updatedAt: now })
-        .where(eq(workspaceGroups.id, map.workspaceId));
-    }
-
-    return rows;
-  });
-
-  return deleted.length > 0;
-}
-
-export async function renameWorkspace(workspaceId: string, name: string): Promise<void> {
-  await db.update(workspaceGroups)
+export async function renameWorkspace(
+  workspaceId: string,
+  name: string,
+): Promise<void> {
+  await db
+    .update(workspaces)
     .set({ name, updatedAt: new Date() })
-    .where(eq(workspaceGroups.id, workspaceId));
+    .where(eq(workspaces.id, workspaceId));
 }
 
 export async function deleteWorkspace(workspaceId: string): Promise<boolean> {
-  const deleted = await db.delete(workspaceGroups)
-    .where(eq(workspaceGroups.id, workspaceId))
-    .returning({ id: workspaceGroups.id });
+  const deleted = await db
+    .delete(workspaces)
+    .where(eq(workspaces.id, workspaceId))
+    .returning({ id: workspaces.id });
 
   return deleted.length > 0;
 }
 
-export async function touchWorkspaceUpdatedAt(workspaceId: string): Promise<void> {
-  await db.update(workspaceGroups)
+export async function touchWorkspaceUpdatedAt(
+  workspaceId: string,
+): Promise<void> {
+  await db
+    .update(workspaces)
     .set({ updatedAt: new Date() })
-    .where(eq(workspaceGroups.id, workspaceId));
-}
-
-export async function getWorkspaceIdForMap(mapId: string): Promise<string | null> {
-  const rows = await db.select({ workspaceGroupId: workspaces.workspaceGroupId })
-    .from(workspaces)
-    .where(eq(workspaces.id, mapId))
-    .limit(1);
-
-  return rows[0]?.workspaceGroupId ?? null;
+    .where(eq(workspaces.id, workspaceId));
 }
 
 export async function listWorkspaceMembers(input: {
   actorUserId: UserId;
   workspaceId: string;
 }): Promise<WorkspaceMembersView> {
-  const { role, workspace } = await requireWorkspaceAndRole(input.workspaceId, input.actorUserId);
-  const rows = await db.select({
-    role: workspaceGroupMembers.role,
-    userId: users.id,
-    username: users.username
-  })
-    .from(workspaceGroupMembers)
-    .innerJoin(users, eq(workspaceGroupMembers.userId, users.id))
-    .where(eq(workspaceGroupMembers.workspaceGroupId, input.workspaceId))
+  const { role, workspace } = await requireWorkspaceAndRole(
+    input.workspaceId,
+    input.actorUserId,
+  );
+  const rows = await db
+    .select({
+      role: workspaceMembers.role,
+      userId: users.id,
+      username: users.username,
+    })
+    .from(workspaceMembers)
+    .innerJoin(users, eq(workspaceMembers.userId, users.id))
+    .where(eq(workspaceMembers.workspaceId, input.workspaceId))
     .orderBy(asc(users.username));
 
   const members = rows
@@ -430,7 +337,7 @@ export async function listWorkspaceMembers(input: {
         isOwner: row.userId === workspace.ownerUserId,
         role: row.userId === workspace.ownerUserId ? "owner" : mappedRole,
         userId: row.userId,
-        username: row.username
+        username: row.username,
       };
     })
     .filter((member): member is WorkspaceMemberRecord => member !== null)
@@ -442,7 +349,7 @@ export async function listWorkspaceMembers(input: {
     updatedAt: workspace.updatedAt.toISOString(),
     ownerUserId: workspace.ownerUserId,
     workspaceId: workspace.id,
-    workspaceName: workspace.name
+    workspaceName: workspace.name,
   };
 }
 
@@ -452,44 +359,61 @@ export async function addWorkspaceMemberByUsername(input: {
   username: unknown;
   workspaceId: string;
 }): Promise<void> {
-  const { role: actorRole, workspace } = await requireWorkspaceAndRole(input.workspaceId, input.actorUserId);
+  const { role: actorRole, workspace } = await requireWorkspaceAndRole(
+    input.workspaceId,
+    input.actorUserId,
+  );
 
   if (actorRole !== "owner") {
-    throw new Error("Owner access denied.");
+    throw new ForbiddenError("Owner access denied.");
   }
 
   if (!isMutableWorkspaceRole(input.role)) {
-    throw new Error("Invalid workspace role.");
+    throw new BadRequestError("Invalid workspace role.");
   }
 
   const username = sanitizeUsername(input.username);
 
   if (!username) {
-    throw new Error("Username is required.");
+    throw new BadRequestError("Username is required.");
   }
 
   const user = await findUserByNormalizedUsername(normalizeUsername(username));
 
   if (!user) {
-    throw new Error("User not found.");
+    throw new NotFoundError("User not found.");
   }
 
-  const existingRows = await db.select().from(workspaceGroupMembers)
-    .where(and(
-      eq(workspaceGroupMembers.workspaceGroupId, input.workspaceId),
-      eq(workspaceGroupMembers.userId, user.id)
-    ))
+  const existingRows = await db
+    .select()
+    .from(workspaceMembers)
+    .where(
+      and(
+        eq(workspaceMembers.workspaceId, input.workspaceId),
+        eq(workspaceMembers.userId, user.id),
+      ),
+    )
     .limit(1);
 
   if (existingRows.length > 0) {
-    throw new Error("User is already in this workspace.");
+    throw new ConflictError("User is already in this workspace.");
   }
 
-  await db.insert(workspaceGroupMembers).values({
+  await db.insert(workspaceMembers).values({
     role: user.id === workspace.ownerUserId ? "owner" : input.role,
     userId: user.id,
-    workspaceGroupId: input.workspaceId
+    workspaceId: input.workspaceId,
   });
+
+  await db
+    .insert(workspaceMemberTokens)
+    .values({
+      color: defaultWorkspaceTokenColor,
+      updatedAt: new Date(),
+      userId: user.id,
+      workspaceId: input.workspaceId,
+    })
+    .onConflictDoNothing();
 
   await touchWorkspaceUpdatedAt(input.workspaceId);
 }
@@ -499,26 +423,41 @@ export async function removeWorkspaceMember(input: {
   targetUserId: UserId;
   workspaceId: string;
 }): Promise<void> {
-  const { role: actorRole, workspace } = await requireWorkspaceAndRole(input.workspaceId, input.actorUserId);
+  const { role: actorRole, workspace } = await requireWorkspaceAndRole(
+    input.workspaceId,
+    input.actorUserId,
+  );
 
   if (actorRole !== "owner") {
-    throw new Error("Owner access denied.");
+    throw new ForbiddenError("Owner access denied.");
   }
 
   if (input.targetUserId === workspace.ownerUserId) {
-    throw new Error("Cannot remove the workspace owner.");
+    throw new ConflictError("Cannot remove the workspace owner.");
   }
 
-  const deleted = await db.delete(workspaceGroupMembers)
-    .where(and(
-      eq(workspaceGroupMembers.workspaceGroupId, input.workspaceId),
-      eq(workspaceGroupMembers.userId, input.targetUserId)
-    ))
-    .returning({ userId: workspaceGroupMembers.userId });
+  const deleted = await db
+    .delete(workspaceMembers)
+    .where(
+      and(
+        eq(workspaceMembers.workspaceId, input.workspaceId),
+        eq(workspaceMembers.userId, input.targetUserId),
+      ),
+    )
+    .returning({ userId: workspaceMembers.userId });
 
   if (deleted.length === 0) {
-    throw new Error("Workspace member not found.");
+    throw new NotFoundError("Workspace member not found.");
   }
+
+  await db
+    .delete(workspaceMemberTokens)
+    .where(
+      and(
+        eq(workspaceMemberTokens.workspaceId, input.workspaceId),
+        eq(workspaceMemberTokens.userId, input.targetUserId),
+      ),
+    );
 
   await touchWorkspaceUpdatedAt(input.workspaceId);
 }
@@ -529,30 +468,36 @@ export async function updateWorkspaceMemberRole(input: {
   targetUserId: UserId;
   workspaceId: string;
 }): Promise<void> {
-  const { role: actorRole, workspace } = await requireWorkspaceAndRole(input.workspaceId, input.actorUserId);
+  const { role: actorRole, workspace } = await requireWorkspaceAndRole(
+    input.workspaceId,
+    input.actorUserId,
+  );
 
   if (actorRole !== "owner") {
-    throw new Error("Owner access denied.");
+    throw new ForbiddenError("Owner access denied.");
   }
 
   if (!isMutableWorkspaceRole(input.role)) {
-    throw new Error("Invalid workspace role.");
+    throw new BadRequestError("Invalid workspace role.");
   }
 
   if (input.targetUserId === workspace.ownerUserId) {
-    throw new Error("Cannot change the workspace owner role.");
+    throw new ConflictError("Cannot change the workspace owner role.");
   }
 
-  const updated = await db.update(workspaceGroupMembers)
+  const updated = await db
+    .update(workspaceMembers)
     .set({ role: input.role })
-    .where(and(
-      eq(workspaceGroupMembers.workspaceGroupId, input.workspaceId),
-      eq(workspaceGroupMembers.userId, input.targetUserId)
-    ))
-    .returning({ userId: workspaceGroupMembers.userId });
+    .where(
+      and(
+        eq(workspaceMembers.workspaceId, input.workspaceId),
+        eq(workspaceMembers.userId, input.targetUserId),
+      ),
+    )
+    .returning({ userId: workspaceMembers.userId });
 
   if (updated.length === 0) {
-    throw new Error("Workspace member not found.");
+    throw new NotFoundError("Workspace member not found.");
   }
 
   await touchWorkspaceUpdatedAt(input.workspaceId);

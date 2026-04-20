@@ -1,7 +1,12 @@
 import { buildApiUrl } from "@/app/api/apiBase";
 import { parseSavedMapContent } from "@/core/document/savedMapCodec";
 import type { SavedMapContent } from "@/core/document/savedMapTypes";
-import type { MapOpenMode, WorkspaceMemberRecord, WorkspaceRole } from "@/core/auth/authTypes";
+import type {
+  MapOpenMode,
+  WorkspaceMemberRecord,
+  WorkspaceRole,
+  WorkspaceTokenMemberRecord
+} from "@/core/auth/authTypes";
 
 export type WorkspaceSummary = {
   currentUserRole: WorkspaceRole;
@@ -22,6 +27,7 @@ export type WorkspaceMapRecord = WorkspaceMapSummary & {
   content: SavedMapContent;
   currentUserRole: WorkspaceRole;
   ownerUserId: string;
+  tokenMembers: WorkspaceTokenMemberRecord[];
   workspaceName: string;
 };
 
@@ -119,6 +125,7 @@ function parseWorkspaceMapRecord(raw: unknown): WorkspaceMapRecord {
     !isObject(raw)
     || typeof raw.ownerUserId !== "string"
     || typeof raw.workspaceName !== "string"
+    || !Array.isArray(raw.tokenMembers)
   ) {
     throw new Error("Invalid workspace map response.");
   }
@@ -128,6 +135,7 @@ function parseWorkspaceMapRecord(raw: unknown): WorkspaceMapRecord {
     content: parseSavedMapContent(raw.content),
     currentUserRole: parseWorkspaceRole(raw.currentUserRole),
     ownerUserId: raw.ownerUserId,
+    tokenMembers: raw.tokenMembers.map(parseWorkspaceTokenMember),
     workspaceName: raw.workspaceName
   };
 }
@@ -147,6 +155,17 @@ function parseWorkspaceMember(raw: unknown): WorkspaceMemberRecord {
     role: parseWorkspaceRole(raw.role),
     userId: raw.userId,
     username: raw.username
+  };
+}
+
+function parseWorkspaceTokenMember(raw: unknown): WorkspaceTokenMemberRecord {
+  if (!isObject(raw) || typeof raw.color !== "string") {
+    throw new Error("Invalid workspace token member response.");
+  }
+
+  return {
+    ...parseWorkspaceMember(raw),
+    color: raw.color
   };
 }
 

@@ -9,12 +9,17 @@ export type UserRecord = {
 
 export type WorkspaceRole = "owner" | "gm" | "player";
 export type MapOpenMode = "gm" | "player";
+export const defaultWorkspaceTokenColor = "#2f6fed";
 
 export type WorkspaceMemberRecord = {
   isOwner: boolean;
   role: WorkspaceRole;
   userId: UserId;
   username: string;
+};
+
+export type WorkspaceTokenMemberRecord = WorkspaceMemberRecord & {
+  color: string;
 };
 
 export type WorkspaceAccess = {

@@ -6,25 +6,34 @@ import {
   createFeature,
   getFeatureAt,
   getLevelMap,
-  setCellHidden
+  setCellHidden,
 } from "@/core/map/world";
-import { applyFogGestureCells, createFogGesture, finishFogGesture } from "./fogGesture";
+import {
+  applyFogGestureCells,
+  createFogGesture,
+  finishFogGesture,
+} from "./fogGesture";
 
 describe("fog gestures", () => {
   it("left click puts fog on visible feature before terrain", () => {
     const world = addFeature(
-      setCellHidden(addTile(createEmptyWorld(), 3, { q: 0, r: 0 }, "plain"), 3, { q: 0, r: 0 }, false),
+      setCellHidden(
+        addTile(createEmptyWorld(), 3, { q: 0, r: 0 }, "plain"),
+        3,
+        { q: 0, r: 0 },
+        false,
+      ),
       3,
       {
         ...createFeature("feature-1", "city", "0,0"),
-        hidden: false
-      }
+        hidden: false,
+      },
     );
     const gesture = createFogGesture("paint", world, 3);
 
     applyFogGestureCells(gesture, [
       { q: 0, r: 0 },
-      { q: 0, r: 0 }
+      { q: 0, r: 0 },
     ]);
 
     const commit = finishFogGesture(gesture);
@@ -34,42 +43,53 @@ describe("fog gestures", () => {
       {
         type: "set_feature_hidden",
         featureId: "feature-1",
-        hidden: true
-      }
+        hidden: true,
+      },
     ]);
     expect(getFeatureAt(gesture.world, 3, { q: 0, r: 0 })?.hidden).toBe(true);
     expect(getLevelMap(gesture.world, 3).get("0,0")?.hidden).toBe(false);
   });
 
   it("left click puts fog on visible terrain when there is no visible feature", () => {
-    const world = setCellHidden(addTile(createEmptyWorld(), 3, { q: 0, r: 0 }, "plain"), 3, { q: 0, r: 0 }, false);
+    const world = setCellHidden(
+      addTile(createEmptyWorld(), 3, { q: 0, r: 0 }, "plain"),
+      3,
+      { q: 0, r: 0 },
+      false,
+    );
     const gesture = createFogGesture("paint", world, 3);
 
     applyFogGestureCells(gesture, [{ q: 0, r: 0 }]);
 
     expect(finishFogGesture(gesture).operations).toEqual([
       {
-        type: "set_cell_hidden",
-        cell: { q: 0, r: 0, hidden: true }
-      }
+        type: "set_cells_hidden",
+        cells: [{ q: 0, r: 0 }],
+        hidden: true,
+      },
     ]);
     expect(getLevelMap(gesture.world, 3).get("0,0")?.hidden).toBe(true);
   });
 
   it("right click removes terrain fog before hidden feature fog", () => {
-    const world = addFeature(addTile(createEmptyWorld(), 3, { q: 0, r: 0 }, "plain"), 3, {
-      ...createFeature("feature-1", "city", "0,0"),
-      hidden: true
-    });
+    const world = addFeature(
+      addTile(createEmptyWorld(), 3, { q: 0, r: 0 }, "plain"),
+      3,
+      {
+        ...createFeature("feature-1", "city", "0,0"),
+        hidden: true,
+      },
+    );
     const gesture = createFogGesture("erase", world, 3);
 
     applyFogGestureCells(gesture, [{ q: 0, r: 0 }]);
 
     expect(finishFogGesture(gesture).operations).toEqual([
       {
-        type: "set_cell_hidden",
-        cell: { q: 0, r: 0, hidden: false }
-      }
+        type: "set_cells_hidden",
+        cells: [{ q: 0, r: 0 }],
+        hidden: false,
+      },
     ]);
     expect(getLevelMap(gesture.world, 3).get("0,0")?.hidden).toBe(false);
     expect(getFeatureAt(gesture.world, 3, { q: 0, r: 0 })?.hidden).toBe(true);
@@ -77,12 +97,17 @@ describe("fog gestures", () => {
 
   it("right click removes feature fog when terrain is already visible", () => {
     const world = addFeature(
-      setCellHidden(addTile(createEmptyWorld(), 3, { q: 0, r: 0 }, "plain"), 3, { q: 0, r: 0 }, false),
+      setCellHidden(
+        addTile(createEmptyWorld(), 3, { q: 0, r: 0 }, "plain"),
+        3,
+        { q: 0, r: 0 },
+        false,
+      ),
       3,
       {
         ...createFeature("feature-1", "city", "0,0"),
-        hidden: true
-      }
+        hidden: true,
+      },
     );
     const gesture = createFogGesture("erase", world, 3);
 
@@ -92,8 +117,8 @@ describe("fog gestures", () => {
       {
         type: "set_feature_hidden",
         featureId: "feature-1",
-        hidden: false
-      }
+        hidden: false,
+      },
     ]);
     expect(getFeatureAt(gesture.world, 3, { q: 0, r: 0 })?.hidden).toBe(false);
   });

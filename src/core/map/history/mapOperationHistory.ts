@@ -9,7 +9,7 @@ import {
   roadHexIdToAxial,
   type Feature,
   type RoadEdgeIndex,
-  type MapState
+  type MapState,
 } from "@/core/map/world";
 import { applyOperationToWorld } from "@/core/map/worldOperationApplier";
 import type {
@@ -17,13 +17,8 @@ import type {
   FeaturePatch,
   MapFeatureRecord,
   MapOperation,
-  MapRoadRecord
+  MapRoadRecord,
 } from "@/core/protocol";
-import { getTileOperationTerrain } from "@/core/protocol";
-
-type SetTileOperation = Extract<MapOperation, { type: "set_tile" }>;
-type SetCellHiddenOperation = Extract<MapOperation, { type: "set_cell_hidden" }>;
-type SetFactionTerritoryOperation = Extract<MapOperation, { type: "set_faction_territory" }>;
 
 export type OperationHistoryEntry = {
   redoOperations: MapOperation[];
@@ -38,7 +33,7 @@ export type OperationHistoryState = {
 export function createOperationHistoryState(): OperationHistoryState {
   return {
     redoStack: [],
-    undoStack: []
+    undoStack: [],
   };
 }
 
@@ -59,7 +54,7 @@ function featureToRecord(feature: Feature): MapFeatureRecord {
     overrideTerrainTile: feature.overrideTerrainTile,
     gmLabel: feature.gmLabel ?? null,
     playerLabel: feature.playerLabel ?? null,
-    labelRevealed: feature.labelRevealed ?? false
+    labelRevealed: feature.labelRevealed ?? false,
   };
 }
 
@@ -71,7 +66,7 @@ function roadRecordsByKey(world: MapState): Map<string, MapRoadRecord> {
     records.set(hexKey(axial), {
       q: axial.q,
       r: axial.r,
-      edges: Array.from(edges).sort((left, right) => left - right)
+      edges: Array.from(edges).sort((left, right) => left - right),
     });
   }
 
@@ -86,7 +81,10 @@ function sameRoadEdges(left: RoadEdgeIndex[], right: RoadEdgeIndex[]): boolean {
   return left.every((edge, index) => edge === right[index]);
 }
 
-function roadRestoreOperations(targetWorld: MapState, currentWorld: MapState): MapOperation[] {
+function roadRestoreOperations(
+  targetWorld: MapState,
+  currentWorld: MapState,
+): MapOperation[] {
   const targetRecords = roadRecordsByKey(targetWorld);
   const currentRecords = roadRecordsByKey(currentWorld);
   const operations: MapOperation[] = [];
@@ -96,19 +94,18 @@ function roadRestoreOperations(targetWorld: MapState, currentWorld: MapState): M
 
     if (!target) {
       operations.push({
-        type: "remove_road_data",
-        road: {
-          q: current.q,
-          r: current.r
-        }
+        type: "set_road_edges",
+        cell: { q: current.q, r: current.r },
+        edges: [],
       });
       continue;
     }
 
     if (!sameRoadEdges(current.edges, target.edges)) {
       operations.push({
-        type: "update_road_data",
-        road: target
+        type: "set_road_edges",
+        cell: { q: target.q, r: target.r },
+        edges: target.edges,
       });
     }
   }
@@ -119,15 +116,19 @@ function roadRestoreOperations(targetWorld: MapState, currentWorld: MapState): M
     }
 
     operations.push({
-      type: "add_road_data",
-      road: target
+      type: "set_road_edges",
+      cell: { q: target.q, r: target.r },
+      edges: target.edges,
     });
   }
 
   return operations;
 }
 
-function featurePatchForPreviousValues(feature: Feature, patch: FeaturePatch): FeaturePatch {
+function featurePatchForPreviousValues(
+  feature: Feature,
+  patch: FeaturePatch,
+): FeaturePatch {
   const inverse: FeaturePatch = {};
 
   if ("kind" in patch || "type" in patch) {
@@ -152,7 +153,11 @@ function featurePatchForPreviousValues(feature: Feature, patch: FeaturePatch): F
   return inverse;
 }
 
-function factionPatchForPreviousValues(world: MapState, factionId: string, patch: FactionPatch): FactionPatch {
+function factionPatchForPreviousValues(
+  world: MapState,
+  factionId: string,
+  patch: FactionPatch,
+): FactionPatch {
   const faction = getFactionById(world, factionId);
   const inverse: FactionPatch = {};
 
@@ -170,60 +175,137 @@ function factionPatchForPreviousValues(world: MapState, factionId: string, patch
   return inverse;
 }
 
-function inverseForOperation(worldBefore: MapState, operation: MapOperation): MapOperation[] {
+function inverseForOperation(
+  worldBefore: MapState,
+  operation: MapOperation,
+): MapOperation[] {
   const sourceMap = worldBefore.levels[SOURCE_LEVEL] ?? new Map();
+  const sourceFactions = getFactionLevelMap(worldBefore, SOURCE_LEVEL);
 
   switch (operation.type) {
-    case "set_tile": {
-      const axial = { q: operation.tile.q, r: operation.tile.r };
-      const key = hexKey(axial);
-      const previousTile = sourceMap.get(key);
-      const previousFactionId = getFactionLevelMap(worldBefore, SOURCE_LEVEL).get(key) ?? null;
-      const inverse: MapOperation[] = previousTile
-        ? [{
-          type: "set_tile",
-          tile: {
-            q: axial.q,
-            r: axial.r,
-            terrain: previousTile.type,
-            hidden: previousTile.hidden
-          }
-        }]
-        : [{
-          type: "set_tile",
-          tile: {
-            q: axial.q,
-            r: axial.r,
-            terrain: null,
-            hidden: false
-          }
-        }];
+    case "paint_cells": {
+      const tiles = operation.cells.map((cell) => {
+        const previousTile = sourceMap.get(hexKey(cell));
 
-      if (previousTile && previousFactionId) {
+        return {
+          q: cell.q,
+          r: cell.r,
+          terrain: previousTile?.type ?? null,
+          hidden: previousTile?.hidden ?? false,
+        };
+      });
+      const factionTerritories = operation.cells
+        .map((cell) => ({
+          q: cell.q,
+          r: cell.r,
+          factionId: sourceFactions.get(hexKey(cell)) ?? null,
+        }))
+        .filter((entry) => entry.factionId !== null);
+      const inverse: MapOperation[] = [{ type: "set_tiles", tiles }];
+
+      if (factionTerritories.length > 0) {
         inverse.push({
-          type: "set_faction_territory",
-          territory: {
-            q: axial.q,
-            r: axial.r,
-            factionId: previousFactionId
-          }
+          type: "set_faction_territories",
+          territories: factionTerritories,
         });
       }
 
       return inverse;
     }
 
-    case "set_cell_hidden": {
-      const previousTile = sourceMap.get(hexKey({ q: operation.cell.q, r: operation.cell.r }));
-      return previousTile
-        ? [{
-          type: "set_cell_hidden",
-          cell: {
-            q: operation.cell.q,
-            r: operation.cell.r,
-            hidden: previousTile.hidden
-          }
-        }]
+    case "set_tiles": {
+      const tiles = operation.tiles.map((tile) => {
+        const previousTile = sourceMap.get(hexKey(tile));
+
+        return {
+          q: tile.q,
+          r: tile.r,
+          terrain: previousTile?.type ?? null,
+          hidden: previousTile?.hidden ?? false,
+        };
+      });
+      const factionTerritories = operation.tiles
+        .map((tile) => ({
+          q: tile.q,
+          r: tile.r,
+          factionId: sourceFactions.get(hexKey(tile)) ?? null,
+        }))
+        .filter((entry) => entry.factionId !== null);
+      const inverse: MapOperation[] = [{ type: "set_tiles", tiles }];
+
+      if (factionTerritories.length > 0) {
+        inverse.push({
+          type: "set_faction_territories",
+          territories: factionTerritories,
+        });
+      }
+
+      return inverse;
+    }
+
+    case "set_cells_hidden": {
+      const hiddenTrueCells: Array<{ q: number; r: number }> = [];
+      const hiddenFalseCells: Array<{ q: number; r: number }> = [];
+
+      for (const cell of operation.cells) {
+        const previousTile = sourceMap.get(hexKey(cell));
+
+        if (!previousTile) {
+          continue;
+        }
+
+        if (previousTile.hidden) {
+          hiddenTrueCells.push({ q: cell.q, r: cell.r });
+        } else {
+          hiddenFalseCells.push({ q: cell.q, r: cell.r });
+        }
+      }
+
+      const inverse: MapOperation[] = [];
+
+      if (hiddenTrueCells.length > 0) {
+        inverse.push({
+          type: "set_cells_hidden",
+          cells: hiddenTrueCells,
+          hidden: true,
+        });
+      }
+      if (hiddenFalseCells.length > 0) {
+        inverse.push({
+          type: "set_cells_hidden",
+          cells: hiddenFalseCells,
+          hidden: false,
+        });
+      }
+
+      return inverse;
+    }
+
+    case "assign_faction_cells": {
+      const territories = operation.cells
+        .filter((cell) => sourceMap.has(hexKey(cell)))
+        .map((cell) => ({
+          q: cell.q,
+          r: cell.r,
+          factionId: sourceFactions.get(hexKey(cell)) ?? null,
+        }));
+
+      return territories.length > 0
+        ? [{ type: "set_faction_territories", territories }]
+        : [];
+    }
+
+    case "set_faction_territories": {
+      const territories = operation.territories
+        .filter((territory) => sourceMap.has(hexKey(territory)))
+        .map((territory) => ({
+          q: territory.q,
+          r: territory.r,
+          factionId: sourceFactions.get(hexKey(territory)) ?? null,
+        }));
+
+      return territories.length > 0
+        ? [{ type: "set_faction_territories", territories }]
         : [];
     }
 
@@ -233,47 +315,72 @@ function inverseForOperation(worldBefore: MapState, operation: MapOperation): Ma
         : [{ type: "remove_feature", featureId: operation.feature.id }];
 
     case "set_feature_hidden": {
-      const feature = getFeatureById(worldBefore, SOURCE_LEVEL, operation.featureId);
+      const feature = getFeatureById(
+        worldBefore,
+        SOURCE_LEVEL,
+        operation.featureId,
+      );
       return feature
-        ? [{ type: "set_feature_hidden", featureId: operation.featureId, hidden: feature.hidden }]
+        ? [
+            {
+              type: "set_feature_hidden",
+              featureId: operation.featureId,
+              hidden: feature.hidden,
+            },
+          ]
         : [];
     }
 
     case "update_feature": {
-      const feature = getFeatureById(worldBefore, SOURCE_LEVEL, operation.featureId);
-      const patch = feature ? featurePatchForPreviousValues(feature, operation.patch) : {};
+      const feature = getFeatureById(
+        worldBefore,
+        SOURCE_LEVEL,
+        operation.featureId,
+      );
+      const patch = feature
+        ? featurePatchForPreviousValues(feature, operation.patch)
+        : {};
       return Object.keys(patch).length > 0
         ? [{ type: "update_feature", featureId: operation.featureId, patch }]
         : [];
     }
 
     case "remove_feature": {
-      const feature = getFeatureById(worldBefore, SOURCE_LEVEL, operation.featureId);
+      const feature = getFeatureById(
+        worldBefore,
+        SOURCE_LEVEL,
+        operation.featureId,
+      );
       return feature
         ? [{ type: "add_feature", feature: featureToRecord(feature) }]
         : [];
     }
 
     case "add_river_data": {
-      const hadRiver = getRiverLevelMap(worldBefore, SOURCE_LEVEL)
-        .get(hexKey({ q: operation.river.q, r: operation.river.r }))
-        ?.has(operation.river.edge) ?? false;
-      return hadRiver ? [] : [{ type: "remove_river_data", river: operation.river }];
+      const hadRiver =
+        getRiverLevelMap(worldBefore, SOURCE_LEVEL)
+          .get(hexKey({ q: operation.river.q, r: operation.river.r }))
+          ?.has(operation.river.edge) ?? false;
+      return hadRiver
+        ? []
+        : [{ type: "remove_river_data", river: operation.river }];
     }
 
     case "remove_river_data": {
-      const hadRiver = getRiverLevelMap(worldBefore, SOURCE_LEVEL)
-        .get(hexKey({ q: operation.river.q, r: operation.river.r }))
-        ?.has(operation.river.edge) ?? false;
-      return hadRiver ? [{ type: "add_river_data", river: operation.river }] : [];
+      const hadRiver =
+        getRiverLevelMap(worldBefore, SOURCE_LEVEL)
+          .get(hexKey({ q: operation.river.q, r: operation.river.r }))
+          ?.has(operation.river.edge) ?? false;
+      return hadRiver
+        ? [{ type: "add_river_data", river: operation.river }]
+        : [];
     }
 
-    case "add_road_data":
-    case "update_road_data":
-    case "remove_road_data":
-    case "add_road_connection":
-    case "remove_road_connections_at":
-      return roadRestoreOperations(worldBefore, applyOperationToWorld(worldBefore, operation));
+    case "set_road_edges":
+      return roadRestoreOperations(
+        worldBefore,
+        applyOperationToWorld(worldBefore, operation),
+      );
 
     case "add_faction":
       return getFactionById(worldBefore, operation.faction.id)
@@ -281,7 +388,11 @@ function inverseForOperation(worldBefore: MapState, operation: MapOperation): Ma
         : [{ type: "remove_faction", factionId: operation.faction.id }];
 
     case "update_faction": {
-      const patch = factionPatchForPreviousValues(worldBefore, operation.factionId, operation.patch);
+      const patch = factionPatchForPreviousValues(
+        worldBefore,
+        operation.factionId,
+        operation.patch,
+      );
       return Object.keys(patch).length > 0
         ? [{ type: "update_faction", factionId: operation.factionId, patch }]
         : [];
@@ -294,38 +405,30 @@ function inverseForOperation(worldBefore: MapState, operation: MapOperation): Ma
         return [];
       }
 
-      const inverse: MapOperation[] = [{ type: "add_faction", faction }];
+      const territories = Array.from(
+        getFactionLevelMap(worldBefore, SOURCE_LEVEL).entries(),
+      )
+        .filter(([, factionId]) => factionId === operation.factionId)
+        .map(([hexId, factionId]) => {
+          const axial = parseHexKey(hexId);
 
-      for (const [hexId, factionId] of getFactionLevelMap(worldBefore, SOURCE_LEVEL).entries()) {
-        if (factionId !== operation.factionId) {
-          continue;
-        }
-
-        const axial = parseHexKey(hexId);
-        inverse.push({
-          type: "set_faction_territory",
-          territory: {
+          return {
             q: axial.q,
             r: axial.r,
-            factionId
-          }
+            factionId,
+          };
+        });
+
+      const inverse: MapOperation[] = [{ type: "add_faction", faction }];
+
+      if (territories.length > 0) {
+        inverse.push({
+          type: "set_faction_territories",
+          territories,
         });
       }
 
       return inverse;
-    }
-
-    case "set_faction_territory": {
-      const previousFactionId = getFactionLevelMap(worldBefore, SOURCE_LEVEL)
-        .get(hexKey({ q: operation.territory.q, r: operation.territory.r })) ?? null;
-      return [{
-        type: "set_faction_territory",
-        territory: {
-          q: operation.territory.q,
-          r: operation.territory.r,
-          factionId: previousFactionId
-        }
-      }];
     }
 
     case "rename_map":
@@ -339,172 +442,17 @@ function inverseForOperation(worldBefore: MapState, operation: MapOperation): Ma
   }
 }
 
-function operationTargetKey(operation: SetTileOperation | SetCellHiddenOperation | SetFactionTerritoryOperation): string {
-  switch (operation.type) {
-    case "set_tile":
-      return hexKey({ q: operation.tile.q, r: operation.tile.r });
-    case "set_cell_hidden":
-      return hexKey({ q: operation.cell.q, r: operation.cell.r });
-    case "set_faction_territory":
-      return hexKey({ q: operation.territory.q, r: operation.territory.r });
-    default: {
-      const exhaustive: never = operation;
-      void exhaustive;
-      return "";
-    }
-  }
-}
-
-function hasUniqueOperationTargets(
-  operations: readonly (SetTileOperation | SetCellHiddenOperation | SetFactionTerritoryOperation)[]
-): boolean {
-  const seen = new Set<string>();
-
-  for (const operation of operations) {
-    const key = operationTargetKey(operation);
-
-    if (seen.has(key)) {
-      return false;
-    }
-
-    seen.add(key);
-  }
-
-  return true;
-}
-
-function invertSetTileBatch(worldBefore: MapState, operations: readonly SetTileOperation[]): MapOperation[] {
-  const sourceMap = worldBefore.levels[SOURCE_LEVEL] ?? new Map();
-  const sourceFactions = getFactionLevelMap(worldBefore, SOURCE_LEVEL);
-  const inverse: MapOperation[] = [];
-
-  for (let index = operations.length - 1; index >= 0; index -= 1) {
-    const operation = operations[index];
-    const axial = { q: operation.tile.q, r: operation.tile.r };
-    const key = hexKey(axial);
-    const previousTile = sourceMap.get(key);
-
-    if (previousTile) {
-      inverse.push({
-        type: "set_tile",
-        tile: {
-          q: axial.q,
-          r: axial.r,
-          terrain: previousTile.type,
-          hidden: previousTile.hidden
-        }
-      });
-
-      const previousFactionId = sourceFactions.get(key);
-
-      if (previousFactionId) {
-        inverse.push({
-          type: "set_faction_territory",
-          territory: {
-            q: axial.q,
-            r: axial.r,
-            factionId: previousFactionId
-          }
-        });
-      }
-      continue;
-    }
-
-    if (getTileOperationTerrain(operation.tile) !== null) {
-      inverse.push({
-        type: "set_tile",
-        tile: {
-          q: axial.q,
-          r: axial.r,
-          terrain: null,
-          hidden: false
-        }
-      });
-    }
-  }
-
-  return inverse;
-}
-
-function invertCellHiddenBatch(worldBefore: MapState, operations: readonly SetCellHiddenOperation[]): MapOperation[] {
-  const sourceMap = worldBefore.levels[SOURCE_LEVEL] ?? new Map();
-  const inverse: MapOperation[] = [];
-
-  for (let index = operations.length - 1; index >= 0; index -= 1) {
-    const operation = operations[index];
-    const previousTile = sourceMap.get(hexKey({ q: operation.cell.q, r: operation.cell.r }));
-
-    if (!previousTile) {
-      continue;
-    }
-
-    inverse.push({
-      type: "set_cell_hidden",
-      cell: {
-        q: operation.cell.q,
-        r: operation.cell.r,
-        hidden: previousTile.hidden
-      }
-    });
-  }
-
-  return inverse;
-}
-
-function invertFactionTerritoryBatch(
+export function invertOperationBatch(
   worldBefore: MapState,
-  operations: readonly SetFactionTerritoryOperation[]
+  operations: MapOperation[],
 ): MapOperation[] {
-  const sourceFactions = getFactionLevelMap(worldBefore, SOURCE_LEVEL);
-  const inverse: MapOperation[] = [];
-
-  for (let index = operations.length - 1; index >= 0; index -= 1) {
-    const operation = operations[index];
-    inverse.push({
-      type: "set_faction_territory",
-      territory: {
-        q: operation.territory.q,
-        r: operation.territory.r,
-        factionId: sourceFactions.get(hexKey({ q: operation.territory.q, r: operation.territory.r })) ?? null
-      }
-    });
-  }
-
-  return inverse;
-}
-
-function invertOperationBatchFastPath(worldBefore: MapState, operations: MapOperation[]): MapOperation[] | null {
-  if (operations.length === 0) {
-    return [];
-  }
-
-  if (operations.every((operation): operation is SetTileOperation => operation.type === "set_tile")) {
-    return hasUniqueOperationTargets(operations) ? invertSetTileBatch(worldBefore, operations) : null;
-  }
-
-  if (operations.every((operation): operation is SetCellHiddenOperation => operation.type === "set_cell_hidden")) {
-    return hasUniqueOperationTargets(operations) ? invertCellHiddenBatch(worldBefore, operations) : null;
-  }
-
-  if (operations.every((operation): operation is SetFactionTerritoryOperation => operation.type === "set_faction_territory")) {
-    return hasUniqueOperationTargets(operations) ? invertFactionTerritoryBatch(worldBefore, operations) : null;
-  }
-
-  return null;
-}
-
-export function invertOperationBatch(worldBefore: MapState, operations: MapOperation[]): MapOperation[] {
-  const fastPath = invertOperationBatchFastPath(worldBefore, operations);
-
-  if (fastPath) {
-    return fastPath;
-  }
-
   const inverseByForwardOperation: MapOperation[][] = [];
   let currentWorld = worldBefore;
 
   for (const operation of operations) {
-    inverseByForwardOperation.push(inverseForOperation(currentWorld, operation));
+    inverseByForwardOperation.push(
+      inverseForOperation(currentWorld, operation),
+    );
     currentWorld = applyOperationToWorld(currentWorld, operation);
   }
 
@@ -514,7 +462,7 @@ export function invertOperationBatch(worldBefore: MapState, operations: MapOpera
 export function recordOperationHistory(
   history: OperationHistoryState,
   worldBefore: MapState,
-  operations: MapOperation[]
+  operations: MapOperation[],
 ): void {
   if (operations.length === 0) {
     return;
@@ -528,12 +476,14 @@ export function recordOperationHistory(
 
   history.undoStack.push({
     redoOperations: operations,
-    undoOperations
+    undoOperations,
   });
   history.redoStack = [];
 }
 
-export function takeUndoOperations(history: OperationHistoryState): MapOperation[] {
+export function takeUndoOperations(
+  history: OperationHistoryState,
+): MapOperation[] {
   const entry = history.undoStack.pop();
 
   if (!entry) {
@@ -544,7 +494,9 @@ export function takeUndoOperations(history: OperationHistoryState): MapOperation
   return entry.undoOperations;
 }
 
-export function takeRedoOperations(history: OperationHistoryState): MapOperation[] {
+export function takeRedoOperations(
+  history: OperationHistoryState,
+): MapOperation[] {
   const entry = history.redoStack.pop();
 
   if (!entry) {

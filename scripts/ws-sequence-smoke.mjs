@@ -1,34 +1,29 @@
-import { WebSocket } from "ws";
+import {
+  closeSocket,
+  connectMapSocket,
+  createSmokeAccount,
+  createWorkspace,
+  createWorkspaceMap,
+  deleteWorkspace,
+  waitForClose,
+} from "./ws-smoke-helpers.mjs";
 
-const base = process.env.BASE_URL ?? "http://localhost:8790";
-
-function waitForClose(socket, timeoutMs = 10000) {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error("WebSocket close timeout"));
-    }, timeoutMs);
-
-    socket.once("close", () => {
-      clearTimeout(timeout);
-      resolve();
-    });
-
-    socket.once("error", (error) => {
-      clearTimeout(timeout);
-      reject(error);
-    });
-  });
-}
+const base = process.env.BASE_URL ?? "http://localhost:8787";
 
 async function main() {
-  const mapsPayload = await fetch(`${base}/api/maps`).then((response) => response.json());
-  const mapId = mapsPayload?.maps?.[0]?.id;
-
-  if (!mapId) {
-    throw new Error("No map found for smoke test");
-  }
-
-  const ws = new WebSocket(`${base.replace(/^http/, "ws")}/api/maps/${mapId}/ws`);
+  const account = await createSmokeAccount(base, "seq-smoke");
+  const workspace = await createWorkspace(
+    base,
+    account.cookie,
+    "Sequence Smoke Workspace",
+  );
+  const map = await createWorkspaceMap(
+    base,
+    account.cookie,
+    workspace.id,
+    "Sequence Smoke Map",
+  );
+  const ws = await connectMapSocket(base, account.cookie, map.id);
   const clientId = `seq-smoke-${Date.now()}`;
   const operationId1 = `${clientId}-1`;
   const operationId2 = `${clientId}-2`;
@@ -46,10 +41,11 @@ async function main() {
           clientId,
           operationId: operationId1,
           operation: {
-            type: "set_cell_hidden",
-            cell: { q: 0, r: 0, hidden: true }
-          }
-        })
+            type: "set_cells_hidden",
+            cells: [{ q: 0, r: 0 }],
+            hidden: true,
+          },
+        }),
       );
       ws.send(
         JSON.stringify({
@@ -57,10 +53,11 @@ async function main() {
           clientId,
           operationId: operationId2,
           operation: {
-            type: "set_cell_hidden",
-            cell: { q: 0, r: 0, hidden: false }
-          }
-        })
+            type: "set_cells_hidden",
+            cells: [{ q: 0, r: 0 }],
+            hidden: false,
+          },
+        }),
       );
       return;
     }
@@ -86,21 +83,26 @@ async function main() {
     console.log(
       JSON.stringify(
         {
-          mapId,
+          mapId: map.id,
           lastSequence: snapshot.lastSequence,
           sequences: applied.map((entry) => entry.sequence),
           okOrder,
-          operationIds: applied.map((entry) => entry.operationId)
+          operationIds: applied.map((entry) => entry.operationId),
         },
         null,
-        2
-      )
+        2,
+      ),
     );
 
     ws.close(1000, "done");
   });
 
-  await waitForClose(ws);
+  try {
+    await waitForClose(ws);
+  } finally {
+    await closeSocket(ws);
+    await deleteWorkspace(base, account.cookie, workspace.id);
+  }
 }
 
 main().catch((error) => {

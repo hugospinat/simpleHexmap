@@ -1,43 +1,55 @@
 import { WebSocket } from "ws";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "./db/client.js";
-import { hexCells, mapTokens, opLog, workspaces } from "./db/schema.js";
-import { materializeWorkspaceContent, replaceWorkspaceContent } from "./repositories/mapContentRepository.js";
-import { canOpenAsGm, getMapRecordForUser, getMapRoleForUser, getWorkspaceIdForMap, touchWorkspaceUpdatedAt } from "./repositories/workspaceRepository.js";
-import { broadcastPayload } from "./broadcastService.js";
-import { getOrCreateSession } from "./sessionStore.js";
+import { opLog, maps } from "./db/schema.js";
 import {
-  applyOperationToSavedMapContentIndex,
-  indexSavedMapContent,
-  materializeSavedMapContent,
+  applyIncrementalContentMutations,
+  isIncrementalContentOperation,
+} from "./repositories/incrementalContentMutations.js";
+import {
+  getMapRecordForUser,
+  getMapRoleForUser,
+  getWorkspaceIdForMap,
+} from "./repositories/mapRepository.js";
+import {
+  canOpenAsGm,
+  touchWorkspaceUpdatedAt,
+} from "./repositories/workspaceRepository.js";
+import { getOrCreateSession } from "./sessionStore.js";
+import { broadcastRoleAwareSessionPayloads } from "./sessionDelivery.js";
+import { sendSyncSnapshot } from "./syncSnapshotService.js";
+import {
   validateMapOperation,
-  validateMapTokenOperation,
   type MapOperation,
-  type MapTokenOperation
 } from "../../src/core/protocol/index.js";
+import { BadRequestError, ForbiddenError, NotFoundError } from "./errors.js";
 import type {
   AppliedOperationMessage,
   MapRecord,
-  MapTokenUpdatedMessage,
-  OperationEnvelope
+  OperationEnvelope,
 } from "./types.js";
 
-function operationLogRowToMessage(row: typeof opLog.$inferSelect): AppliedOperationMessage {
+function operationLogRowToMessage(
+  row: typeof opLog.$inferSelect,
+): AppliedOperationMessage {
   return {
     type: "map_operation_applied",
     operation: row.operation,
     operationId: row.operationId,
     sequence: row.sequence,
     sourceClientId: row.sourceClientId,
-    updatedAt: row.createdAt.toISOString()
+    updatedAt: row.createdAt.toISOString(),
   };
 }
 
-async function getWorkspaceRecordForActor(workspaceId: string, actorUserId: string): Promise<MapRecord> {
+async function getWorkspaceRecordForActor(
+  workspaceId: string,
+  actorUserId: string,
+): Promise<MapRecord> {
   const map = await getMapRecordForUser(workspaceId, actorUserId);
 
   if (!map) {
-    throw new Error("Map not found.");
+    throw new NotFoundError("Map not found.");
   }
 
   return {
@@ -46,8 +58,9 @@ async function getWorkspaceRecordForActor(workspaceId: string, actorUserId: stri
     id: map.id,
     name: map.name,
     ownerUserId: map.ownerUserId,
+    tokenMembers: map.tokenMembers,
     updatedAt: map.updatedAt,
-    workspaceId: map.workspaceId
+    workspaceId: map.workspaceId,
   };
 }
 
@@ -55,7 +68,11 @@ function shouldLogServerPerf(durationMs: number): boolean {
   return process.env.HEXMAP_PERF_DEBUG === "1" || durationMs >= 16;
 }
 
-function logServerPerf(event: string, startedAtMs: number, details: Record<string, unknown>): void {
+function logServerPerf(
+  event: string,
+  startedAtMs: number,
+  details: Record<string, unknown>,
+): void {
   const durationMs = performance.now() - startedAtMs;
 
   if (!shouldLogServerPerf(durationMs)) {
@@ -65,7 +82,7 @@ function logServerPerf(event: string, startedAtMs: number, details: Record<strin
   console.info("[MapSyncServer] perf", {
     event,
     durationMs: Number(durationMs.toFixed(2)),
-    ...details
+    ...details,
   });
 }
 
@@ -75,108 +92,17 @@ export async function applyOperationToSession(
   sourceClientId: string,
   operationId: string,
   sourceSocket: WebSocket | null = null,
-  actorUserId: string
-): Promise<MapRecord> {
+  actorUserId: string,
+  options: { includeMapRecord?: boolean } = {},
+): Promise<MapRecord | null> {
   return applyOperationBatchToSession(
     mapId,
     [{ operation, operationId }],
     sourceClientId,
     sourceSocket,
-    actorUserId
+    actorUserId,
+    options,
   );
-}
-
-export async function applyTokenOperationToSession(
-  mapId: string,
-  operation: MapTokenOperation,
-  sourceUserId: string
-): Promise<MapRecord> {
-  const validationError = validateMapTokenOperation(operation);
-
-  if (validationError) {
-    throw new Error(validationError);
-  }
-
-  const role = await getMapRoleForUser(mapId, sourceUserId);
-
-  if (!role) {
-    throw new Error("Map not found.");
-  }
-
-  const canManageOtherUserTokens = canOpenAsGm(role);
-
-  if (
-    operation.type === "set_map_token"
-    && operation.token.profileId !== sourceUserId
-    && !canManageOtherUserTokens
-  ) {
-    throw new Error("Cannot move another user token.");
-  }
-
-  if (
-    operation.type === "remove_map_token"
-    && operation.profileId !== sourceUserId
-    && !canManageOtherUserTokens
-  ) {
-    throw new Error("Cannot remove another user token.");
-  }
-
-  await db.transaction(async (tx) => {
-    await tx.execute(sql`select id from ${workspaces} where id = ${mapId} for update`);
-    const now = new Date();
-
-    if (operation.type === "set_map_token") {
-      const tileRows = await tx.select()
-        .from(hexCells)
-        .where(and(
-          eq(hexCells.workspaceId, mapId),
-          eq(hexCells.q, operation.token.q),
-          eq(hexCells.r, operation.token.r)
-        ))
-        .limit(1);
-      const tile = tileRows[0];
-
-      if (!tile || tile.hidden === 1) {
-        throw new Error("Token can only be placed on visible terrain.");
-      }
-
-      await tx.insert(mapTokens).values({
-        color: operation.token.color,
-        q: operation.token.q,
-        r: operation.token.r,
-        userId: operation.token.profileId,
-        workspaceId: mapId
-      }).onConflictDoUpdate({
-        target: [mapTokens.workspaceId, mapTokens.userId],
-        set: {
-          color: operation.token.color,
-          q: operation.token.q,
-          r: operation.token.r
-        }
-      });
-    } else {
-      await tx.delete(mapTokens)
-        .where(and(eq(mapTokens.workspaceId, mapId), eq(mapTokens.userId, operation.profileId)));
-    }
-
-    await tx.update(workspaces).set({ updatedAt: now }).where(eq(workspaces.id, mapId));
-  });
-
-  const workspaceId = await getWorkspaceIdForMap(mapId);
-
-  if (workspaceId) {
-    await touchWorkspaceUpdatedAt(workspaceId);
-  }
-
-  const updated = await getWorkspaceRecordForActor(mapId, sourceUserId);
-  const message: MapTokenUpdatedMessage = {
-    type: "map_token_updated",
-    operation,
-    sourceProfileId: sourceUserId,
-    updatedAt: updated.updatedAt
-  };
-  broadcastPayload(getOrCreateSession(mapId), JSON.stringify(message));
-  return updated;
 }
 
 export async function applyOperationBatchToSession(
@@ -184,55 +110,68 @@ export async function applyOperationBatchToSession(
   envelopes: OperationEnvelope[],
   sourceClientId: string,
   sourceSocket: WebSocket | null = null,
-  actorUserId: string
-): Promise<MapRecord> {
+  actorUserId: string,
+  options: { includeMapRecord?: boolean } = {},
+): Promise<MapRecord | null> {
+  const includeMapRecord = options.includeMapRecord ?? true;
   const role = await getMapRoleForUser(mapId, actorUserId);
 
   if (!role) {
-    throw new Error("Map not found.");
+    throw new NotFoundError("Map not found.");
   }
 
   if (!canOpenAsGm(role)) {
-    throw new Error("GM access denied.");
+    throw new ForbiddenError("GM access denied.");
   }
 
   const applyStartedAt = performance.now();
   const result = await db.transaction(async (tx) => {
-    const workspaceRows = await tx.select().from(workspaces).where(eq(workspaces.id, mapId)).limit(1);
-    const workspace = workspaceRows[0];
+    await tx.execute(
+      sql`select id from ${maps} where id = ${mapId} for update`,
+    );
 
-    if (!workspace) {
-      throw new Error("Map not found.");
+    const mapRows = await tx
+      .select()
+      .from(maps)
+      .where(eq(maps.id, mapId))
+      .limit(1);
+    const map = mapRows[0];
+
+    if (!map) {
+      throw new NotFoundError("Map not found.");
     }
 
-    await tx.execute(sql`select id from ${workspaces} where id = ${mapId} for update`);
-
     const operationIds = envelopes.map((envelope) => envelope.operationId);
-    const duplicateRows = operationIds.length === 0
-      ? []
-      : await tx.select().from(opLog).where(and(
-        eq(opLog.workspaceId, mapId),
-        inArray(opLog.operationId, operationIds)
-      ));
-    const duplicateByOperationId = new Map(duplicateRows.map((row) => [row.operationId, row]));
+    const duplicateRows =
+      operationIds.length === 0
+        ? []
+        : await tx
+            .select()
+            .from(opLog)
+            .where(
+              and(
+                eq(opLog.mapId, mapId),
+                inArray(opLog.operationId, operationIds),
+              ),
+            );
+    const duplicateByOperationId = new Map(
+      duplicateRows.map((row) => [row.operationId, row]),
+    );
     const resolvedMessages: AppliedOperationMessage[] = [];
-    const newMessages: AppliedOperationMessage[] = [];
-    const content = await materializeWorkspaceContent(mapId, tx);
-    const index = indexSavedMapContent(content);
-    let nextName = workspace.name;
-    let nextSequence = workspace.nextSequence;
-    let mutated = false;
-    let updatedAt = workspace.updatedAt;
+    const newEnvelopes: OperationEnvelope[] = [];
 
     for (const envelope of envelopes) {
-      if (typeof envelope.operationId !== "string" || !envelope.operationId.trim()) {
-        throw new Error("Invalid operation id.");
+      if (
+        typeof envelope.operationId !== "string" ||
+        !envelope.operationId.trim()
+      ) {
+        throw new BadRequestError("Invalid operation id.");
       }
 
       const validationError = validateMapOperation(envelope.operation);
 
       if (validationError) {
-        throw new Error(validationError);
+        throw new BadRequestError(validationError);
       }
 
       const duplicate = duplicateByOperationId.get(envelope.operationId);
@@ -242,15 +181,30 @@ export async function applyOperationBatchToSession(
         continue;
       }
 
-      if (!mutated) {
-        updatedAt = new Date();
-        mutated = true;
-      }
+      newEnvelopes.push(envelope);
+    }
 
+    if (newEnvelopes.length === 0) {
+      return {
+        newMessages: [],
+        resolvedMessages,
+        updatedAt: map.updatedAt,
+      };
+    }
+
+    const newMessages: AppliedOperationMessage[] = [];
+    const hasContentMutation = newEnvelopes.some(
+      (envelope) => envelope.operation.type !== "rename_map",
+    );
+    let nextName = map.name;
+    let nextSequence = map.nextSequence;
+    const updatedAt = new Date();
+    const opLogRows: Array<typeof opLog.$inferInsert> = [];
+
+    for (const envelope of newEnvelopes) {
       if (envelope.operation.type === "rename_map") {
-        nextName = envelope.operation.name.trim().slice(0, 120) || "Untitled map";
-      } else {
-        applyOperationToSavedMapContentIndex(index, envelope.operation);
+        nextName =
+          envelope.operation.name.trim().slice(0, 120) || "Untitled map";
       }
 
       const message: AppliedOperationMessage = {
@@ -259,38 +213,59 @@ export async function applyOperationBatchToSession(
         operationId: envelope.operationId,
         sequence: nextSequence,
         sourceClientId,
-        updatedAt: updatedAt.toISOString()
+        updatedAt: updatedAt.toISOString(),
       };
       nextSequence += 1;
       resolvedMessages.push(message);
       newMessages.push(message);
 
-      await tx.insert(opLog).values({
+      opLogRows.push({
         actorUserId,
         createdAt: updatedAt,
         operation: envelope.operation,
         operationId: envelope.operationId,
         sequence: message.sequence,
         sourceClientId,
-        workspaceId: mapId
+        mapId,
       });
     }
 
-    if (mutated) {
-      await replaceWorkspaceContent(mapId, materializeSavedMapContent(content, index), tx);
-      await tx.update(workspaces)
-        .set({
-          name: nextName,
-          nextSequence,
-          updatedAt
-        })
-        .where(eq(workspaces.id, mapId));
+    if (opLogRows.length > 0) {
+      await tx.insert(opLog).values(opLogRows);
     }
+
+    if (hasContentMutation) {
+      const hasUnsupportedIncrementalOperation = newEnvelopes.some(
+        (envelope) =>
+          envelope.operation.type !== "rename_map" &&
+          !isIncrementalContentOperation(envelope.operation),
+      );
+
+      if (hasUnsupportedIncrementalOperation) {
+        throw new BadRequestError("Unsupported non-incremental operation.");
+      }
+
+      await applyIncrementalContentMutations(
+        tx,
+        mapId,
+        newEnvelopes,
+        updatedAt,
+      );
+    }
+
+    await tx
+      .update(maps)
+      .set({
+        name: nextName,
+        nextSequence,
+        updatedAt,
+      })
+      .where(eq(maps.id, mapId));
 
     return {
       newMessages,
       resolvedMessages,
-      updatedAt
+      updatedAt,
     };
   });
 
@@ -302,36 +277,36 @@ export async function applyOperationBatchToSession(
     }
   }
 
-  if (result.newMessages.length === 1) {
-    broadcastPayload(getOrCreateSession(mapId), JSON.stringify(result.newMessages[0]));
-  } else if (result.newMessages.length > 1) {
-    broadcastPayload(getOrCreateSession(mapId), JSON.stringify({
-      type: "map_operation_batch_applied",
-      operations: result.newMessages.map(({ type, ...entry }) => entry),
-      updatedAt: result.updatedAt.toISOString()
-    }));
+  if (result.newMessages.length > 0) {
+    await broadcastRoleAwareSessionPayloads(
+      getOrCreateSession(mapId),
+      result.newMessages.map((message) => JSON.stringify(message)),
+      sendSyncSnapshot,
+    );
   }
 
   if (sourceSocket && sourceSocket.readyState === WebSocket.OPEN) {
-    const newIds = new Set(result.newMessages.map((message) => message.operationId));
-    const duplicates = result.resolvedMessages.filter((message) => !newIds.has(message.operationId));
+    const newIds = new Set(
+      result.newMessages.map((message) => message.operationId),
+    );
+    const duplicates = result.resolvedMessages.filter(
+      (message) => !newIds.has(message.operationId),
+    );
 
-    if (duplicates.length === 1) {
-      sourceSocket.send(JSON.stringify(duplicates[0]));
-    } else if (duplicates.length > 1) {
-      sourceSocket.send(JSON.stringify({
-        type: "map_operation_batch_applied",
-        operations: duplicates.map(({ type, ...entry }) => entry),
-        updatedAt: result.updatedAt.toISOString()
-      }));
+    for (const duplicate of duplicates) {
+      sourceSocket.send(JSON.stringify(duplicate));
     }
   }
 
   logServerPerf("operation_batch_apply", applyStartedAt, {
     mapId,
     operationCount: result.newMessages.length,
-    totalEnvelopeCount: envelopes.length
+    totalEnvelopeCount: envelopes.length,
   });
+
+  if (!includeMapRecord) {
+    return null;
+  }
 
   return getWorkspaceRecordForActor(mapId, actorUserId);
 }

@@ -1,11 +1,21 @@
 import { hexKey, parseHexKey, type HexId } from "@/core/geometry/hex";
 import { MAP_LEVELS, SOURCE_LEVEL, type MapLevel } from "@/core/map/mapRules";
 import { buildMapLevelView } from "@/core/map/mapLevelView";
+import {
+  getNeighborForRiverEdge,
+  getNeighborForRoadEdge,
+  type RoadEdgeIndex,
+} from "@/core/map/world";
 import type { MapState, MapStateVersions } from "@/core/map/worldTypes";
 import type { MapOperation } from "@/core/protocol/types";
 import { getWorldHexGeometry } from "./pixiGeometry";
-import { createPixiSpatialIndex, type PixiSpatialIndex } from "./pixiSpatialIndex";
+import {
+  createPixiSpatialIndex,
+  type PixiSpatialIndex,
+} from "./pixiSpatialIndex";
 import type { PixiSceneCellRecord } from "./pixiTypes";
+
+const allRoadEdges: RoadEdgeIndex[] = [0, 1, 2, 3, 4, 5];
 
 export type PixiLevelScene = {
   cellsByHex: Map<HexId, PixiSceneCellRecord>;
@@ -27,7 +37,10 @@ export type PixiSceneDirtySet = {
 };
 
 export type PixiMapSceneCache = {
-  applyOperations: (world: MapState, operations: readonly MapOperation[]) => PixiSceneDirtySet;
+  applyOperations: (
+    world: MapState,
+    operations: readonly MapOperation[],
+  ) => PixiSceneDirtySet;
   getLevelScene: (level: MapLevel, world: MapState) => PixiLevelScene;
   markSnapshot: (world: MapState) => void;
   readonly levels: Map<MapLevel, PixiLevelScene>;
@@ -39,12 +52,17 @@ function cloneVersions(versions: MapStateVersions): MapStateVersions {
   return { ...versions };
 }
 
-function versionsEqual(left: MapStateVersions, right: MapStateVersions): boolean {
-  return left.terrain === right.terrain
-    && left.features === right.features
-    && left.factions === right.factions
-    && left.roads === right.roads
-    && left.rivers === right.rivers;
+function versionsEqual(
+  left: MapStateVersions,
+  right: MapStateVersions,
+): boolean {
+  return (
+    left.terrain === right.terrain &&
+    left.features === right.features &&
+    left.factions === right.factions &&
+    left.roads === right.roads &&
+    left.rivers === right.rivers
+  );
 }
 
 function createEmptyDirtySet(snapshot = false): PixiSceneDirtySet {
@@ -55,24 +73,70 @@ function createEmptyDirtySet(snapshot = false): PixiSceneDirtySet {
     riverHexes: new Set(),
     roadHexes: new Set(),
     snapshot,
-    terrainHexes: new Set()
+    terrainHexes: new Set(),
   };
 }
 
-function addSourceHex(dirtySet: PixiSceneDirtySet, key: HexId, kind: keyof Pick<
-  PixiSceneDirtySet,
-  "factionHexes" | "featureHexes" | "riverHexes" | "roadHexes" | "terrainHexes"
->): void {
+function addSourceHex(
+  dirtySet: PixiSceneDirtySet,
+  key: HexId,
+  kind: keyof Pick<
+    PixiSceneDirtySet,
+    | "factionHexes"
+    | "featureHexes"
+    | "riverHexes"
+    | "roadHexes"
+    | "terrainHexes"
+  >,
+): void {
   dirtySet[kind].add(key);
 }
 
-function addOperationDirtyHexes(dirtySet: PixiSceneDirtySet, operation: MapOperation): void {
+function addRoadDirtyHexes(
+  dirtySet: PixiSceneDirtySet,
+  axial: { q: number; r: number },
+  edges: readonly RoadEdgeIndex[],
+): void {
+  addSourceHex(dirtySet, hexKey(axial), "roadHexes");
+
+  for (const edge of edges) {
+    addSourceHex(
+      dirtySet,
+      hexKey(getNeighborForRoadEdge(axial, edge)),
+      "roadHexes",
+    );
+  }
+}
+
+function addOperationDirtyHexes(
+  dirtySet: PixiSceneDirtySet,
+  operation: MapOperation,
+): void {
   switch (operation.type) {
-    case "set_tile":
-      addSourceHex(dirtySet, hexKey(operation.tile), "terrainHexes");
+    case "paint_cells":
+      for (const cell of operation.cells) {
+        addSourceHex(dirtySet, hexKey(cell), "terrainHexes");
+      }
       return;
-    case "set_cell_hidden":
-      addSourceHex(dirtySet, hexKey(operation.cell), "terrainHexes");
+    case "set_tiles":
+      for (const tile of operation.tiles) {
+        addSourceHex(dirtySet, hexKey(tile), "terrainHexes");
+      }
+      return;
+    case "set_cells_hidden":
+      for (const cell of operation.cells) {
+        addSourceHex(dirtySet, hexKey(cell), "terrainHexes");
+      }
+      return;
+    case "assign_faction_cells":
+      for (const cell of operation.cells) {
+        addSourceHex(dirtySet, hexKey(cell), "factionHexes");
+      }
+      return;
+    case "set_faction_territories":
+      for (const territory of operation.territories) {
+        addSourceHex(dirtySet, hexKey(territory), "factionHexes");
+      }
       return;
     case "add_feature":
       addSourceHex(dirtySet, hexKey(operation.feature), "featureHexes");
@@ -80,23 +144,18 @@ function addOperationDirtyHexes(dirtySet: PixiSceneDirtySet, operation: MapOpera
     case "add_river_data":
     case "remove_river_data":
       addSourceHex(dirtySet, hexKey(operation.river), "riverHexes");
+      addSourceHex(
+        dirtySet,
+        hexKey(getNeighborForRiverEdge(operation.river, operation.river.edge)),
+        "riverHexes",
+      );
       return;
-    case "add_road_data":
-    case "update_road_data":
-      addSourceHex(dirtySet, hexKey(operation.road), "roadHexes");
-      return;
-    case "remove_road_data":
-      addSourceHex(dirtySet, hexKey(operation.road), "roadHexes");
-      return;
-    case "add_road_connection":
-      addSourceHex(dirtySet, hexKey(operation.from), "roadHexes");
-      addSourceHex(dirtySet, hexKey(operation.to), "roadHexes");
-      return;
-    case "remove_road_connections_at":
-      addSourceHex(dirtySet, hexKey(operation.cell), "roadHexes");
-      return;
-    case "set_faction_territory":
-      addSourceHex(dirtySet, hexKey(operation.territory), "factionHexes");
+    case "set_road_edges":
+      addRoadDirtyHexes(
+        dirtySet,
+        operation.cell,
+        operation.edges.length > 0 ? operation.edges : allRoadEdges,
+      );
       return;
     case "add_faction":
     case "remove_faction":
@@ -110,7 +169,11 @@ function addOperationDirtyHexes(dirtySet: PixiSceneDirtySet, operation: MapOpera
   }
 }
 
-function buildPixiSceneCellRecord(world: MapState, level: MapLevel, hexId: HexId): PixiSceneCellRecord | null {
+function buildPixiSceneCellRecord(
+  world: MapState,
+  level: MapLevel,
+  hexId: HexId,
+): PixiSceneCellRecord | null {
   const levelView = buildMapLevelView(world, level);
   const cell = levelView.levelMap.get(hexId);
 
@@ -138,24 +201,30 @@ function buildPixiSceneCellRecord(world: MapState, level: MapLevel, hexId: HexId
     roadEdges: levelView.roadLevelMap.get(hexId) ?? new Set(),
     terrainImage: null,
     worldCenter: geometry.worldCenter,
-    worldCorners: geometry.worldCorners
+    worldCorners: geometry.worldCorners,
   };
 }
 
 function rebuildSpatialIndex(scene: PixiLevelScene): void {
-  scene.spatialIndex = createPixiSpatialIndex(Array.from(scene.cellsByHex.values(), (record) => ({
-    bounds: getWorldHexGeometry(record.axial, scene.level).bounds,
-    hexId: record.hexId
-  })));
+  scene.spatialIndex = createPixiSpatialIndex(
+    Array.from(scene.cellsByHex.values(), (record) => ({
+      bounds: getWorldHexGeometry(record.axial, scene.level).bounds,
+      hexId: record.hexId,
+    })),
+  );
 }
 
-function patchSourceScene(scene: PixiLevelScene, world: MapState, dirtySet: PixiSceneDirtySet): void {
+function patchSourceScene(
+  scene: PixiLevelScene,
+  world: MapState,
+  dirtySet: PixiSceneDirtySet,
+): void {
   const dirtyHexes = new Set<HexId>([
     ...dirtySet.factionHexes,
     ...dirtySet.featureHexes,
     ...dirtySet.riverHexes,
     ...dirtySet.roadHexes,
-    ...dirtySet.terrainHexes
+    ...dirtySet.terrainHexes,
   ]);
 
   for (const hexId of dirtyHexes) {
@@ -186,6 +255,12 @@ function patchSourceScene(scene: PixiLevelScene, world: MapState, dirtySet: Pixi
 
 function hasUnpatchableSourceOperation(operation: MapOperation): boolean {
   switch (operation.type) {
+    case "paint_cells":
+    case "set_tiles":
+    case "set_cells_hidden":
+    case "assign_faction_cells":
+    case "set_faction_territories":
+      return false;
     case "remove_feature":
     case "set_feature_hidden":
     case "update_feature":
@@ -218,10 +293,12 @@ function buildPixiLevelScene(world: MapState, level: MapLevel): PixiLevelScene {
     cellsByHex.set(hexId, record);
   }
 
-  const spatialIndex = createPixiSpatialIndex(Array.from(cellsByHex.values(), (record) => ({
-    bounds: getWorldHexGeometry(record.axial, level).bounds,
-    hexId: record.hexId
-  })));
+  const spatialIndex = createPixiSpatialIndex(
+    Array.from(cellsByHex.values(), (record) => ({
+      bounds: getWorldHexGeometry(record.axial, level).bounds,
+      hexId: record.hexId,
+    })),
+  );
 
   return {
     cellsByHex,
@@ -229,11 +306,13 @@ function buildPixiLevelScene(world: MapState, level: MapLevel): PixiLevelScene {
     level,
     spatialIndex,
     stale: false,
-    versions: cloneVersions(world.versions)
+    versions: cloneVersions(world.versions),
   };
 }
 
-export function createPixiMapSceneCache(initialWorld: MapState): PixiMapSceneCache {
+export function createPixiMapSceneCache(
+  initialWorld: MapState,
+): PixiMapSceneCache {
   let world = initialWorld;
   let versions = cloneVersions(initialWorld.versions);
   const levels = new Map<MapLevel, PixiLevelScene>();
@@ -250,7 +329,8 @@ export function createPixiMapSceneCache(initialWorld: MapState): PixiMapSceneCac
 
       const sourceLevel = SOURCE_LEVEL as MapLevel;
       const sourceScene = levels.get(sourceLevel);
-      const canPatchSourceScene = Boolean(sourceScene) && !operations.some(hasUnpatchableSourceOperation);
+      const canPatchSourceScene =
+        Boolean(sourceScene) && !operations.some(hasUnpatchableSourceOperation);
 
       for (const level of MAP_LEVELS) {
         dirtySet.levels.add(level);
@@ -274,7 +354,11 @@ export function createPixiMapSceneCache(initialWorld: MapState): PixiMapSceneCac
       versions = cloneVersions(nextWorld.versions);
       const existing = levels.get(level);
 
-      if (existing && !existing.stale && versionsEqual(existing.versions, nextWorld.versions)) {
+      if (
+        existing &&
+        !existing.stale &&
+        versionsEqual(existing.versions, nextWorld.versions)
+      ) {
         return existing;
       }
 
@@ -295,6 +379,6 @@ export function createPixiMapSceneCache(initialWorld: MapState): PixiMapSceneCac
     },
     get world() {
       return world;
-    }
+    },
   };
 }

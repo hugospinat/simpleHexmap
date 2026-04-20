@@ -17,6 +17,8 @@ import {
   sessionDurationMs
 } from "../repositories/sessionRepository.js";
 import type { UserRecord } from "../../../src/core/auth/authTypes.js";
+import { signupBodySchema, loginBodySchema } from "../validation/httpSchemas.js";
+import { AuthRequiredError } from "../errors.js";
 
 const sessionCookieName = "simplehex_session";
 const passwordKeyLength = 64;
@@ -189,15 +191,20 @@ export function clearSessionCookie(response: ServerResponse): void {
 }
 
 export async function signupUser(input: unknown, response: ServerResponse): Promise<UserRecord> {
-  const record = typeof input === "object" && input !== null ? input as Record<string, unknown> : {};
-  const username = sanitizeUsername(record.username);
+  const parsed = signupBodySchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "Invalid input.");
+  }
+
+  const username = sanitizeUsername(parsed.data.username);
   const usernameError = validateUsername(username);
 
   if (usernameError) {
     throw new Error(usernameError);
   }
 
-  const passwordError = validatePassword(record.password);
+  const passwordError = validatePassword(parsed.data.password);
 
   if (passwordError) {
     throw new Error(passwordError);
@@ -210,7 +217,7 @@ export async function signupUser(input: unknown, response: ServerResponse): Prom
   }
 
   const user = await createUser({
-    passwordHash: await hashPassword(String(record.password)),
+    passwordHash: await hashPassword(String(parsed.data.password)),
     username
   });
   await issueSession(response, user.id);
@@ -218,9 +225,14 @@ export async function signupUser(input: unknown, response: ServerResponse): Prom
 }
 
 export async function loginUser(input: unknown, response: ServerResponse): Promise<UserRecord> {
-  const record = typeof input === "object" && input !== null ? input as Record<string, unknown> : {};
-  const username = sanitizeUsername(record.username);
-  const password = typeof record.password === "string" ? record.password : "";
+  const parsed = loginBodySchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new Error("Invalid username or password.");
+  }
+
+  const username = sanitizeUsername(parsed.data.username);
+  const password = parsed.data.password;
   const user = await findUserByNormalizedUsername(normalizeUsername(username));
 
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
@@ -252,7 +264,7 @@ export async function requireAuth(request: IncomingMessage): Promise<AuthContext
   const context = await getAuthContext(request);
 
   if (!context) {
-    throw new Error("Authentication required.");
+    throw new AuthRequiredError();
   }
 
   return context;

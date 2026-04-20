@@ -295,7 +295,7 @@ input::placeholder {
 
 .token-select-button {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -319,6 +319,12 @@ input::placeholder {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
+}
+
+.token-status {
+  font-size: 11px;
+  color: #666666;
+  white-space: nowrap;
 }
 
 .data-actions {

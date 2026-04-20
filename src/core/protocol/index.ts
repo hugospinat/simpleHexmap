@@ -12,11 +12,11 @@ export type {
   MapTokenRecord,
   RiverEdgeIndex,
   RoadEdgeIndex,
-  SavedMapContent
+  SavedMapContent,
 } from "./types.js";
 export type {
   MapOperationEnvelope,
-  OperationApplier
+  OperationApplier,
 } from "./operationContracts.js";
 export {
   applyMapOperation,
@@ -24,10 +24,9 @@ export {
   applyOperationToSavedMapContentIndex,
   applyOperationToSavedMapContent,
   applyOperationsToSavedMapContent,
-  applyRoadOperationToRecords,
   indexSavedMapContent,
   materializeSavedMapContent,
-  savedMapContentOperationApplier
+  savedMapContentOperationApplier,
 } from "./contentOperations.js";
 export type { SavedMapContentIndex } from "./contentOperations.js";
 export { coalesceMapOperations } from "./mapOperationCoalescer.js";
@@ -50,11 +49,11 @@ export {
   sanitizeFeaturePatch,
   tileKey,
   type RiverKey,
-  type TileKey
+  type TileKey,
 } from "./recordHelpers.js";
 export { validateMapOperation } from "./validation.js";
 export {
   applyMapTokenOperation,
   applyMapTokenOperations,
-  validateMapTokenOperation
+  validateMapTokenOperation,
 } from "./tokenOperations.js";

@@ -8,90 +8,56 @@ import type {
   MapRoadRecord,
   MapTileRecord,
   MapTokenRecord,
-  SavedMapContent
+  SavedMapContent,
 } from "./types.js";
 import {
-  addRoadConnectionToRecords,
-  getTileOperationTerrain,
   normalizeRoad,
-  removeFactionTerritory,
-  removeRoadConnectionsAtFromRecords,
   riverKey,
   roadKey,
   sanitizeFactionPatch,
   sanitizeFeaturePatch,
-  tileKey
+  tileKey,
 } from "./recordHelpers.js";
 
-export function applyOperationToSavedMapContent<TSnapshot extends SavedMapContent>(snapshot: TSnapshot, operation: MapOperation): TSnapshot {
+export function applyOperationToSavedMapContent<
+  TSnapshot extends SavedMapContent,
+>(snapshot: TSnapshot, operation: MapOperation): TSnapshot {
   switch (operation.type) {
-    case "set_tile": {
-      const key = tileKey(operation.tile);
-      const filteredTiles = snapshot.tiles.filter((tile) => tileKey(tile) !== key);
-      const terrain = getTileOperationTerrain(operation.tile);
-
-      if (terrain === null) {
-        return {
-          ...snapshot,
-          tiles: filteredTiles,
-          factionTerritories: removeFactionTerritory(snapshot.factionTerritories, operation.tile.q, operation.tile.r)
-        };
-      }
-
-      return {
-        ...snapshot,
-        tiles: [
-          ...filteredTiles,
-          {
-            hidden: operation.tile.hidden ?? false,
-            q: operation.tile.q,
-            r: operation.tile.r,
-            terrain
-          }
-        ]
-      };
-    }
-    case "set_cell_hidden": {
-      let changed = false;
-      const tiles = snapshot.tiles.map((tile) => {
-        if (tile.q !== operation.cell.q || tile.r !== operation.cell.r || tile.hidden === operation.cell.hidden) {
-          return tile;
-        }
-
-        changed = true;
-        return {
-          ...tile,
-          hidden: operation.cell.hidden
-        };
-      });
-
-      return changed ? { ...snapshot, tiles } : snapshot;
-    }
+    case "paint_cells":
+    case "set_cells_hidden":
+    case "assign_faction_cells":
+    case "set_tiles":
+    case "set_faction_territories":
+      return applyOperationsToSavedMapContentIndexed(snapshot, [operation]);
     case "add_feature": {
-      if (snapshot.features.some((feature) => feature.id === operation.feature.id)) {
+      if (
+        snapshot.features.some((feature) => feature.id === operation.feature.id)
+      ) {
         return snapshot;
       }
 
       return {
         ...snapshot,
-        features: [
-          ...snapshot.features,
-          operation.feature
-        ]
+        features: [...snapshot.features, operation.feature],
       };
     }
     case "set_feature_hidden": {
-      const visibility: "hidden" | "visible" = operation.hidden ? "hidden" : "visible";
+      const visibility: "hidden" | "visible" = operation.hidden
+        ? "hidden"
+        : "visible";
       let changed = false;
       const features = snapshot.features.map((feature) => {
-        if (feature.id !== operation.featureId || feature.visibility === visibility) {
+        if (
+          feature.id !== operation.featureId ||
+          feature.visibility === visibility
+        ) {
           return feature;
         }
 
         changed = true;
         return {
           ...feature,
-          visibility
+          visibility,
         };
       });
 
@@ -108,7 +74,7 @@ export function applyOperationToSavedMapContent<TSnapshot extends SavedMapConten
         changed = true;
         return {
           ...feature,
-          ...patch
+          ...patch,
         };
       });
 
@@ -117,7 +83,9 @@ export function applyOperationToSavedMapContent<TSnapshot extends SavedMapConten
     case "remove_feature":
       return {
         ...snapshot,
-        features: snapshot.features.filter((feature) => feature.id !== operation.featureId)
+        features: snapshot.features.filter(
+          (feature) => feature.id !== operation.featureId,
+        ),
       };
     case "add_river_data": {
       const key = riverKey(operation.river);
@@ -128,48 +96,45 @@ export function applyOperationToSavedMapContent<TSnapshot extends SavedMapConten
 
       return {
         ...snapshot,
-        rivers: [...snapshot.rivers, operation.river]
+        rivers: [...snapshot.rivers, operation.river],
       };
     }
     case "remove_river_data":
       return {
         ...snapshot,
-        rivers: snapshot.rivers.filter((river) => riverKey(river) !== riverKey(operation.river))
+        rivers: snapshot.rivers.filter(
+          (river) => riverKey(river) !== riverKey(operation.river),
+        ),
       };
-    case "add_road_data":
-    case "update_road_data": {
-      const normalized = normalizeRoad(operation.road);
-      const roads = snapshot.roads.filter((road) => roadKey(road) !== roadKey(normalized));
-      roads.push(normalized);
+    case "set_road_edges": {
+      const key = roadKey(operation.cell);
+      const roads = snapshot.roads.filter((road) => roadKey(road) !== key);
+
+      if (operation.edges.length > 0) {
+        roads.push(
+          normalizeRoad({
+            q: operation.cell.q,
+            r: operation.cell.r,
+            edges: operation.edges,
+          }),
+        );
+      }
 
       return {
         ...snapshot,
-        roads
+        roads,
       };
     }
-    case "remove_road_data":
-      return {
-        ...snapshot,
-        roads: snapshot.roads.filter((road) => roadKey(road) !== roadKey(operation.road))
-      };
-    case "add_road_connection":
-      return {
-        ...snapshot,
-        roads: addRoadConnectionToRecords(snapshot.roads, operation.from, operation.to)
-      };
-    case "remove_road_connections_at":
-      return {
-        ...snapshot,
-        roads: removeRoadConnectionsAtFromRecords(snapshot.roads, operation.cell)
-      };
     case "add_faction": {
-      if (snapshot.factions.some((faction) => faction.id === operation.faction.id)) {
+      if (
+        snapshot.factions.some((faction) => faction.id === operation.faction.id)
+      ) {
         return snapshot;
       }
 
       return {
         ...snapshot,
-        factions: [...snapshot.factions, operation.faction]
+        factions: [...snapshot.factions, operation.faction],
       };
     }
     case "update_faction": {
@@ -183,7 +148,7 @@ export function applyOperationToSavedMapContent<TSnapshot extends SavedMapConten
         changed = true;
         return {
           ...faction,
-          ...patch
+          ...patch,
         };
       });
 
@@ -192,22 +157,13 @@ export function applyOperationToSavedMapContent<TSnapshot extends SavedMapConten
     case "remove_faction":
       return {
         ...snapshot,
-        factions: snapshot.factions.filter((faction) => faction.id !== operation.factionId),
-        factionTerritories: snapshot.factionTerritories.filter((territory) => territory.factionId !== operation.factionId)
+        factions: snapshot.factions.filter(
+          (faction) => faction.id !== operation.factionId,
+        ),
+        factionTerritories: snapshot.factionTerritories.filter(
+          (territory) => territory.factionId !== operation.factionId,
+        ),
       };
-    case "set_faction_territory": {
-      const { q, r, factionId } = operation.territory;
-      const factionTerritories = removeFactionTerritory(snapshot.factionTerritories, q, r);
-
-      if (factionId) {
-        factionTerritories.push({ q, r, factionId });
-      }
-
-      return {
-        ...snapshot,
-        factionTerritories
-      };
-    }
     case "rename_map":
       return snapshot;
     default: {
@@ -218,7 +174,9 @@ export function applyOperationToSavedMapContent<TSnapshot extends SavedMapConten
   }
 }
 
-export function applyOperationsToSavedMapContent<TSnapshot extends SavedMapContent>(snapshot: TSnapshot, operations: readonly MapOperation[]): TSnapshot {
+export function applyOperationsToSavedMapContent<
+  TSnapshot extends SavedMapContent,
+>(snapshot: TSnapshot, operations: readonly MapOperation[]): TSnapshot {
   if (operations.length === 0) {
     return snapshot;
   }
@@ -226,24 +184,11 @@ export function applyOperationsToSavedMapContent<TSnapshot extends SavedMapConte
   return applyOperationsToSavedMapContentIndexed(snapshot, operations);
 }
 
-export const savedMapContentOperationApplier: OperationApplier<SavedMapContent> = {
-  apply: applyOperationToSavedMapContent,
-  applyMany: applyOperationsToSavedMapContent
-};
-
-export function applyRoadOperationToRecords(
-  roads: MapRoadRecord[],
-  operation: Extract<MapOperation, { type: "add_road_data" | "update_road_data" | "remove_road_data" }>
-): MapRoadRecord[] {
-  if (operation.type === "remove_road_data") {
-    return roads.filter((road) => roadKey(road) !== roadKey(operation.road));
-  }
-
-  const normalized = normalizeRoad(operation.road);
-  const next = roads.filter((road) => roadKey(road) !== roadKey(normalized));
-  next.push(normalized);
-  return next;
-}
+export const savedMapContentOperationApplier: OperationApplier<SavedMapContent> =
+  {
+    apply: applyOperationToSavedMapContent,
+    applyMany: applyOperationsToSavedMapContent,
+  };
 
 export const applyMapOperation = applyOperationToSavedMapContent;
 export const applyMapOperations = applyOperationsToSavedMapContent;
@@ -258,21 +203,36 @@ export type SavedMapContentIndex = {
   tokensByProfileId: Map<string, MapTokenRecord>;
 };
 
-export function indexSavedMapContent(snapshot: SavedMapContent): SavedMapContentIndex {
+export function indexSavedMapContent(
+  snapshot: SavedMapContent,
+): SavedMapContentIndex {
   return {
-    factionTerritoriesByHex: new Map(snapshot.factionTerritories.map((territory) => [tileKey(territory), territory])),
-    factionsById: new Map(snapshot.factions.map((faction) => [faction.id, faction])),
-    featuresById: new Map(snapshot.features.map((feature) => [feature.id, feature])),
-    riversByKey: new Map(snapshot.rivers.map((river) => [riverKey(river), river])),
+    factionTerritoriesByHex: new Map(
+      snapshot.factionTerritories.map((territory) => [
+        tileKey(territory),
+        territory,
+      ]),
+    ),
+    factionsById: new Map(
+      snapshot.factions.map((faction) => [faction.id, faction]),
+    ),
+    featuresById: new Map(
+      snapshot.features.map((feature) => [feature.id, feature]),
+    ),
+    riversByKey: new Map(
+      snapshot.rivers.map((river) => [riverKey(river), river]),
+    ),
     roads: snapshot.roads,
     tilesByHex: new Map(snapshot.tiles.map((tile) => [tileKey(tile), tile])),
-    tokensByProfileId: new Map(snapshot.tokens.map((token) => [token.profileId, token]))
+    tokensByProfileId: new Map(
+      snapshot.tokens.map((token) => [token.profileId, token]),
+    ),
   };
 }
 
 export function materializeSavedMapContent<TSnapshot extends SavedMapContent>(
   snapshot: TSnapshot,
-  index: SavedMapContentIndex
+  index: SavedMapContentIndex,
 ): TSnapshot {
   return {
     ...snapshot,
@@ -282,42 +242,97 @@ export function materializeSavedMapContent<TSnapshot extends SavedMapContent>(
     roads: index.roads,
     factions: Array.from(index.factionsById.values()),
     factionTerritories: Array.from(index.factionTerritoriesByHex.values()),
-    tokens: Array.from(index.tokensByProfileId.values())
+    tokens: Array.from(index.tokensByProfileId.values()),
   };
 }
 
-export function applyOperationToSavedMapContentIndex(index: SavedMapContentIndex, operation: MapOperation): void {
+export function applyOperationToSavedMapContentIndex(
+  index: SavedMapContentIndex,
+  operation: MapOperation,
+): void {
   switch (operation.type) {
-    case "set_tile": {
-      const key = tileKey(operation.tile);
-      const terrain = getTileOperationTerrain(operation.tile);
-      index.tilesByHex.delete(key);
+    case "paint_cells": {
+      for (const cell of operation.cells) {
+        const key = tileKey(cell);
+        index.tilesByHex.delete(key);
 
-      if (terrain === null) {
-        index.factionTerritoriesByHex.delete(key);
-        return;
+        if (operation.terrain === null) {
+          index.factionTerritoriesByHex.delete(key);
+          continue;
+        }
+
+        index.tilesByHex.set(key, {
+          hidden: operation.hidden,
+          q: cell.q,
+          r: cell.r,
+          terrain: operation.terrain,
+        });
       }
-
-      index.tilesByHex.set(key, {
-        hidden: operation.tile.hidden ?? false,
-        q: operation.tile.q,
-        r: operation.tile.r,
-        terrain
-      });
       return;
     }
-    case "set_cell_hidden": {
-      const key = tileKey(operation.cell);
-      const tile = index.tilesByHex.get(key);
+    case "set_cells_hidden": {
+      for (const cell of operation.cells) {
+        const key = tileKey(cell);
+        const tile = index.tilesByHex.get(key);
 
-      if (!tile || tile.hidden === operation.cell.hidden) {
-        return;
+        if (!tile || tile.hidden === operation.hidden) {
+          continue;
+        }
+
+        index.tilesByHex.set(key, {
+          ...tile,
+          hidden: operation.hidden,
+        });
       }
+      return;
+    }
+    case "assign_faction_cells": {
+      for (const cell of operation.cells) {
+        const key = tileKey(cell);
+        index.factionTerritoriesByHex.delete(key);
 
-      index.tilesByHex.set(key, {
-        ...tile,
-        hidden: operation.cell.hidden
-      });
+        if (operation.factionId) {
+          index.factionTerritoriesByHex.set(key, {
+            q: cell.q,
+            r: cell.r,
+            factionId: operation.factionId,
+          });
+        }
+      }
+      return;
+    }
+    case "set_tiles": {
+      for (const tile of operation.tiles) {
+        const key = tileKey(tile);
+        index.tilesByHex.delete(key);
+
+        if (tile.terrain === null) {
+          index.factionTerritoriesByHex.delete(key);
+          continue;
+        }
+
+        index.tilesByHex.set(key, {
+          hidden: tile.hidden,
+          q: tile.q,
+          r: tile.r,
+          terrain: tile.terrain,
+        });
+      }
+      return;
+    }
+    case "set_faction_territories": {
+      for (const territory of operation.territories) {
+        const key = tileKey(territory);
+        index.factionTerritoriesByHex.delete(key);
+
+        if (territory.factionId) {
+          index.factionTerritoriesByHex.set(key, {
+            q: territory.q,
+            r: territory.r,
+            factionId: territory.factionId,
+          });
+        }
+      }
       return;
     }
     case "add_feature": {
@@ -330,7 +345,9 @@ export function applyOperationToSavedMapContentIndex(index: SavedMapContentIndex
     }
     case "set_feature_hidden": {
       const feature = index.featuresById.get(operation.featureId);
-      const visibility: "hidden" | "visible" = operation.hidden ? "hidden" : "visible";
+      const visibility: "hidden" | "visible" = operation.hidden
+        ? "hidden"
+        : "visible";
 
       if (!feature || feature.visibility === visibility) {
         return;
@@ -338,7 +355,7 @@ export function applyOperationToSavedMapContentIndex(index: SavedMapContentIndex
 
       index.featuresById.set(operation.featureId, {
         ...feature,
-        visibility
+        visibility,
       });
       return;
     }
@@ -351,7 +368,7 @@ export function applyOperationToSavedMapContentIndex(index: SavedMapContentIndex
 
       index.featuresById.set(operation.featureId, {
         ...feature,
-        ...sanitizeFeaturePatch(operation.patch)
+        ...sanitizeFeaturePatch(operation.patch),
       });
       return;
     }
@@ -369,17 +386,21 @@ export function applyOperationToSavedMapContentIndex(index: SavedMapContentIndex
     case "remove_river_data":
       index.riversByKey.delete(riverKey(operation.river));
       return;
-    case "add_road_data":
-    case "update_road_data":
-    case "remove_road_data":
-      index.roads = applyRoadOperationToRecords(index.roads, operation);
+    case "set_road_edges": {
+      const key = roadKey(operation.cell);
+      index.roads = index.roads.filter((road) => roadKey(road) !== key);
+
+      if (operation.edges.length > 0) {
+        index.roads.push(
+          normalizeRoad({
+            q: operation.cell.q,
+            r: operation.cell.r,
+            edges: operation.edges,
+          }),
+        );
+      }
       return;
-    case "add_road_connection":
-      index.roads = addRoadConnectionToRecords(index.roads, operation.from, operation.to);
-      return;
-    case "remove_road_connections_at":
-      index.roads = removeRoadConnectionsAtFromRecords(index.roads, operation.cell);
-      return;
+    }
     case "add_faction": {
       if (!index.factionsById.has(operation.faction.id)) {
         index.factionsById.set(operation.faction.id, operation.faction);
@@ -395,7 +416,7 @@ export function applyOperationToSavedMapContentIndex(index: SavedMapContentIndex
 
       index.factionsById.set(operation.factionId, {
         ...faction,
-        ...sanitizeFactionPatch(operation.patch)
+        ...sanitizeFactionPatch(operation.patch),
       });
       return;
     }
@@ -407,19 +428,6 @@ export function applyOperationToSavedMapContentIndex(index: SavedMapContentIndex
         }
       }
       return;
-    case "set_faction_territory": {
-      const key = tileKey(operation.territory);
-      index.factionTerritoriesByHex.delete(key);
-
-      if (operation.territory.factionId) {
-        index.factionTerritoriesByHex.set(key, {
-          q: operation.territory.q,
-          r: operation.territory.r,
-          factionId: operation.territory.factionId
-        });
-      }
-      return;
-    }
     case "rename_map":
       return;
     default: {
@@ -429,10 +437,9 @@ export function applyOperationToSavedMapContentIndex(index: SavedMapContentIndex
   }
 }
 
-function applyOperationsToSavedMapContentIndexed<TSnapshot extends SavedMapContent>(
-  snapshot: TSnapshot,
-  operations: readonly MapOperation[]
-): TSnapshot {
+function applyOperationsToSavedMapContentIndexed<
+  TSnapshot extends SavedMapContent,
+>(snapshot: TSnapshot, operations: readonly MapOperation[]): TSnapshot {
   const index = indexSavedMapContent(snapshot);
 
   for (const operation of operations) {

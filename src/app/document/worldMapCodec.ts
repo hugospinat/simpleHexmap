@@ -4,11 +4,9 @@ import {
   getFactionLevelMap,
   getFactions,
   getNeighborForRiverEdge,
-  getNeighborForRoadEdge,
   getOppositeRiverEdgeIndex,
-  getOppositeRoadEdgeIndex,
   type TerrainType,
-  type MapState
+  type MapState,
 } from "@/core/map/world";
 import { SOURCE_LEVEL } from "@/core/map/mapRules";
 import { createInitialMapStateVersions } from "@/core/map/worldTypes";
@@ -20,9 +18,13 @@ import {
   type MapRiverRecord,
   type MapRoadRecord,
   type MapTileRecord,
-  type SavedMapContent
+  type SavedMapContent,
 } from "@/core/document/savedMapTypes";
-import type { Feature, FeatureKind, FeatureLevelMap } from "@/core/map/features";
+import type {
+  Feature,
+  FeatureKind,
+  FeatureLevelMap,
+} from "@/core/map/features";
 import type { FactionLevelMap, FactionMap } from "@/core/map/factions";
 import type { RiverEdgeIndex, RiverLevelMap } from "@/core/map/worldTypes";
 import type { RoadEdgeIndex, RoadLevelMap } from "@/core/map/roads";
@@ -38,10 +40,15 @@ function serializeTiles(world: MapState): MapTileRecord[] {
         q: axial.q,
         r: axial.r,
         terrain: cell.type,
-        hidden: cell.hidden
+        hidden: cell.hidden,
       };
     })
-    .sort((left, right) => (left.q - right.q) || (left.r - right.r) || left.terrain.localeCompare(right.terrain));
+    .sort(
+      (left, right) =>
+        left.q - right.q ||
+        left.r - right.r ||
+        left.terrain.localeCompare(right.terrain),
+    );
 }
 
 function serializeFeatures(world: MapState): MapFeatureRecord[] {
@@ -56,14 +63,19 @@ function serializeFeatures(world: MapState): MapFeatureRecord[] {
         kind: feature.kind,
         q: axial.q,
         r: axial.r,
-        visibility: feature.hidden ? "hidden" as const : "visible" as const,
+        visibility: feature.hidden ? ("hidden" as const) : ("visible" as const),
         overrideTerrainTile: feature.overrideTerrainTile,
         gmLabel: feature.gmLabel ?? null,
         playerLabel: feature.playerLabel ?? null,
-        labelRevealed: feature.labelRevealed ?? false
+        labelRevealed: feature.labelRevealed ?? false,
       };
     })
-    .sort((left, right) => (left.q - right.q) || (left.r - right.r) || left.kind.localeCompare(right.kind));
+    .sort(
+      (left, right) =>
+        left.q - right.q ||
+        left.r - right.r ||
+        left.kind.localeCompare(right.kind),
+    );
 }
 
 function serializeRivers(world: MapState): MapRiverRecord[] {
@@ -86,12 +98,15 @@ function serializeRivers(world: MapState): MapRiverRecord[] {
       serialized.push({
         q: canonical.axial.q,
         r: canonical.axial.r,
-        edge: canonical.edge
+        edge: canonical.edge,
       });
     }
   }
 
-  return serialized.sort((left, right) => (left.q - right.q) || (left.r - right.r) || (left.edge - right.edge));
+  return serialized.sort(
+    (left, right) =>
+      left.q - right.q || left.r - right.r || left.edge - right.edge,
+  );
 }
 
 function serializeRoads(world: MapState): MapRoadRecord[] {
@@ -104,21 +119,23 @@ function serializeRoads(world: MapState): MapRoadRecord[] {
       return {
         q: axial.q,
         r: axial.r,
-        edges: Array.from(edges).sort((left, right) => left - right)
+        edges: Array.from(edges).sort((left, right) => left - right),
       };
     })
-    .sort((left, right) => (left.q - right.q) || (left.r - right.r));
+    .sort((left, right) => left.q - right.q || left.r - right.r);
 }
 
 function serializeFactions(world: MapState): MapFactionRecord[] {
   return getFactions(world).map((faction) => ({
     id: faction.id,
     name: faction.name,
-    color: faction.color
+    color: faction.color,
   }));
 }
 
-function serializeFactionTerritories(world: MapState): MapFactionTerritoryRecord[] {
+function serializeFactionTerritories(
+  world: MapState,
+): MapFactionTerritoryRecord[] {
   const assignments = getFactionLevelMap(world, SOURCE_LEVEL);
 
   return Array.from(assignments.entries())
@@ -127,10 +144,15 @@ function serializeFactionTerritories(world: MapState): MapFactionTerritoryRecord
       return {
         q: axial.q,
         r: axial.r,
-        factionId
+        factionId,
       };
     })
-    .sort((left, right) => (left.q - right.q) || (left.r - right.r) || left.factionId.localeCompare(right.factionId));
+    .sort(
+      (left, right) =>
+        left.q - right.q ||
+        left.r - right.r ||
+        left.factionId.localeCompare(right.factionId),
+    );
 }
 
 export function deserializeWorld(savedMap: SavedMapContent): MapState {
@@ -139,7 +161,7 @@ export function deserializeWorld(savedMap: SavedMapContent): MapState {
   for (const tile of savedMap.tiles) {
     sourceLevel.set(hexKey({ q: tile.q, r: tile.r }), {
       hidden: tile.hidden,
-      type: tile.terrain as TerrainType
+      type: tile.terrain as TerrainType,
     });
   }
 
@@ -168,7 +190,7 @@ export function deserializeWorld(savedMap: SavedMapContent): MapState {
       overrideTerrainTile: feature.overrideTerrainTile,
       gmLabel: feature.gmLabel ?? undefined,
       playerLabel: feature.playerLabel ?? undefined,
-      labelRevealed: feature.labelRevealed
+      labelRevealed: feature.labelRevealed,
     } satisfies Feature);
   }
 
@@ -198,14 +220,10 @@ export function deserializeWorld(savedMap: SavedMapContent): MapState {
   };
 
   for (const road of savedMap.roads) {
-    const from = { q: road.q, r: road.r };
-    const fromKey = hexKey(from);
+    const key = hexKey({ q: road.q, r: road.r });
 
     for (const edge of road.edges) {
-      const to = getNeighborForRoadEdge(from, edge);
-      const toKey = hexKey(to);
-      setRoadHalfEdge(fromKey, edge);
-      setRoadHalfEdge(toKey, getOppositeRoadEdgeIndex(edge));
+      setRoadHalfEdge(key, edge);
     }
   }
 
@@ -228,22 +246,22 @@ export function deserializeWorld(savedMap: SavedMapContent): MapState {
 
   return {
     levels: {
-      [SOURCE_LEVEL]: sourceLevel
+      [SOURCE_LEVEL]: sourceLevel,
     },
     featuresByLevel: {
-      [SOURCE_LEVEL]: features
+      [SOURCE_LEVEL]: features,
     },
     factions,
     factionAssignmentsByLevel: {
-      [SOURCE_LEVEL]: factionAssignments
+      [SOURCE_LEVEL]: factionAssignments,
     },
     riversByLevel: {
-      [SOURCE_LEVEL]: rivers
+      [SOURCE_LEVEL]: rivers,
     },
     roadsByLevel: {
-      [SOURCE_LEVEL]: roads
+      [SOURCE_LEVEL]: roads,
     },
-    versions
+    versions,
   };
 }
 
@@ -256,6 +274,6 @@ export function serializeWorld(world: MapState): SavedMapContent {
     roads: serializeRoads(world),
     factions: serializeFactions(world),
     factionTerritories: serializeFactionTerritories(world),
-    tokens: []
+    tokens: [],
   };
 }

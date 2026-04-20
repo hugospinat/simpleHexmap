@@ -10,7 +10,11 @@ export function createMapSocketTransport(socketUrl: string): MapSocketTransport 
   return {
     close: (code = 1000, reason = "client_cleanup") => {
       if (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN) {
-        socket.close(code, reason);
+        try {
+          socket.close(code, reason);
+        } catch {
+          socket.close();
+        }
       }
     },
     sendJson: (payload) => {

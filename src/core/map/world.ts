@@ -9,23 +9,16 @@ export type {
   RiverLevelMap,
   RoadLevelMap,
   TerrainType,
-  MapState
+  MapState,
 } from "@/core/map/worldTypes";
-export type {
-  RoadEdgeIndex,
-  RoadEdgeSet
-} from "@/core/map/roads";
+export type { RoadEdgeIndex, RoadEdgeSet } from "@/core/map/roads";
 export type {
   Feature,
   FeatureKind,
   FeatureLevelMap,
-  FeatureVisibilityMode
+  FeatureVisibilityMode,
 } from "@/core/map/features";
-export type {
-  Faction,
-  FactionLevelMap,
-  FactionMap
-} from "@/core/map/factions";
+export type { Faction, FactionLevelMap, FactionMap } from "@/core/map/factions";
 export {
   addFeature,
   axialToFeatureHexId,
@@ -41,7 +34,7 @@ export {
   isFeatureVisible,
   normalizeFeature,
   removeFeatureAt,
-  updateFeature
+  updateFeature,
 } from "@/core/map/features";
 export {
   MAP_LEVELS,
@@ -49,7 +42,7 @@ export {
   MIN_LEVEL,
   SOURCE_LEVEL,
   isSourceLevel,
-  type MapLevel
+  type MapLevel,
 } from "@/core/map/mapRules";
 export {
   addFaction,
@@ -60,7 +53,7 @@ export {
   getFactionOverlayColorMap,
   getFactions,
   removeFaction,
-  updateFaction
+  updateFaction,
 } from "@/core/map/factions";
 export {
   addRoadConnection,
@@ -73,7 +66,8 @@ export {
   removeRoadConnection,
   removeRoadConnectionsAt,
   roadEdgeIndexes,
-  roadHexIdToAxial
+  roadHexIdToAxial,
+  setRoadEdgesAt,
 } from "@/core/map/roads";
 export { tileColors, tileTypes } from "@/core/map/tileTypes";
 export { TERRAIN_TYPES, terrainTypes } from "@/core/map/terrainTypes";
@@ -87,7 +81,7 @@ export {
   getLevelMap,
   propagateTileToDeeperLevels,
   setCellHidden,
-  removeTile
+  removeTile,
 } from "@/core/map/worldState";
 export {
   addRiverEdge,
@@ -97,5 +91,5 @@ export {
   getOppositeRiverEdgeIndex,
   getRiverLevelMap,
   getRiverEdgeRefKey,
-  removeRiverEdge
+  removeRiverEdge,
 } from "@/core/map/rivers";

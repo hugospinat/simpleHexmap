@@ -1,26 +1,69 @@
 import { Graphics, type Container } from "pixi.js";
-import { getAncestorAtLevel, hexKey, type Axial, type HexId, type Pixel } from "@/core/geometry/hex";
+import {
+  getAncestorAtLevel,
+  hexKey,
+  type Axial,
+  type HexId,
+  type Pixel,
+} from "@/core/geometry/hex";
 import { SOURCE_LEVEL } from "@/core/map/mapRules";
-import { getRoadEdgeBetween, type RoadEdgeIndex } from "@/core/map/roads";
-import { featureHexIdToAxial, getFeatureById, tileColors } from "@/core/map/world";
+import { type RoadEdgeIndex } from "@/core/map/roads";
+import {
+  featureHexIdToAxial,
+  getFeatureById,
+  tileColors,
+} from "@/core/map/world";
 import type { MapOperation } from "@/core/protocol/types";
 import { getWorldHexGeometry } from "./pixiGeometry";
-import { getWorldHexCorners, parseCssColor, pathPolygon, scaleWorldLength } from "./pixiLayers";
-import type { PixiAssetCatalog, PixiObjectPools, PixiSceneCellRecord, PixiSceneRenderFrame } from "./pixiTypes";
+import {
+  getWorldHexCorners,
+  parseCssColor,
+  pathPolygon,
+  scaleWorldLength,
+} from "./pixiLayers";
+import type {
+  PixiAssetCatalog,
+  PixiObjectPools,
+  PixiSceneCellRecord,
+  PixiSceneRenderFrame,
+} from "./pixiTypes";
 
 const previewTerrainAlpha = 0.72;
 const previewFogAlpha = 0.38;
 const previewFactionAlpha = 0.42;
 
-function sourceAxialToFrameHexId(axial: Axial, frame: PixiSceneRenderFrame): HexId {
-  const frameAxial = frame.transform.level === SOURCE_LEVEL
-    ? axial
-    : getAncestorAtLevel(axial, SOURCE_LEVEL, frame.transform.level);
+function fitTextureSizePreservingAspect(
+  textureWidth: number,
+  textureHeight: number,
+  maxWidth: number,
+  maxHeight: number,
+): { height: number; width: number } {
+  const sourceWidth = Math.max(1, textureWidth);
+  const sourceHeight = Math.max(1, textureHeight);
+  const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight);
+
+  return {
+    height: sourceHeight * scale,
+    width: sourceWidth * scale,
+  };
+}
+
+function sourceAxialToFrameHexId(
+  axial: Axial,
+  frame: PixiSceneRenderFrame,
+): HexId {
+  const frameAxial =
+    frame.transform.level === SOURCE_LEVEL
+      ? axial
+      : getAncestorAtLevel(axial, SOURCE_LEVEL, frame.transform.level);
 
   return hexKey(frameAxial);
 }
 
-function getFrameCellForSourceAxial(frame: PixiSceneRenderFrame, axial: Axial): PixiSceneCellRecord | null {
+function getFrameCellForSourceAxial(
+  frame: PixiSceneRenderFrame,
+  axial: Axial,
+): PixiSceneCellRecord | null {
   const hexId = sourceAxialToFrameHexId(axial, frame);
   return frame.renderCells.find((cell) => cell.key === hexId) ?? null;
 }
@@ -33,7 +76,10 @@ type PreviewHexGeometry = {
   worldCorners: Pixel[];
 };
 
-function getPreviewGeometryForSourceAxial(frame: PixiSceneRenderFrame, axial: Axial): PreviewHexGeometry {
+function getPreviewGeometryForSourceAxial(
+  frame: PixiSceneRenderFrame,
+  axial: Axial,
+): PreviewHexGeometry {
   const hexId = sourceAxialToFrameHexId(axial, frame);
   const existingCell = frame.renderCells.find((cell) => cell.key === hexId);
 
@@ -41,9 +87,10 @@ function getPreviewGeometryForSourceAxial(frame: PixiSceneRenderFrame, axial: Ax
     return existingCell;
   }
 
-  const frameAxial = frame.transform.level === SOURCE_LEVEL
-    ? axial
-    : getAncestorAtLevel(axial, SOURCE_LEVEL, frame.transform.level);
+  const frameAxial =
+    frame.transform.level === SOURCE_LEVEL
+      ? axial
+      : getAncestorAtLevel(axial, SOURCE_LEVEL, frame.transform.level);
   const geometry = getWorldHexGeometry(frameAxial, frame.transform.level);
 
   return {
@@ -51,14 +98,20 @@ function getPreviewGeometryForSourceAxial(frame: PixiSceneRenderFrame, axial: Ax
     boundsWidth: geometry.boundsWidth,
     key: hexId,
     worldCenter: geometry.worldCenter,
-    worldCorners: geometry.worldCorners
+    worldCorners: geometry.worldCorners,
   };
 }
 
-function pathEdge(graphics: Graphics, axial: Axial, edge: number, frame: PixiSceneRenderFrame): void {
-  const frameAxial = frame.transform.level === SOURCE_LEVEL
-    ? axial
-    : getAncestorAtLevel(axial, SOURCE_LEVEL, frame.transform.level);
+function pathEdge(
+  graphics: Graphics,
+  axial: Axial,
+  edge: number,
+  frame: PixiSceneRenderFrame,
+): void {
+  const frameAxial =
+    frame.transform.level === SOURCE_LEVEL
+      ? axial
+      : getAncestorAtLevel(axial, SOURCE_LEVEL, frame.transform.level);
   const corners = getWorldHexCorners(frameAxial, frame.transform.level);
   const start = corners[edge];
   const end = corners[(edge + 1) % corners.length];
@@ -69,7 +122,7 @@ function pathEdge(graphics: Graphics, axial: Axial, edge: number, frame: PixiSce
 function getMidpoint(a: Pixel, b: Pixel): Pixel {
   return {
     x: (a.x + b.x) / 2,
-    y: (a.y + b.y) / 2
+    y: (a.y + b.y) / 2,
   };
 }
 
@@ -80,10 +133,10 @@ function drawPreviewTerrain(
   assets: PixiAssetCatalog,
   pools: PixiObjectPools,
   visibleSpriteKeys: Set<string>,
-  operation: Extract<MapOperation, { type: "set_tile" }>
+  tile: { q: number; r: number; terrain: string | null; hidden: boolean },
 ): number {
-  const cell = getPreviewGeometryForSourceAxial(frame, operation.tile);
-  const terrain = operation.tile.terrain;
+  const cell = getPreviewGeometryForSourceAxial(frame, tile);
+  const terrain = tile.terrain;
 
   if (!terrain) {
     pathPolygon(graphics, cell.worldCorners);
@@ -100,8 +153,14 @@ function drawPreviewTerrain(
     sprite.texture = texture;
     sprite.anchor.set(0.5);
     sprite.position.set(cell.worldCenter.x, cell.worldCenter.y);
-    sprite.width = cell.boundsWidth * 0.92;
-    sprite.height = cell.boundsHeight * 0.92;
+    const fitted = fitTextureSizePreservingAspect(
+      texture.width,
+      texture.height,
+      cell.boundsWidth * 0.92,
+      cell.boundsHeight * 0.92,
+    );
+    sprite.width = fitted.width;
+    sprite.height = fitted.height;
     sprite.rotation = 0;
     sprite.alpha = previewTerrainAlpha;
     return 1;
@@ -110,7 +169,9 @@ function drawPreviewTerrain(
   pathPolygon(graphics, cell.worldCorners);
   graphics.fill({
     alpha: previewTerrainAlpha,
-    color: parseCssColor(tileColors[terrain as keyof typeof tileColors] ?? "#ffffff")
+    color: parseCssColor(
+      tileColors[terrain as keyof typeof tileColors] ?? "#ffffff",
+    ),
   });
   return 1;
 }
@@ -118,9 +179,9 @@ function drawPreviewTerrain(
 function drawPreviewFog(
   graphics: Graphics,
   frame: PixiSceneRenderFrame,
-  operation: Extract<MapOperation, { type: "set_cell_hidden" }>
+  cellUpdate: { q: number; r: number; hidden: boolean },
 ): number {
-  const cell = getFrameCellForSourceAxial(frame, operation.cell);
+  const cell = getFrameCellForSourceAxial(frame, cellUpdate);
 
   if (!cell) {
     return 0;
@@ -129,7 +190,7 @@ function drawPreviewFog(
   pathPolygon(graphics, cell.worldCorners);
   graphics.fill({
     alpha: previewFogAlpha,
-    color: operation.cell.hidden ? 0x000000 : 0xffffff
+    color: cellUpdate.hidden ? 0x000000 : 0xffffff,
   });
   return 1;
 }
@@ -137,15 +198,22 @@ function drawPreviewFog(
 function drawPreviewFeatureFog(
   graphics: Graphics,
   frame: PixiSceneRenderFrame,
-  operation: Extract<MapOperation, { type: "set_feature_hidden" }>
+  operation: Extract<MapOperation, { type: "set_feature_hidden" }>,
 ): number {
-  const feature = getFeatureById(frame.world, SOURCE_LEVEL, operation.featureId);
+  const feature = getFeatureById(
+    frame.world,
+    SOURCE_LEVEL,
+    operation.featureId,
+  );
 
   if (!feature) {
     return 0;
   }
 
-  const cell = getFrameCellForSourceAxial(frame, featureHexIdToAxial(feature.hexId));
+  const cell = getFrameCellForSourceAxial(
+    frame,
+    featureHexIdToAxial(feature.hexId),
+  );
 
   if (!cell) {
     return 0;
@@ -155,13 +223,13 @@ function drawPreviewFeatureFog(
   graphics.circle(cell.worldCenter.x, cell.worldCenter.y, radius);
   graphics.fill({
     alpha: previewFogAlpha,
-    color: operation.hidden ? 0x000000 : 0xffffff
+    color: operation.hidden ? 0x000000 : 0xffffff,
   });
   graphics.circle(cell.worldCenter.x, cell.worldCenter.y, radius);
   graphics.stroke({
     alpha: 0.55,
     color: operation.hidden ? 0xffffff : 0x000000,
-    width: scaleWorldLength(frame, 2)
+    width: scaleWorldLength(frame, 2),
   });
   return 1;
 }
@@ -169,15 +237,15 @@ function drawPreviewFeatureFog(
 function drawPreviewFaction(
   graphics: Graphics,
   frame: PixiSceneRenderFrame,
-  operation: Extract<MapOperation, { type: "set_faction_territory" }>
+  territoryUpdate: { q: number; r: number; factionId: string | null },
 ): number {
-  const cell = getFrameCellForSourceAxial(frame, operation.territory);
+  const cell = getFrameCellForSourceAxial(frame, territoryUpdate);
 
-  if (!cell || operation.territory.factionId === null) {
+  if (!cell || territoryUpdate.factionId === null) {
     return 0;
   }
 
-  const faction = frame.world.factions.get(operation.territory.factionId);
+  const faction = frame.world.factions.get(territoryUpdate.factionId);
 
   if (!faction) {
     return 0;
@@ -186,7 +254,7 @@ function drawPreviewFaction(
   pathPolygon(graphics, cell.worldCorners);
   graphics.fill({
     alpha: previewFactionAlpha,
-    color: parseCssColor(faction.color)
+    color: parseCssColor(faction.color),
   });
   return 1;
 }
@@ -196,7 +264,7 @@ function drawRoadEdge(
   frame: PixiSceneRenderFrame,
   from: Axial,
   edge: RoadEdgeIndex,
-  erase: boolean
+  erase: boolean,
 ): number {
   const cell = getFrameCellForSourceAxial(frame, from);
 
@@ -207,7 +275,10 @@ function drawRoadEdge(
   const start = cell.worldCorners[edge];
   const end = cell.worldCorners[(edge + 1) % cell.worldCorners.length];
   const center = getMidpoint(start, end);
-  const angle = Math.atan2(center.y - cell.worldCenter.y, center.x - cell.worldCenter.x);
+  const angle = Math.atan2(
+    center.y - cell.worldCenter.y,
+    center.x - cell.worldCenter.x,
+  );
   const length = scaleWorldLength(frame, erase ? 26 : 20);
   const halfLength = length / 2;
   const dx = Math.cos(angle) * halfLength;
@@ -218,7 +289,7 @@ function drawRoadEdge(
   graphics.stroke({
     alpha: erase ? 0.9 : 0.75,
     color: erase ? 0xffffff : 0x2d2016,
-    width: scaleWorldLength(frame, erase ? 8 : 4)
+    width: scaleWorldLength(frame, erase ? 8 : 4),
   });
   return 1;
 }
@@ -226,11 +297,20 @@ function drawRoadEdge(
 function drawPreviewRoad(
   graphics: Graphics,
   frame: PixiSceneRenderFrame,
-  operation: Extract<MapOperation, { type: "add_road_connection" | "remove_road_connections_at" }>
+  operation: Extract<MapOperation, { type: "set_road_edges" }>,
 ): number {
-  if (operation.type === "add_road_connection") {
-    const edge = getRoadEdgeBetween(operation.from, operation.to);
-    return edge === null ? 0 : drawRoadEdge(graphics, frame, operation.from, edge, false);
+  if (operation.edges.length > 0) {
+    let count = 0;
+    for (const edge of operation.edges) {
+      count += drawRoadEdge(
+        graphics,
+        frame,
+        operation.cell,
+        edge as RoadEdgeIndex,
+        false,
+      );
+    }
+    return count;
   }
 
   const cell = getFrameCellForSourceAxial(frame, operation.cell);
@@ -251,13 +331,19 @@ function drawPreviewRoad(
 function drawPreviewRiver(
   graphics: Graphics,
   frame: PixiSceneRenderFrame,
-  operation: Extract<MapOperation, { type: "add_river_data" | "remove_river_data" }>
+  operation: Extract<
+    MapOperation,
+    { type: "add_river_data" | "remove_river_data" }
+  >,
 ): number {
   pathEdge(graphics, operation.river, operation.river.edge, frame);
   graphics.stroke({
     alpha: operation.type === "remove_river_data" ? 0.9 : 0.95,
     color: operation.type === "remove_river_data" ? 0xffffff : 0x267fcc,
-    width: scaleWorldLength(frame, operation.type === "remove_river_data" ? 7 : 4)
+    width: scaleWorldLength(
+      frame,
+      operation.type === "remove_river_data" ? 7 : 4,
+    ),
   });
   return 1;
 }
@@ -268,7 +354,7 @@ export function drawPixiPreviewLayer(
   frame: PixiSceneRenderFrame,
   operations: readonly MapOperation[],
   assets: PixiAssetCatalog,
-  pools: PixiObjectPools
+  pools: PixiObjectPools,
 ): number {
   graphics.clear();
 
@@ -277,20 +363,73 @@ export function drawPixiPreviewLayer(
 
   for (const operation of operations) {
     switch (operation.type) {
-      case "set_tile":
-        count += drawPreviewTerrain(graphics, parent, frame, assets, pools, visibleSpriteKeys, operation);
+      case "paint_cells":
+        for (const cell of operation.cells) {
+          count += drawPreviewTerrain(
+            graphics,
+            parent,
+            frame,
+            assets,
+            pools,
+            visibleSpriteKeys,
+            {
+              q: cell.q,
+              r: cell.r,
+              terrain: operation.terrain,
+              hidden: operation.hidden,
+            },
+          );
+        }
         break;
-      case "set_cell_hidden":
-        count += drawPreviewFog(graphics, frame, operation);
+      case "set_tiles":
+        for (const tile of operation.tiles) {
+          count += drawPreviewTerrain(
+            graphics,
+            parent,
+            frame,
+            assets,
+            pools,
+            visibleSpriteKeys,
+            {
+              q: tile.q,
+              r: tile.r,
+              terrain: tile.terrain,
+              hidden: tile.hidden,
+            },
+          );
+        }
+        break;
+      case "set_cells_hidden":
+        for (const cell of operation.cells) {
+          count += drawPreviewFog(graphics, frame, {
+            q: cell.q,
+            r: cell.r,
+            hidden: operation.hidden,
+          });
+        }
+        break;
+      case "assign_faction_cells":
+        for (const cell of operation.cells) {
+          count += drawPreviewFaction(graphics, frame, {
+            q: cell.q,
+            r: cell.r,
+            factionId: operation.factionId,
+          });
+        }
+        break;
+      case "set_faction_territories":
+        for (const territory of operation.territories) {
+          count += drawPreviewFaction(graphics, frame, {
+            q: territory.q,
+            r: territory.r,
+            factionId: territory.factionId,
+          });
+        }
         break;
       case "set_feature_hidden":
         count += drawPreviewFeatureFog(graphics, frame, operation);
         break;
-      case "set_faction_territory":
-        count += drawPreviewFaction(graphics, frame, operation);
-        break;
-      case "add_road_connection":
-      case "remove_road_connections_at":
+      case "set_road_edges":
         count += drawPreviewRoad(graphics, frame, operation);
         break;
       case "add_river_data":
@@ -306,7 +445,10 @@ export function drawPixiPreviewLayer(
   return count;
 }
 
-export function clearPixiPreviewLayer(graphics: Graphics, pools: PixiObjectPools): void {
+export function clearPixiPreviewLayer(
+  graphics: Graphics,
+  pools: PixiObjectPools,
+): void {
   graphics.clear();
   pools.previewTerrainSprites.releaseUnused(new Set());
 }

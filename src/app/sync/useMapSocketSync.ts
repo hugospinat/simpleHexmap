@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { deserializeWorld } from "@/app/document/worldMapCodec";
 import type {
-  MapOperationBatchRequest,
   MapTokenUpdateRequest,
   MapOperationMessage,
-  MapOperationRequest
+  MapOperationRequest,
 } from "@/app/api/mapApi";
 import { buildWebSocketUrl } from "@/app/api/apiBase";
-import { applyMapTokenOperation, type MapOperation, type MapTokenOperation, type MapTokenRecord } from "@/core/protocol";
+import {
+  applyMapTokenOperation,
+  type MapOperation,
+  type MapTokenOperation,
+  type MapTokenRecord,
+} from "@/core/protocol";
 import type { MapState } from "@/core/map/world";
 import {
   applyReadySessionOperations,
@@ -22,20 +26,31 @@ import {
   markSessionOperationsSent,
   markSessionSocketClosed,
   markSessionSocketOpened,
+  resetSessionAfterSyncError,
   resetSessionFromSnapshot,
-  type MapSyncSessionStatus
+  type MapSyncSessionStatus,
 } from "@/app/sync/mapSyncSession";
 import { parseMapSyncSocketMessage } from "@/app/sync/mapSyncMessages";
-import { createMapSocketTransport, type MapSocketTransport } from "@/app/sync/mapSocketTransport";
-import { mergeRenderWorldPatch, type RenderWorldPatchInput } from "@/app/sync/renderWorldPatchState";
+import {
+  createMapSocketTransport,
+  type MapSocketTransport,
+} from "@/app/sync/mapSocketTransport";
+import {
+  mergeRenderWorldPatch,
+  type RenderWorldPatchInput,
+} from "@/app/sync/renderWorldPatchState";
 import type { RenderWorldPatch } from "@/render/renderWorldPatch";
+import type { WorkspaceTokenMemberRecord } from "@/core/auth/authTypes";
 
 export type MapSyncStatus = MapSyncSessionStatus;
 
 type UseMapSyncOptions = {
   clearPreview: () => void;
   initialWorld: MapState;
+  initialTokenMembers: WorkspaceTokenMemberRecord[];
   mapId: string;
+  onAuthoritativeResync?: () => void;
+  onRemoteOperationsApplied?: (count: number) => void;
   profileId: string;
 };
 
@@ -47,13 +62,15 @@ export type UseMapSocketSyncResult = {
   renderWorldPatch: RenderWorldPatch;
   sendTokenOperation: (operation: MapTokenOperation) => void;
   syncStatus: MapSyncStatus;
+  tokenMembers: WorkspaceTokenMemberRecord[];
   visibleWorld: MapState;
 };
 
 const maxOperationsPerBatch = 500;
 
 function createClientId(): string {
-  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+  return typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
     ? `client-${crypto.randomUUID()}`
     : `client-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
@@ -76,37 +93,79 @@ function logMapSync(event: string, payload: Record<string, unknown>): void {
   }
 }
 
-export function useMapSocketSync({ clearPreview, initialWorld, mapId, profileId }: UseMapSyncOptions): UseMapSocketSyncResult {
+function applyTokenOperationToTokenMembers(
+  tokenMembers: readonly WorkspaceTokenMemberRecord[],
+  operation: MapTokenOperation,
+): WorkspaceTokenMemberRecord[] {
+  if (operation.type === "set_map_token") {
+    return tokenMembers.map((member) =>
+      member.userId === operation.token.profileId
+        ? { ...member, color: operation.token.color }
+        : member,
+    );
+  }
+
+  if (operation.type === "set_map_token_color") {
+    return tokenMembers.map((member) =>
+      member.userId === operation.profileId
+        ? { ...member, color: operation.color }
+        : member,
+    );
+  }
+
+  return [...tokenMembers];
+}
+
+export function useMapSocketSync({
+  clearPreview,
+  initialWorld,
+  initialTokenMembers,
+  mapId,
+  onAuthoritativeResync,
+  onRemoteOperationsApplied,
+  profileId,
+}: UseMapSyncOptions): UseMapSocketSyncResult {
   const clientIdRef = useRef(createClientId());
-  const sessionRef = useRef(createMapSyncSession(clientIdRef.current, initialWorld));
+  const sessionRef = useRef(
+    createMapSyncSession(clientIdRef.current, initialWorld),
+  );
   const transportRef = useRef<MapSocketTransport | null>(null);
   const [confirmedWorld, setConfirmedWorld] = useState(initialWorld);
   const renderWorldPatchRevisionRef = useRef(0);
   const acknowledgedRenderWorldPatchRevisionRef = useRef(0);
   const [renderWorldPatch, setRenderWorldPatch] = useState<RenderWorldPatch>({
     revision: 0,
-    type: "snapshot"
+    type: "snapshot",
   });
   const [visibleWorld, setVisibleWorld] = useState(initialWorld);
   const [mapTokens, setMapTokens] = useState<MapTokenRecord[]>([]);
   const confirmedMapTokensRef = useRef<MapTokenRecord[]>([]);
+  const [tokenMembers, setTokenMembers] =
+    useState<WorkspaceTokenMemberRecord[]>(initialTokenMembers);
+  const confirmedTokenMembersRef =
+    useRef<WorkspaceTokenMemberRecord[]>(initialTokenMembers);
   const [syncStatus, setSyncStatus] = useState<MapSyncStatus>("connecting");
 
-  const publishRenderWorldPatch = useCallback((patch: RenderWorldPatchInput) => {
-    renderWorldPatchRevisionRef.current += 1;
-    const revision = renderWorldPatchRevisionRef.current;
-    setRenderWorldPatch((previous) => mergeRenderWorldPatch(
-      previous,
-      acknowledgedRenderWorldPatchRevisionRef.current,
-      patch,
-      revision
-    ));
-  }, []);
+  const publishRenderWorldPatch = useCallback(
+    (patch: RenderWorldPatchInput) => {
+      renderWorldPatchRevisionRef.current += 1;
+      const revision = renderWorldPatchRevisionRef.current;
+      setRenderWorldPatch((previous) =>
+        mergeRenderWorldPatch(
+          previous,
+          acknowledgedRenderWorldPatchRevisionRef.current,
+          patch,
+          revision,
+        ),
+      );
+    },
+    [],
+  );
 
   const acknowledgeRenderWorldPatch = useCallback((revision: number) => {
     acknowledgedRenderWorldPatchRevisionRef.current = Math.max(
       acknowledgedRenderWorldPatchRevisionRef.current,
-      revision
+      revision,
     );
   }, []);
 
@@ -136,88 +195,98 @@ export function useMapSocketSync({ clearPreview, initialWorld, mapId, profileId 
       return;
     }
 
-    const unsentBatches = getSessionUnsentOperationBatches(session, maxOperationsPerBatch);
-    const unsentCount = unsentBatches.reduce((total, batch) => total + batch.length, 0);
+    const unsentBatches = getSessionUnsentOperationBatches(
+      session,
+      maxOperationsPerBatch,
+    );
+    const unsentCount = unsentBatches.reduce(
+      (total, batch) => total + batch.length,
+      0,
+    );
 
     if (unsentCount === 0) {
       setSyncStatus("saving");
       return;
     }
 
-    if (unsentCount === 1) {
-      const envelope = unsentBatches[0][0];
-      const payload: MapOperationRequest = {
-        type: "map_operation",
-        operationId: envelope.operationId,
-        operation: envelope.operation,
-        clientId: clientIdRef.current
-      };
-      transport.sendJson(payload);
-      markSessionOperationsSent(session, [envelope]);
-      logMapSync("operation_sent", {
-        mapId,
-        operationId: envelope.operationId,
-        operationType: envelope.operation.type
-      });
-    } else {
-      for (let batchIndex = 0; batchIndex < unsentBatches.length; batchIndex += 1) {
-        const batchItems = unsentBatches[batchIndex];
-        const payload: MapOperationBatchRequest = {
-          type: "map_operation_batch",
+    for (const batchItems of unsentBatches) {
+      for (const envelope of batchItems) {
+        const payload: MapOperationRequest = {
+          type: "map_operation",
+          operationId: envelope.operationId,
+          operation: envelope.operation,
           clientId: clientIdRef.current,
-          operations: batchItems.map((envelope) => ({
-            operationId: envelope.operationId,
-            operation: envelope.operation
-          }))
         };
         transport.sendJson(payload);
-        markSessionOperationsSent(session, batchItems);
-        logMapSync("operation_batch_sent", {
+        logMapSync("operation_sent", {
           mapId,
-          batchIndex: batchIndex + 1,
-          operations: batchItems.length,
-          totalBatches: unsentBatches.length
+          operationId: envelope.operationId,
+          operationType: envelope.operation.type,
         });
       }
+
+      markSessionOperationsSent(session, batchItems);
     }
 
     publishSessionState();
   }, [mapId, publishSessionState]);
 
-  const commitLocalOperations = useCallback((operations: MapOperation[]) => {
-    const envelopes = commitSessionLocalOperations(sessionRef.current, operations, Date.now());
+  const commitLocalOperations = useCallback(
+    (operations: MapOperation[]) => {
+      const envelopes = commitSessionLocalOperations(
+        sessionRef.current,
+        operations,
+        Date.now(),
+      );
 
-    for (const envelope of envelopes) {
-      logMapSync("operation_created", {
-        mapId,
-        operationId: envelope.operationId,
-        operationType: envelope.operation.type
-      });
-    }
+      for (const envelope of envelopes) {
+        logMapSync("operation_created", {
+          mapId,
+          operationId: envelope.operationId,
+          operationType: envelope.operation.type,
+        });
+      }
 
-    if (envelopes.length > 0) {
-      publishRenderWorldPatch({
-        operations: envelopes.map((envelope) => envelope.operation),
-        type: "operations"
-      });
-      clearPreview();
-      publishSessionState();
-    }
+      if (envelopes.length > 0) {
+        publishRenderWorldPatch({
+          operations: envelopes.map((envelope) => envelope.operation),
+          type: "operations",
+        });
+        clearPreview();
+        publishSessionState();
+      }
 
-    flushOperations();
-  }, [clearPreview, flushOperations, mapId, publishRenderWorldPatch, publishSessionState]);
+      flushOperations();
+    },
+    [
+      clearPreview,
+      flushOperations,
+      mapId,
+      publishRenderWorldPatch,
+      publishSessionState,
+    ],
+  );
 
   const sendTokenOperation = useCallback((operation: MapTokenOperation) => {
-    setMapTokens((current) => applyMapTokenOperation({
-      version: 1,
-      tiles: [],
-      features: [],
-      rivers: [],
-      roads: [],
-      factions: [],
-      factionTerritories: [],
-      tokens: current
-    }, operation).tokens);
+    setMapTokens(
+      (current) =>
+        applyMapTokenOperation(
+          {
+            version: 1,
+            tiles: [],
+            features: [],
+            rivers: [],
+            roads: [],
+            factions: [],
+            factionTerritories: [],
+            tokens: current,
+          },
+          operation,
+        ).tokens,
+    );
+    setTokenMembers((current) =>
+      applyTokenOperationToTokenMembers(current, operation),
+    );
 
     const transport = transportRef.current;
 
@@ -227,7 +296,7 @@ export function useMapSocketSync({ clearPreview, initialWorld, mapId, profileId 
 
     const payload: MapTokenUpdateRequest = {
       type: "map_token_update",
-      operation
+      operation,
     };
     transport.sendJson(payload);
   }, []);
@@ -243,8 +312,9 @@ export function useMapSocketSync({ clearPreview, initialWorld, mapId, profileId 
       if (remoteOperations.length > 0) {
         publishRenderWorldPatch({
           operations: remoteOperations,
-          type: "operations"
+          type: "operations",
         });
+        onRemoteOperationsApplied?.(remoteOperations.length);
       }
 
       clearPreview();
@@ -260,48 +330,60 @@ export function useMapSocketSync({ clearPreview, initialWorld, mapId, profileId 
         operationId: message.operationId,
         operationType: message.operation.type,
         sequence,
-        sourceClientId: message.sourceClientId
+        sourceClientId: message.sourceClientId,
       });
     }
 
     flushOperations();
-  }, [clearPreview, flushOperations, mapId, publishRenderWorldPatch, publishSessionState]);
+  }, [
+    clearPreview,
+    flushOperations,
+    mapId,
+    onRemoteOperationsApplied,
+    publishRenderWorldPatch,
+    publishSessionState,
+  ]);
 
-  const enqueueAppliedOperation = useCallback((payload: MapOperationMessage) => {
-    const result = enqueueSessionOperation(sessionRef.current, payload);
+  const enqueueAppliedOperation = useCallback(
+    (payload: MapOperationMessage) => {
+      const result = enqueueSessionOperation(sessionRef.current, payload);
 
-    if (result.status === "invalid") {
-      console.error("[MapSync] invalid_operation_id", payload);
-      return;
-    }
-
-    if (result.status === "past_sequence") {
-      if (payload.sourceClientId === sessionRef.current.clientId) {
-        acknowledgeSessionOperation(sessionRef.current, payload.operationId);
-        publishSessionState();
+      if (result.status === "invalid") {
+        console.error("[MapSync] invalid_operation_id", payload);
+        return;
       }
 
-      logMapSync("operation_ignored_past_sequence", {
-        expectedSequence: result.expectedSequence,
-        mapId,
-        operationId: payload.operationId,
-        sequence: payload.sequence
-      });
-      return;
-    }
+      if (result.status === "past_sequence") {
+        if (payload.sourceClientId === sessionRef.current.clientId) {
+          acknowledgeSessionOperation(sessionRef.current, payload.operationId);
+          publishSessionState();
+        }
 
-    if (result.status === "gap") {
-      logMapSync("operation_gap_detected", {
-        bufferedWaiting: result.bufferedWaiting,
-        expectedSequence: result.expectedSequence,
-        mapId,
-        receivedSequence: result.receivedSequence
-      });
-    }
-  }, [mapId, publishSessionState]);
+        logMapSync("operation_ignored_past_sequence", {
+          expectedSequence: result.expectedSequence,
+          mapId,
+          operationId: payload.operationId,
+          sequence: payload.sequence,
+        });
+        return;
+      }
+
+      if (result.status === "gap") {
+        logMapSync("operation_gap_detected", {
+          bufferedWaiting: result.bufferedWaiting,
+          expectedSequence: result.expectedSequence,
+          mapId,
+          receivedSequence: result.receivedSequence,
+        });
+      }
+    },
+    [mapId, publishSessionState],
+  );
 
   useEffect(() => {
-    const socketUrl = buildWebSocketUrl(`/api/maps/${encodeURIComponent(mapId)}/ws`);
+    const socketUrl = buildWebSocketUrl(
+      `/api/maps/${encodeURIComponent(mapId)}/ws`,
+    );
     let disposed = false;
     let reconnectTimer: number | null = null;
     let reconnectAttempt = 0;
@@ -319,11 +401,16 @@ export function useMapSocketSync({ clearPreview, initialWorld, mapId, profileId 
         return;
       }
 
-      const delayMs = Math.min(5000, 250 * (2 ** Math.min(reconnectAttempt, 4)));
+      const delayMs = Math.min(5000, 250 * 2 ** Math.min(reconnectAttempt, 4));
       reconnectAttempt += 1;
       clearReconnectTimer();
       setSyncStatus("connecting");
-      logMapSync("reconnect_scheduled", { delayMs, mapId, reconnectAttempt, socketUrl });
+      logMapSync("reconnect_scheduled", {
+        delayMs,
+        mapId,
+        reconnectAttempt,
+        socketUrl,
+      });
       reconnectTimer = window.setTimeout(connect, delayMs);
     };
 
@@ -332,10 +419,11 @@ export function useMapSocketSync({ clearPreview, initialWorld, mapId, profileId 
         return;
       }
 
-      if (activeTransport && (
-        activeTransport.socket.readyState === WebSocket.CONNECTING
-        || activeTransport.socket.readyState === WebSocket.OPEN
-      )) {
+      if (
+        activeTransport &&
+        (activeTransport.socket.readyState === WebSocket.CONNECTING ||
+          activeTransport.socket.readyState === WebSocket.OPEN)
+      ) {
         return;
       }
 
@@ -365,15 +453,23 @@ export function useMapSocketSync({ clearPreview, initialWorld, mapId, profileId 
 
         if (parsed.type === "sync_error") {
           console.error("[MapSync] sync_error", parsed.payload);
-          markSessionError(sessionRef.current);
+          resetSessionAfterSyncError(sessionRef.current);
+          publishRenderWorldPatch({ type: "snapshot" });
+          clearPreview();
+          onAuthoritativeResync?.();
           publishSessionState();
+          // Browsers only allow client close codes 1000 or 3000-4999.
+          transport.close(4001, "sync_error_resync");
           return;
         }
 
         if (parsed.type === "sync_snapshot") {
           const payload = parsed.payload;
 
-          if (!Number.isInteger(payload.lastSequence) || payload.lastSequence < 0) {
+          if (
+            !Number.isInteger(payload.lastSequence) ||
+            payload.lastSequence < 0
+          ) {
             console.error("[MapSync] invalid_snapshot_sequence", payload);
             markSessionError(sessionRef.current);
             publishSessionState();
@@ -382,16 +478,23 @@ export function useMapSocketSync({ clearPreview, initialWorld, mapId, profileId 
 
           try {
             const snapshotWorld = deserializeWorld(payload.content);
-            resetSessionFromSnapshot(sessionRef.current, snapshotWorld, payload.lastSequence);
+            resetSessionFromSnapshot(
+              sessionRef.current,
+              snapshotWorld,
+              payload.lastSequence,
+            );
             confirmedMapTokensRef.current = payload.content.tokens;
+            confirmedTokenMembersRef.current = payload.tokenMembers;
             setMapTokens(payload.content.tokens);
+            setTokenMembers(payload.tokenMembers);
             publishRenderWorldPatch({ type: "snapshot" });
             clearPreview();
+            onAuthoritativeResync?.();
             publishSessionState();
             logMapSync("snapshot_loaded", {
               lastSequence: payload.lastSequence,
               mapId,
-              pendingLocal: sessionRef.current.pendingOperations.length
+              pendingLocal: sessionRef.current.pendingOperations.length,
             });
             flushOperations();
           } catch (error) {
@@ -403,24 +506,34 @@ export function useMapSocketSync({ clearPreview, initialWorld, mapId, profileId 
         }
 
         if (parsed.type === "map_token_updated") {
-          const nextTokens = applyMapTokenOperation({
-            version: 1,
-            tiles: [],
-            features: [],
-            rivers: [],
-            roads: [],
-            factions: [],
-            factionTerritories: [],
-            tokens: confirmedMapTokensRef.current
-          }, parsed.payload.operation).tokens;
+          const nextTokens = applyMapTokenOperation(
+            {
+              version: 1,
+              tiles: [],
+              features: [],
+              rivers: [],
+              roads: [],
+              factions: [],
+              factionTerritories: [],
+              tokens: confirmedMapTokensRef.current,
+            },
+            parsed.payload.operation,
+          ).tokens;
           confirmedMapTokensRef.current = nextTokens;
+          const nextMembers = applyTokenOperationToTokenMembers(
+            confirmedTokenMembersRef.current,
+            parsed.payload.operation,
+          );
+          confirmedTokenMembersRef.current = nextMembers;
           setMapTokens(nextTokens);
+          setTokenMembers(nextMembers);
           return;
         }
 
         if (parsed.type === "map_token_error") {
           console.warn("[MapSync] token_error", parsed.payload);
           setMapTokens(confirmedMapTokensRef.current);
+          setTokenMembers(confirmedTokenMembersRef.current);
           return;
         }
 
@@ -430,19 +543,8 @@ export function useMapSocketSync({ clearPreview, initialWorld, mapId, profileId 
           return;
         }
 
-        if (parsed.type === "map_operation_batch_applied") {
-          const batch = parsed.payload;
-
-          if (!Array.isArray(batch.operations)) {
-            console.error("[MapSync] invalid_operation_batch", batch);
-            return;
-          }
-
-          for (const operation of batch.operations) {
-            enqueueAppliedOperation({ type: "map_operation_applied", ...operation });
-          }
-
-          applyQueuedReceivedOperations();
+        if (parsed.type === "unknown") {
+          logMapSync("unknown_message_ignored", { mapId });
         }
       };
 
@@ -472,7 +574,7 @@ export function useMapSocketSync({ clearPreview, initialWorld, mapId, profileId 
           mapId,
           reason: event.reason,
           socketUrl,
-          wasClean: event.wasClean
+          wasClean: event.wasClean,
         });
         markSessionSocketClosed(sessionRef.current);
         publishSessionState();
@@ -495,9 +597,10 @@ export function useMapSocketSync({ clearPreview, initialWorld, mapId, profileId 
     enqueueAppliedOperation,
     flushOperations,
     mapId,
+    onAuthoritativeResync,
     profileId,
     publishRenderWorldPatch,
-    publishSessionState
+    publishSessionState,
   ]);
 
   return {
@@ -508,6 +611,7 @@ export function useMapSocketSync({ clearPreview, initialWorld, mapId, profileId 
     renderWorldPatch,
     sendTokenOperation,
     syncStatus,
-    visibleWorld
+    tokenMembers,
+    visibleWorld,
   };
 }

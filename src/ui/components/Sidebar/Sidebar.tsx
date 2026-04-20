@@ -3,6 +3,7 @@ import type { FeatureKind } from "@/core/map/features";
 import type { Faction, TerrainType } from "@/core/map/world";
 import type { EditorMode } from "@/editor/tools/editorTypes";
 import type { MapTokenRecord } from "@/core/protocol";
+import type { WorkspaceTokenMemberRecord } from "@/core/auth/authTypes";
 import { FeaturePalette } from "../FeaturePalette/FeaturePalette";
 import { TilePalette } from "../TilePalette/TilePalette";
 import { ToolTabs } from "../ToolTabs/ToolTabs";
@@ -15,6 +16,7 @@ type SidebarProps = {
   activeType: TerrainType;
   factions: Faction[];
   mapTokens: MapTokenRecord[];
+  tokenMembers: WorkspaceTokenMemberRecord[];
   mapName: string;
   onBackToMaps: () => void;
   onCreateFaction: () => void;
@@ -26,7 +28,7 @@ type SidebarProps = {
   onRenameFaction: (factionId: string, name: string) => void;
   onClearMapTokenSelection: () => void;
   onSelectFaction: (factionId: string | null) => void;
-  onSelectMapToken: (token: MapTokenRecord) => void;
+  onSelectMapToken: (member: WorkspaceTokenMemberRecord) => void;
   onTileTypeChange: (type: TerrainType) => void;
   onUndo: () => void;
 };
@@ -39,6 +41,7 @@ export function Sidebar({
   activeType,
   factions,
   mapTokens,
+  tokenMembers,
   mapName,
   onBackToMaps,
   onCreateFaction,
@@ -58,7 +61,7 @@ export function Sidebar({
   const [editingFactionName, setEditingFactionName] = useState("");
 
   const getTokenDisplayName = (profileId: string): string => {
-    return profileId;
+    return tokenMembers.find((member) => member.userId === profileId)?.username ?? profileId;
   };
 
   const startFactionNameEdit = (factionId: string, currentName: string) => {
@@ -143,29 +146,34 @@ export function Sidebar({
             <p>Left click toggles terrain fog for a cell. Right click toggles hidden state on features in the cell.</p>
           )}
 
-          {mapTokens.length === 0 ? (
-            <p>No player token exists on this map yet. A player creates one by placing their token in play mode.</p>
+          {tokenMembers.length === 0 ? (
+            <p>No workspace member available for token placement.</p>
           ) : (
             <ul className="token-list" aria-label="Map token list">
-              {mapTokens.map((token) => (
+              {tokenMembers.map((member) => {
+                const placedToken = mapTokens.find((token) => token.profileId === member.userId);
+
+                return (
                 <li
-                  key={token.profileId}
-                  className={activeTokenProfileId === token.profileId ? "token-item is-active" : "token-item"}
+                  key={member.userId}
+                  className={activeTokenProfileId === member.userId ? "token-item is-active" : "token-item"}
                 >
                   <button
                     type="button"
                     className="token-select-button"
-                    onClick={() => onSelectMapToken(token)}
+                    onClick={() => onSelectMapToken(member)}
                   >
                     <span
                       className="token-color-swatch"
                       aria-hidden="true"
-                      style={{ backgroundColor: token.color }}
+                      style={{ backgroundColor: member.color }}
                     />
-                    <span className="token-profile-id">{getTokenDisplayName(token.profileId)}</span>
+                    <span className="token-profile-id">{member.username}</span>
+                    <span className="token-status">{placedToken ? "Placed" : "Not placed"}</span>
                   </button>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </section>

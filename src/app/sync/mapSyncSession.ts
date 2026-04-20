@@ -89,6 +89,13 @@ export function markSessionError(session: MapSyncSession): void {
   session.status = "error";
 }
 
+export function resetSessionAfterSyncError(session: MapSyncSession): void {
+  clearSyncReceiveQueue(session.receiveQueue);
+  session.pendingOperations = [];
+  session.visibleWorld = session.confirmedWorld;
+  session.status = "error";
+}
+
 export function resetSessionFromSnapshot(session: MapSyncSession, world: MapState, lastSequence: number): void {
   session.confirmedWorld = world;
   resetSyncReceiveQueueFromSnapshot(session.receiveQueue, lastSequence);

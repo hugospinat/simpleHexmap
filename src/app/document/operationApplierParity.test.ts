@@ -7,9 +7,13 @@ import {
   addTile,
   assignFactionAt,
   createEmptyWorld,
-  type MapState
+  type MapState,
 } from "@/core/map/world";
-import { applyMapOperation, applyMapOperations, type MapOperation } from "@/core/protocol";
+import {
+  applyMapOperation,
+  applyMapOperations,
+  type MapOperation,
+} from "@/core/protocol";
 import { applyMapOperationToWorld } from "@/core/map/worldOperationApplier";
 import { deserializeWorld, serializeWorld } from "@/app/document/worldMapCodec";
 
@@ -30,7 +34,7 @@ function createSampleWorld(): MapState {
     overrideTerrainTile: true,
     labelRevealed: true,
     gmLabel: "GM",
-    playerLabel: "City"
+    playerLabel: "City",
   });
   world = addFeature(world, 3, {
     id: "feature-2",
@@ -38,18 +42,21 @@ function createSampleWorld(): MapState {
     hexId: "1,0",
     hidden: false,
     overrideTerrainTile: false,
-    labelRevealed: false
+    labelRevealed: false,
   });
   world = addRiverEdge(world, 3, {
     axial: { q: 0, r: 0 },
-    edge: 1
+    edge: 1,
   });
   world = addRoadConnection(world, 3, { q: 0, r: 0 }, { q: 1, r: 0 });
 
   return world;
 }
 
-function applySavedMapContentRoundTrip(world: MapState, operation: MapOperation): MapState {
+function applySavedMapContentRoundTrip(
+  world: MapState,
+  operation: MapOperation,
+): MapState {
   return deserializeWorld(applyMapOperation(serializeWorld(world), operation));
 }
 
@@ -61,30 +68,33 @@ function expectDirectParity(world: MapState, operation: MapOperation) {
 }
 
 describe("operation applier parity", () => {
-  test("set_tile updates snapshots incrementally", () => {
+  test("set_tiles updates snapshots incrementally", () => {
     const empty = serializeWorld(createEmptyWorld());
     const updated = applyMapOperation(empty, {
-      type: "set_tile",
-      tile: { q: 2, r: 1, terrain: "forest", hidden: false }
+      type: "set_tiles",
+      tiles: [{ q: 2, r: 1, terrain: "forest", hidden: false }],
     });
 
-    expect(updated.tiles).toEqual([{ q: 2, r: 1, terrain: "forest", hidden: false }]);
+    expect(updated.tiles).toEqual([
+      { q: 2, r: 1, terrain: "forest", hidden: false },
+    ]);
   });
 
-  test("applyMapOperationToWorld matches saved-map round-trip for set_tile and hidden operations", () => {
+  test("applyMapOperationToWorld matches saved-map round-trip for semantic tile and hidden operations", () => {
     const world = createSampleWorld();
 
     expectDirectParity(world, {
-      type: "set_tile",
-      tile: { q: 2, r: -1, terrain: "mountain", hidden: true }
+      type: "set_tiles",
+      tiles: [{ q: 2, r: -1, terrain: "mountain", hidden: true }],
     });
     expectDirectParity(world, {
-      type: "set_tile",
-      tile: { q: 0, r: 0, terrain: null, hidden: false }
+      type: "set_tiles",
+      tiles: [{ q: 0, r: 0, terrain: null, hidden: false }],
     });
     expectDirectParity(world, {
-      type: "set_cell_hidden",
-      cell: { q: 1, r: 0, hidden: true }
+      type: "set_cells_hidden",
+      cells: [{ q: 1, r: 0 }],
+      hidden: true,
     });
   });
 
@@ -102,13 +112,13 @@ describe("operation applier parity", () => {
         overrideTerrainTile: true,
         gmLabel: "Watch",
         playerLabel: null,
-        labelRevealed: false
-      }
+        labelRevealed: false,
+      },
     });
     expectDirectParity(world, {
       type: "set_feature_hidden",
       featureId: "feature-1",
-      hidden: true
+      hidden: true,
     });
     expectDirectParity(world, {
       type: "update_feature",
@@ -119,12 +129,12 @@ describe("operation applier parity", () => {
         gmLabel: null,
         playerLabel: "Capital",
         labelRevealed: false,
-        overrideTerrainTile: false
-      }
+        overrideTerrainTile: false,
+      },
     });
     expectDirectParity(world, {
       type: "remove_feature",
-      featureId: "feature-2"
+      featureId: "feature-2",
     });
   });
 
@@ -133,23 +143,26 @@ describe("operation applier parity", () => {
 
     expectDirectParity(world, {
       type: "add_river_data",
-      river: { q: 1, r: 0, edge: 0 }
+      river: { q: 1, r: 0, edge: 0 },
     });
     expectDirectParity(world, {
       type: "remove_river_data",
-      river: { q: 0, r: 0, edge: 1 }
+      river: { q: 0, r: 0, edge: 1 },
     });
     expectDirectParity(world, {
-      type: "add_road_data",
-      road: { q: 0, r: 0, edges: [2, 0, 2] }
+      type: "set_road_edges",
+      cell: { q: 0, r: 0 },
+      edges: [0, 2],
     });
     expectDirectParity(world, {
-      type: "update_road_data",
-      road: { q: 0, r: 0, edges: [1, 4] }
+      type: "set_road_edges",
+      cell: { q: 0, r: 0 },
+      edges: [1, 4],
     });
     expectDirectParity(world, {
-      type: "remove_road_data",
-      road: { q: 0, r: 0 }
+      type: "set_road_edges",
+      cell: { q: 0, r: 0 },
+      edges: [],
     });
   });
 
@@ -158,34 +171,37 @@ describe("operation applier parity", () => {
 
     expectDirectParity(world, {
       type: "add_faction",
-      faction: { id: "f-3", name: "East", color: "#abcdef" }
+      faction: { id: "f-3", name: "East", color: "#abcdef" },
     });
     expectDirectParity(world, {
       type: "update_faction",
       factionId: "f-1",
-      patch: { name: "North Prime", color: "#112233" }
+      patch: { name: "North Prime", color: "#112233" },
     });
     expectDirectParity(world, {
-      type: "set_faction_territory",
-      territory: { q: 1, r: 0, factionId: "f-2" }
+      type: "set_faction_territories",
+      territories: [{ q: 1, r: 0, factionId: "f-2" }],
     });
     expectDirectParity(world, {
-      type: "set_faction_territory",
-      territory: { q: 0, r: 0, factionId: null }
+      type: "set_faction_territories",
+      territories: [{ q: 0, r: 0, factionId: null }],
     });
     expectDirectParity(world, {
       type: "remove_faction",
-      factionId: "f-1"
+      factionId: "f-1",
     });
     expectDirectParity(world, {
       type: "rename_map",
-      name: "New name"
+      name: "New name",
     });
   });
 
   test("applyMapOperationToWorld preserves ordered mixed operation semantics", () => {
     const operations: MapOperation[] = [
-      { type: "set_tile", tile: { q: 2, r: -1, terrain: "desert", hidden: false } },
+      {
+        type: "set_tiles",
+        tiles: [{ q: 2, r: -1, terrain: "desert", hidden: false }],
+      },
       {
         type: "add_feature",
         feature: {
@@ -197,18 +213,34 @@ describe("operation applier parity", () => {
           overrideTerrainTile: false,
           gmLabel: "A",
           playerLabel: null,
-          labelRevealed: false
-        }
+          labelRevealed: false,
+        },
       },
-      { type: "set_faction_territory", territory: { q: 2, r: -1, factionId: "f-2" } },
-      { type: "set_cell_hidden", cell: { q: 2, r: -1, hidden: true } },
-      { type: "set_tile", tile: { q: 0, r: 0, terrain: null, hidden: false } },
-      { type: "remove_road_data", road: { q: 0, r: 0 } },
-      { type: "update_faction", factionId: "f-2", patch: { name: "South Prime" } }
+      {
+        type: "set_faction_territories",
+        territories: [{ q: 2, r: -1, factionId: "f-2" }],
+      },
+      { type: "set_cells_hidden", cells: [{ q: 2, r: -1 }], hidden: true },
+      {
+        type: "set_tiles",
+        tiles: [{ q: 0, r: 0, terrain: null, hidden: false }],
+      },
+      { type: "set_road_edges", cell: { q: 0, r: 0 }, edges: [] },
+      {
+        type: "update_faction",
+        factionId: "f-2",
+        patch: { name: "South Prime" },
+      },
     ];
 
-    const direct = operations.reduce((current, operation) => applyMapOperationToWorld(current, operation), createSampleWorld());
-    const roundTrip = operations.reduce((current, operation) => applySavedMapContentRoundTrip(current, operation), createSampleWorld());
+    const direct = operations.reduce(
+      (current, operation) => applyMapOperationToWorld(current, operation),
+      createSampleWorld(),
+    );
+    const roundTrip = operations.reduce(
+      (current, operation) => applySavedMapContentRoundTrip(current, operation),
+      createSampleWorld(),
+    );
 
     expect(serializeWorld(direct)).toEqual(serializeWorld(roundTrip));
   });
@@ -216,9 +248,15 @@ describe("operation applier parity", () => {
   test("applyMapOperations preserves ordered saved-map batch semantics", () => {
     const snapshot = serializeWorld(createSampleWorld());
     const operations: MapOperation[] = [
-      { type: "set_tile", tile: { q: 2, r: -1, terrain: "desert", hidden: false } },
-      { type: "set_tile", tile: { q: 2, r: -1, terrain: "forest", hidden: true } },
-      { type: "set_cell_hidden", cell: { q: 2, r: -1, hidden: false } },
+      {
+        type: "set_tiles",
+        tiles: [{ q: 2, r: -1, terrain: "desert", hidden: false }],
+      },
+      {
+        type: "set_tiles",
+        tiles: [{ q: 2, r: -1, terrain: "forest", hidden: true }],
+      },
+      { type: "set_cells_hidden", cells: [{ q: 2, r: -1 }], hidden: false },
       {
         type: "add_feature",
         feature: {
@@ -230,16 +268,29 @@ describe("operation applier parity", () => {
           overrideTerrainTile: false,
           gmLabel: "A",
           playerLabel: null,
-          labelRevealed: false
-        }
+          labelRevealed: false,
+        },
       },
-      { type: "update_feature", featureId: "feature-seq", patch: { gmLabel: "B" } },
-      { type: "set_faction_territory", territory: { q: 2, r: -1, factionId: "f-2" } },
-      { type: "set_faction_territory", territory: { q: 2, r: -1, factionId: null } },
-      { type: "remove_feature", featureId: "feature-2" }
+      {
+        type: "update_feature",
+        featureId: "feature-seq",
+        patch: { gmLabel: "B" },
+      },
+      {
+        type: "set_faction_territories",
+        territories: [{ q: 2, r: -1, factionId: "f-2" }],
+      },
+      {
+        type: "set_faction_territories",
+        territories: [{ q: 2, r: -1, factionId: null }],
+      },
+      { type: "remove_feature", featureId: "feature-2" },
     ];
 
-    const reduced = operations.reduce((current, operation) => applyMapOperation(current, operation), snapshot);
+    const reduced = operations.reduce(
+      (current, operation) => applyMapOperation(current, operation),
+      snapshot,
+    );
 
     expect(applyMapOperations(snapshot, operations)).toEqual(reduced);
   });

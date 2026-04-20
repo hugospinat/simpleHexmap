@@ -11,8 +11,8 @@ export function getOrCreateSession(mapId: string): MapSession {
   }
 
   const session: MapSession = {
-    workspaceId: mapId,
-    clients: new Set<WebSocket>()
+    mapId,
+    clients: new Map(),
   };
   sessionsByMapId.set(mapId, session);
   return session;
@@ -29,8 +29,11 @@ export function closeSession(mapId: string): void {
     return;
   }
 
-  for (const client of session.clients) {
-    if (client.readyState === WebSocket.OPEN || client.readyState === WebSocket.CONNECTING) {
+  for (const client of session.clients.keys()) {
+    if (
+      client.readyState === WebSocket.OPEN ||
+      client.readyState === WebSocket.CONNECTING
+    ) {
       client.close(1000, "map_deleted");
     }
   }

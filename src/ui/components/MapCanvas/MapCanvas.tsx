@@ -60,6 +60,7 @@ export default function MapCanvas({
   const cameraRenderFrameRef = useRef<number | null>(null);
   const overlayRenderFrameRef = useRef<number | null>(null);
   const previewRenderFrameRef = useRef<number | null>(null);
+  const previewOperationsRef = useRef(previewOperations);
   const renderDebugBatchRef = useRef({ frames: 0, lastLogAt: 0 });
   const lastPerformanceLogAtRef = useRef(0);
   const sourceTileCountRef = useRef(0);
@@ -67,6 +68,7 @@ export default function MapCanvas({
   const viewport = useCanvasViewport(overlayCanvasRef);
   const pixiLevel = level as MapLevel;
   sourceTileCountRef.current = world.levels[3]?.size ?? 0;
+  previewOperationsRef.current = previewOperations;
 
   useCanvasWheelZoom(overlayCanvasRef, visualZoom, onVisualZoomChange, onToolStep);
 
@@ -147,8 +149,16 @@ export default function MapCanvas({
 
     worldRenderFrameRef.current = requestAnimationFrame(() => {
       worldRenderFrameRef.current = null;
-      renderer.clearPreview();
       renderer.setWorld(world, renderWorldPatch);
+
+      const activePreviewOperations = previewOperationsRef.current;
+
+      if (activePreviewOperations.length === 0) {
+        renderer.clearPreview();
+      } else {
+        renderer.setPreviewOperations(activePreviewOperations);
+      }
+
       if (renderWorldPatch) {
         onRenderWorldPatchApplied?.(renderWorldPatch.revision);
       }

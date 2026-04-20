@@ -5,7 +5,7 @@ import {
   hexKey,
   parseHexKey,
   type Axial,
-  type HexId
+  type HexId,
 } from "@/core/geometry/hex";
 import type { MapState } from "@/core/map/worldTypes";
 import { bumpMapStateVersion } from "@/core/map/worldTypes";
@@ -23,7 +23,7 @@ const roadEdgeToDirectionIndex: Record<RoadEdgeIndex, number> = {
   2: 1,
   3: 3,
   4: 4,
-  5: 0
+  5: 0,
 };
 
 const axialDirectionIndexToRoadEdge: Record<number, RoadEdgeIndex> = {
@@ -32,35 +32,43 @@ const axialDirectionIndexToRoadEdge: Record<number, RoadEdgeIndex> = {
   2: 0,
   3: 3,
   4: 4,
-  5: 1
+  5: 1,
 };
 
 function cloneRoadLevelMap(levelMap: RoadLevelMap): RoadLevelMap {
   return new Map(
-    Array.from(levelMap.entries(), ([hexId, edges]) => [
-      hexId,
-      new Set(edges)
-    ])
+    Array.from(levelMap.entries(), ([hexId, edges]) => [hexId, new Set(edges)]),
   );
 }
 
-function normalizeRoadLevelMap(levelMap: RoadLevelMap | undefined): RoadLevelMap {
+function normalizeRoadLevelMap(
+  levelMap: RoadLevelMap | undefined,
+): RoadLevelMap {
   return levelMap ? cloneRoadLevelMap(levelMap) : new Map();
 }
 
-export function getRoadEdgeBetween(from: Axial, to: Axial): RoadEdgeIndex | null {
+export function getRoadEdgeBetween(
+  from: Axial,
+  to: Axial,
+): RoadEdgeIndex | null {
   const delta = {
     q: to.q - from.q,
-    r: to.r - from.r
+    r: to.r - from.r,
   };
-  const directionIndex = axialDirections.findIndex((direction) => (
-    direction.q === delta.q && direction.r === delta.r
-  ));
+  const directionIndex = axialDirections.findIndex(
+    (direction) => direction.q === delta.q && direction.r === delta.r,
+  );
 
-  return directionIndex >= 0 ? axialDirectionIndexToRoadEdge[directionIndex] : null;
+  return directionIndex >= 0
+    ? axialDirectionIndexToRoadEdge[directionIndex]
+    : null;
 }
 
-function setRoadEdges(levelMap: RoadLevelMap, axial: Axial, edges: RoadEdgeSet) {
+function setRoadEdges(
+  levelMap: RoadLevelMap,
+  axial: Axial,
+  edges: RoadEdgeSet,
+) {
   const key = hexKey(axial);
 
   if (edges.size === 0) {
@@ -83,7 +91,10 @@ function getStoredRoadLevelMap(world: MapState, level: number): RoadLevelMap {
   return normalizeRoadLevelMap(world.roadsByLevel?.[level]);
 }
 
-function deriveRoadLevelMapFromSource(world: MapState, level: number): RoadLevelMap {
+function deriveRoadLevelMapFromSource(
+  world: MapState,
+  level: number,
+): RoadLevelMap {
   const sourceMap = getStoredRoadLevelMap(world, SOURCE_LEVEL);
   const derived = new Map<string, RoadEdgeSet>();
   const seenSourceEdges = new Set<string>();
@@ -115,11 +126,15 @@ function deriveRoadLevelMapFromSource(world: MapState, level: number): RoadLevel
       }
 
       const reverseEdge = getOppositeRoadEdgeIndex(parentEdge);
-      setRoadEdges(derived, parent, new Set([...(derived.get(hexKey(parent)) ?? []), parentEdge]));
+      setRoadEdges(
+        derived,
+        parent,
+        new Set([...(derived.get(hexKey(parent)) ?? []), parentEdge]),
+      );
       setRoadEdges(
         derived,
         neighborParent,
-        new Set([...(derived.get(hexKey(neighborParent)) ?? []), reverseEdge])
+        new Set([...(derived.get(hexKey(neighborParent)) ?? []), reverseEdge]),
       );
     }
   }
@@ -127,19 +142,50 @@ function deriveRoadLevelMapFromSource(world: MapState, level: number): RoadLevel
   return derived;
 }
 
-export function getRoadEdgesAt(world: MapState, level: number, axial: Axial): RoadEdgeSet {
+export function getRoadEdgesAt(
+  world: MapState,
+  level: number,
+  axial: Axial,
+): RoadEdgeSet {
   return getRoadLevelMap(world, level).get(hexKey(axial)) ?? new Set();
+}
+
+export function setRoadEdgesAt(
+  world: MapState,
+  level: number,
+  axial: Axial,
+  edges: RoadEdgeSet,
+): MapState {
+  const levelMap = getStoredRoadLevelMap(world, level);
+  setRoadEdges(levelMap, axial, edges);
+
+  return {
+    ...world,
+    roadsByLevel: {
+      ...world.roadsByLevel,
+      [level]: levelMap,
+    },
+    versions: bumpMapStateVersion(world, "roads"),
+  };
 }
 
 export function getOppositeRoadEdgeIndex(edge: RoadEdgeIndex): RoadEdgeIndex {
   return ((edge + 3) % 6) as RoadEdgeIndex;
 }
 
-export function getNeighborForRoadEdge(axial: Axial, edge: RoadEdgeIndex): Axial {
+export function getNeighborForRoadEdge(
+  axial: Axial,
+  edge: RoadEdgeIndex,
+): Axial {
   return addAxial(axial, axialDirections[roadEdgeToDirectionIndex[edge]]);
 }
 
-export function addRoadConnection(world: MapState, level: number, from: Axial, to: Axial): MapState {
+export function addRoadConnection(
+  world: MapState,
+  level: number,
+  from: Axial,
+  to: Axial,
+): MapState {
   const edge = getRoadEdgeBetween(from, to);
 
   if (edge === null) {
@@ -166,13 +212,18 @@ export function addRoadConnection(world: MapState, level: number, from: Axial, t
     ...world,
     roadsByLevel: {
       ...world.roadsByLevel,
-      [level]: levelMap
+      [level]: levelMap,
     },
-    versions: bumpMapStateVersion(world, "roads")
+    versions: bumpMapStateVersion(world, "roads"),
   };
 }
 
-export function removeRoadConnection(world: MapState, level: number, from: Axial, to: Axial): MapState {
+export function removeRoadConnection(
+  world: MapState,
+  level: number,
+  from: Axial,
+  to: Axial,
+): MapState {
   const edge = getRoadEdgeBetween(from, to);
 
   if (edge === null) {
@@ -199,13 +250,17 @@ export function removeRoadConnection(world: MapState, level: number, from: Axial
     ...world,
     roadsByLevel: {
       ...world.roadsByLevel,
-      [level]: levelMap
+      [level]: levelMap,
     },
-    versions: bumpMapStateVersion(world, "roads")
+    versions: bumpMapStateVersion(world, "roads"),
   };
 }
 
-export function removeRoadConnectionsAt(world: MapState, level: number, axial: Axial): MapState {
+export function removeRoadConnectionsAt(
+  world: MapState,
+  level: number,
+  axial: Axial,
+): MapState {
   const levelMap = getStoredRoadLevelMap(world, level);
   const key = hexKey(axial);
   const edges = levelMap.get(key);
@@ -228,9 +283,9 @@ export function removeRoadConnectionsAt(world: MapState, level: number, axial: A
     ...world,
     roadsByLevel: {
       ...world.roadsByLevel,
-      [level]: levelMap
+      [level]: levelMap,
     },
-    versions: bumpMapStateVersion(world, "roads")
+    versions: bumpMapStateVersion(world, "roads"),
   };
 }
 

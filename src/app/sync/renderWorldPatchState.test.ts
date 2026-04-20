@@ -6,66 +6,102 @@ describe("renderWorldPatchState", () => {
   it("accumulates operation patches that have not been acknowledged by the renderer", () => {
     const previous: RenderWorldPatch = {
       operations: [
-        { type: "set_tile", tile: { q: 0, r: 0, terrain: "plain", hidden: false } }
+        {
+          type: "set_tiles",
+          tiles: [{ q: 0, r: 0, terrain: "plain", hidden: false }],
+        },
       ],
       revision: 1,
-      type: "operations"
+      type: "operations",
     };
 
-    const next = mergeRenderWorldPatch(previous, 0, {
-      operations: [
-        { type: "set_tile", tile: { q: 1, r: 0, terrain: "forest", hidden: false } }
-      ],
-      type: "operations"
-    }, 2);
+    const next = mergeRenderWorldPatch(
+      previous,
+      0,
+      {
+        operations: [
+          {
+            type: "set_tiles",
+            tiles: [{ q: 1, r: 0, terrain: "forest", hidden: false }],
+          },
+        ],
+        type: "operations",
+      },
+      2,
+    );
 
     expect(next).toEqual({
       operations: [
-        { type: "set_tile", tile: { q: 0, r: 0, terrain: "plain", hidden: false } },
-        { type: "set_tile", tile: { q: 1, r: 0, terrain: "forest", hidden: false } }
+        {
+          type: "set_tiles",
+          tiles: [{ q: 0, r: 0, terrain: "plain", hidden: false }],
+        },
+        {
+          type: "set_tiles",
+          tiles: [{ q: 1, r: 0, terrain: "forest", hidden: false }],
+        },
       ],
       revision: 2,
-      type: "operations"
+      type: "operations",
     });
   });
 
   it("does not carry acknowledged operation patches forward", () => {
     const previous: RenderWorldPatch = {
       operations: [
-        { type: "set_tile", tile: { q: 0, r: 0, terrain: "plain", hidden: false } }
+        {
+          type: "set_tiles",
+          tiles: [{ q: 0, r: 0, terrain: "plain", hidden: false }],
+        },
       ],
       revision: 1,
-      type: "operations"
+      type: "operations",
     };
 
-    const next = mergeRenderWorldPatch(previous, 1, {
-      operations: [
-        { type: "set_tile", tile: { q: 1, r: 0, terrain: "forest", hidden: false } }
-      ],
-      type: "operations"
-    }, 2);
+    const next = mergeRenderWorldPatch(
+      previous,
+      1,
+      {
+        operations: [
+          {
+            type: "set_tiles",
+            tiles: [{ q: 1, r: 0, terrain: "forest", hidden: false }],
+          },
+        ],
+        type: "operations",
+      },
+      2,
+    );
 
     expect(next).toEqual({
       operations: [
-        { type: "set_tile", tile: { q: 1, r: 0, terrain: "forest", hidden: false } }
+        {
+          type: "set_tiles",
+          tiles: [{ q: 1, r: 0, terrain: "forest", hidden: false }],
+        },
       ],
       revision: 2,
-      type: "operations"
+      type: "operations",
     });
   });
 
   it("snapshot patches replace pending operation patches", () => {
     const previous: RenderWorldPatch = {
       operations: [
-        { type: "set_tile", tile: { q: 0, r: 0, terrain: "plain", hidden: false } }
+        {
+          type: "set_tiles",
+          tiles: [{ q: 0, r: 0, terrain: "plain", hidden: false }],
+        },
       ],
       revision: 1,
-      type: "operations"
+      type: "operations",
     };
 
-    expect(mergeRenderWorldPatch(previous, 0, { type: "snapshot" }, 2)).toEqual({
-      revision: 2,
-      type: "snapshot"
-    });
+    expect(mergeRenderWorldPatch(previous, 0, { type: "snapshot" }, 2)).toEqual(
+      {
+        revision: 2,
+        type: "snapshot",
+      },
+    );
   });
 });

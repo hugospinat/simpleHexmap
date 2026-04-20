@@ -5,65 +5,58 @@ import type {
   MapFeatureRecord,
   MapOperation,
   MapRiverRecord,
-  MapRoadRecord,
-  OperationApplier
+  OperationApplier,
 } from "@/core/protocol";
-import {
-  getTileOperationTerrain,
-  normalizeRoad,
-  sanitizeFactionPatch,
-  sanitizeFeaturePatch
-} from "@/core/protocol";
-import { applyRoadOperationToRecords } from "@/core/protocol";
+import { sanitizeFactionPatch, sanitizeFeaturePatch } from "@/core/protocol";
 import {
   addFaction,
   addFeature,
   addRiverEdge,
-  addRoadConnection,
   addTile,
-  assignFactionAt,
   clearFactionAt,
   featureHexIdToAxial,
   getCanonicalRiverEdgeRef,
   getFeatureById,
   getFactionLevelMap,
-  getNeighborForRoadEdge,
-  getRoadLevelMap,
   removeFaction,
   removeFeatureAt,
   removeRiverEdge,
-  removeRoadConnectionsAt,
   removeTile,
-  roadHexIdToAxial,
   setCellHidden,
+  setRoadEdgesAt,
   updateFaction,
   updateFeature,
   type FeatureKind,
   type LevelMap,
   type TerrainType,
-  type MapState
+  type MapState,
 } from "@/core/map/world";
 import { SOURCE_LEVEL } from "@/core/map/mapRules";
 import { bumpMapStateVersion } from "@/core/map/worldTypes";
 
-type SetTileOperation = Extract<MapOperation, { type: "set_tile" }>;
-type SetCellHiddenOperation = Extract<MapOperation, { type: "set_cell_hidden" }>;
-type SetFactionTerritoryOperation = Extract<MapOperation, { type: "set_faction_territory" }>;
+type TileMutation = {
+  q: number;
+  r: number;
+  terrain: string | null;
+  hidden: boolean;
+};
 
-function applySetTileToWorld(world: MapState, tile: Extract<MapOperation, { type: "set_tile" }>["tile"]): MapState {
-  const axial = { q: tile.q, r: tile.r };
-  const terrain = getTileOperationTerrain(tile);
+type HiddenMutation = {
+  q: number;
+  r: number;
+  hidden: boolean;
+};
 
-  if (terrain === null) {
-    const withoutFaction = clearFactionAt(world, SOURCE_LEVEL, axial);
-    return removeTile(withoutFaction, SOURCE_LEVEL, axial);
-  }
+type TerritoryMutation = {
+  q: number;
+  r: number;
+  factionId: string | null;
+};
 
-  const withTile = addTile(world, SOURCE_LEVEL, axial, terrain as TerrainType);
-  return setCellHidden(withTile, SOURCE_LEVEL, axial, tile.hidden ?? false);
-}
-
-function applyFeatureRecordToWorld(world: MapState, feature: MapFeatureRecord): MapState {
+function applyFeatureRecordToWorld(
+  world: MapState,
+  feature: MapFeatureRecord,
+): MapState {
   if (getFeatureById(world, SOURCE_LEVEL, feature.id)) {
     return world;
   }
@@ -76,7 +69,7 @@ function applyFeatureRecordToWorld(world: MapState, feature: MapFeatureRecord): 
     overrideTerrainTile: feature.overrideTerrainTile,
     gmLabel: feature.gmLabel ?? undefined,
     playerLabel: feature.playerLabel ?? undefined,
-    labelRevealed: feature.labelRevealed
+    labelRevealed: feature.labelRevealed,
   });
 }
 
@@ -84,21 +77,29 @@ function getSourceLevelMapForBatch(world: MapState): LevelMap {
   return world.levels[SOURCE_LEVEL] ?? new Map();
 }
 
-function cloneSourceLevelForBatch(current: LevelMap, next: LevelMap | null): LevelMap {
+function cloneSourceLevelForBatch(
+  current: LevelMap,
+  next: LevelMap | null,
+): LevelMap {
   return next ?? new Map(current);
 }
 
-function applySetTileOperationsToWorld(world: MapState, operations: readonly SetTileOperation[]): MapState {
+function applySetTileOperationsToWorld(
+  world: MapState,
+  operations: readonly TileMutation[],
+): MapState {
   const sourceLevel = getSourceLevelMapForBatch(world);
-  const sourceFactionAssignments = world.factionAssignmentsByLevel?.[SOURCE_LEVEL] ?? new Map<string, string>();
+  const sourceFactionAssignments =
+    world.factionAssignmentsByLevel?.[SOURCE_LEVEL] ??
+    new Map<string, string>();
   let nextLevel: LevelMap | null = null;
   let nextFactionAssignments: Map<string, string> | null = null;
   let terrainChanged = false;
   let factionsChanged = false;
 
   for (const operation of operations) {
-    const key = hexKey({ q: operation.tile.q, r: operation.tile.r });
-    const terrain = getTileOperationTerrain(operation.tile);
+    const key = hexKey({ q: operation.q, r: operation.r });
+    const terrain = operation.terrain;
     const currentLevel = nextLevel ?? sourceLevel;
     const currentCell = currentLevel.get(key);
 
@@ -111,10 +112,12 @@ function applySetTileOperationsToWorld(world: MapState, operations: readonly Set
       nextLevel.delete(key);
       terrainChanged = true;
 
-      const currentAssignments = nextFactionAssignments ?? sourceFactionAssignments;
+      const currentAssignments =
+        nextFactionAssignments ?? sourceFactionAssignments;
 
       if (currentAssignments.has(key)) {
-        nextFactionAssignments = nextFactionAssignments ?? new Map(sourceFactionAssignments);
+        nextFactionAssignments =
+          nextFactionAssignments ?? new Map(sourceFactionAssignments);
         nextFactionAssignments.delete(key);
         factionsChanged = true;
       }
@@ -123,11 +126,14 @@ function applySetTileOperationsToWorld(world: MapState, operations: readonly Set
     }
 
     const nextCell = {
-      hidden: operation.tile.hidden ?? false,
-      type: terrain as TerrainType
+      hidden: operation.hidden,
+      type: terrain as TerrainType,
     };
 
-    if (currentCell?.type === nextCell.type && currentCell.hidden === nextCell.hidden) {
+    if (
+      currentCell?.type === nextCell.type &&
+      currentCell.hidden === nextCell.hidden
+    ) {
       continue;
     }
 
@@ -147,9 +153,9 @@ function applySetTileOperationsToWorld(world: MapState, operations: readonly Set
       ...nextWorld,
       levels: {
         ...nextWorld.levels,
-        [SOURCE_LEVEL]: nextLevel
+        [SOURCE_LEVEL]: nextLevel,
       },
-      versions: bumpMapStateVersion(nextWorld, "terrain")
+      versions: bumpMapStateVersion(nextWorld, "terrain"),
     };
   }
 
@@ -158,31 +164,34 @@ function applySetTileOperationsToWorld(world: MapState, operations: readonly Set
       ...nextWorld,
       factionAssignmentsByLevel: {
         ...nextWorld.factionAssignmentsByLevel,
-        [SOURCE_LEVEL]: nextFactionAssignments
+        [SOURCE_LEVEL]: nextFactionAssignments,
       },
-      versions: bumpMapStateVersion(nextWorld, "factions")
+      versions: bumpMapStateVersion(nextWorld, "factions"),
     };
   }
 
   return nextWorld;
 }
 
-function applyCellHiddenOperationsToWorld(world: MapState, operations: readonly SetCellHiddenOperation[]): MapState {
+function applyCellHiddenOperationsToWorld(
+  world: MapState,
+  operations: readonly HiddenMutation[],
+): MapState {
   const sourceLevel = getSourceLevelMapForBatch(world);
   let nextLevel: LevelMap | null = null;
 
   for (const operation of operations) {
-    const key = hexKey({ q: operation.cell.q, r: operation.cell.r });
+    const key = hexKey({ q: operation.q, r: operation.r });
     const current = (nextLevel ?? sourceLevel).get(key);
 
-    if (!current || current.hidden === operation.cell.hidden) {
+    if (!current || current.hidden === operation.hidden) {
       continue;
     }
 
     nextLevel = cloneSourceLevelForBatch(sourceLevel, nextLevel);
     nextLevel.set(key, {
       ...current,
-      hidden: operation.cell.hidden
+      hidden: operation.hidden,
     });
   }
 
@@ -194,15 +203,15 @@ function applyCellHiddenOperationsToWorld(world: MapState, operations: readonly 
     ...world,
     levels: {
       ...world.levels,
-      [SOURCE_LEVEL]: nextLevel
+      [SOURCE_LEVEL]: nextLevel,
     },
-    versions: bumpMapStateVersion(world, "terrain")
+    versions: bumpMapStateVersion(world, "terrain"),
   };
 }
 
 function applyFactionTerritoryOperationsToWorld(
   world: MapState,
-  operations: readonly SetFactionTerritoryOperation[]
+  operations: readonly TerritoryMutation[],
 ): MapState {
   const factions = world.factions ?? new Map();
   const sourceLevel = getSourceLevelMapForBatch(world);
@@ -210,8 +219,8 @@ function applyFactionTerritoryOperationsToWorld(
   let nextAssignments: Map<string, string> | null = null;
 
   for (const operation of operations) {
-    const key = hexKey({ q: operation.territory.q, r: operation.territory.r });
-    const factionId = operation.territory.factionId;
+    const key = hexKey({ q: operation.q, r: operation.r });
+    const factionId = operation.factionId;
 
     if (!sourceLevel.has(key)) {
       continue;
@@ -245,24 +254,30 @@ function applyFactionTerritoryOperationsToWorld(
     ...world,
     factionAssignmentsByLevel: {
       ...world.factionAssignmentsByLevel,
-      [SOURCE_LEVEL]: nextAssignments
+      [SOURCE_LEVEL]: nextAssignments,
     },
-    versions: bumpMapStateVersion(world, "factions")
+    versions: bumpMapStateVersion(world, "factions"),
   };
 }
 
 function isCanonicalRiverRecord(river: MapRiverRecord): boolean {
   const canonical = getCanonicalRiverEdgeRef({
     axial: { q: river.q, r: river.r },
-    edge: river.edge
+    edge: river.edge,
   });
 
-  return canonical.axial.q === river.q
-    && canonical.axial.r === river.r
-    && canonical.edge === river.edge;
+  return (
+    canonical.axial.q === river.q &&
+    canonical.axial.r === river.r &&
+    canonical.edge === river.edge
+  );
 }
 
-function applyFeaturePatchToWorld(world: MapState, featureId: string, patch: FeaturePatch): MapState {
+function applyFeaturePatchToWorld(
+  world: MapState,
+  featureId: string,
+  patch: FeaturePatch,
+): MapState {
   const sanitized = sanitizeFeaturePatch(patch);
   const updates: Parameters<typeof updateFeature>[3] = {};
 
@@ -278,7 +293,10 @@ function applyFeaturePatchToWorld(world: MapState, featureId: string, patch: Fea
   if (typeof sanitized.gmLabel === "string" || sanitized.gmLabel === null) {
     updates.gmLabel = sanitized.gmLabel ?? undefined;
   }
-  if (typeof sanitized.playerLabel === "string" || sanitized.playerLabel === null) {
+  if (
+    typeof sanitized.playerLabel === "string" ||
+    sanitized.playerLabel === null
+  ) {
     updates.playerLabel = sanitized.playerLabel ?? undefined;
   }
   if (typeof sanitized.labelRevealed === "boolean") {
@@ -288,74 +306,92 @@ function applyFeaturePatchToWorld(world: MapState, featureId: string, patch: Fea
   return updateFeature(world, SOURCE_LEVEL, featureId, updates);
 }
 
-function applyRemoveFeatureToWorld(world: MapState, featureId: string): MapState {
+function applyRemoveFeatureToWorld(
+  world: MapState,
+  featureId: string,
+): MapState {
   const feature = getFeatureById(world, SOURCE_LEVEL, featureId);
 
   if (!feature) {
     return world;
   }
 
-  return removeFeatureAt(world, SOURCE_LEVEL, featureHexIdToAxial(feature.hexId));
+  return removeFeatureAt(
+    world,
+    SOURCE_LEVEL,
+    featureHexIdToAxial(feature.hexId),
+  );
 }
 
-function getRoadRecordsFromWorld(world: MapState): MapRoadRecord[] {
-  const roads = getRoadLevelMap(world, SOURCE_LEVEL);
-
-  return Array.from(roads.entries()).map(([hexId, edges]) => {
-    const axial = roadHexIdToAxial(hexId);
-
-    return normalizeRoad({
-      q: axial.q,
-      r: axial.r,
-      edges: Array.from(edges)
-    });
-  });
-}
-
-function applyRoadOperationToWorld(
+export function applyOperationToWorld(
   world: MapState,
-  operation: Extract<MapOperation, { type: "add_road_data" | "update_road_data" | "remove_road_data" }>
+  operation: MapOperation,
 ): MapState {
-  const updatedRoadRecords = applyRoadOperationToRecords(getRoadRecordsFromWorld(world), operation);
-  let nextWorld: MapState = {
-    ...world,
-    roadsByLevel: {
-      ...world.roadsByLevel,
-      [SOURCE_LEVEL]: new Map()
-    },
-    versions: bumpMapStateVersion(world, "roads")
-  };
-
-  for (const road of updatedRoadRecords) {
-    const from = { q: road.q, r: road.r };
-
-    for (const edge of road.edges) {
-      const to = getNeighborForRoadEdge(from, edge);
-      nextWorld = addRoadConnection(nextWorld, SOURCE_LEVEL, from, to);
-    }
-  }
-
-  return nextWorld;
-}
-
-export function applyOperationToWorld(world: MapState, operation: MapOperation): MapState {
   switch (operation.type) {
-    case "set_tile":
-      return applySetTileToWorld(world, operation.tile);
-    case "set_cell_hidden":
-      return setCellHidden(world, SOURCE_LEVEL, { q: operation.cell.q, r: operation.cell.r }, operation.cell.hidden);
+    case "paint_cells": {
+      const tileMutations: TileMutation[] = operation.cells.map((cell) => ({
+        q: cell.q,
+        r: cell.r,
+        terrain: operation.terrain,
+        hidden: operation.hidden,
+      }));
+      return applySetTileOperationsToWorld(world, tileMutations);
+    }
+    case "set_tiles":
+      return applySetTileOperationsToWorld(
+        world,
+        operation.tiles.map((tile) => ({
+          q: tile.q,
+          r: tile.r,
+          terrain: tile.terrain,
+          hidden: tile.hidden,
+        })),
+      );
+    case "set_cells_hidden":
+      return applyCellHiddenOperationsToWorld(
+        world,
+        operation.cells.map((cell) => ({
+          q: cell.q,
+          r: cell.r,
+          hidden: operation.hidden,
+        })),
+      );
+    case "assign_faction_cells":
+      return applyFactionTerritoryOperationsToWorld(
+        world,
+        operation.cells.map((cell) => ({
+          q: cell.q,
+          r: cell.r,
+          factionId: operation.factionId,
+        })),
+      );
+    case "set_faction_territories":
+      return applyFactionTerritoryOperationsToWorld(
+        world,
+        operation.territories.map((territory) => ({
+          q: territory.q,
+          r: territory.r,
+          factionId: territory.factionId,
+        })),
+      );
     case "add_feature":
       return applyFeatureRecordToWorld(world, operation.feature);
     case "set_feature_hidden":
-      return updateFeature(world, SOURCE_LEVEL, operation.featureId, { hidden: operation.hidden });
+      return updateFeature(world, SOURCE_LEVEL, operation.featureId, {
+        hidden: operation.hidden,
+      });
     case "update_feature":
-      return applyFeaturePatchToWorld(world, operation.featureId, operation.patch);
+      return applyFeaturePatchToWorld(
+        world,
+        operation.featureId,
+        operation.patch,
+      );
     case "remove_feature":
       return applyRemoveFeatureToWorld(world, operation.featureId);
     case "add_river_data":
       return addRiverEdge(world, SOURCE_LEVEL, {
         axial: { q: operation.river.q, r: operation.river.r },
-        edge: operation.river.edge
+        edge: operation.river.edge,
       });
     case "remove_river_data":
       if (!isCanonicalRiverRecord(operation.river)) {
@@ -364,23 +400,15 @@ export function applyOperationToWorld(world: MapState, operation: MapOperation):
 
       return removeRiverEdge(world, SOURCE_LEVEL, {
         axial: { q: operation.river.q, r: operation.river.r },
-        edge: operation.river.edge
+        edge: operation.river.edge,
       });
-    case "add_road_data":
-      return applyRoadOperationToWorld(world, operation);
-    case "update_road_data":
-      return applyRoadOperationToWorld(world, operation);
-    case "remove_road_data":
-      return applyRoadOperationToWorld(world, operation);
-    case "add_road_connection":
-      return addRoadConnection(
+    case "set_road_edges":
+      return setRoadEdgesAt(
         world,
         SOURCE_LEVEL,
-        { q: operation.from.q, r: operation.from.r },
-        { q: operation.to.q, r: operation.to.r }
+        { q: operation.cell.q, r: operation.cell.r },
+        new Set(operation.edges),
       );
-    case "remove_road_connections_at":
-      return removeRoadConnectionsAt(world, SOURCE_LEVEL, { q: operation.cell.q, r: operation.cell.r });
     case "add_faction":
       return addFaction(world, operation.faction);
     case "update_faction": {
@@ -389,15 +417,6 @@ export function applyOperationToWorld(world: MapState, operation: MapOperation):
     }
     case "remove_faction":
       return removeFaction(world, operation.factionId);
-    case "set_faction_territory": {
-      const axial = { q: operation.territory.q, r: operation.territory.r };
-
-      if (operation.territory.factionId === null) {
-        return clearFactionAt(world, SOURCE_LEVEL, axial);
-      }
-
-      return assignFactionAt(world, SOURCE_LEVEL, axial, operation.territory.factionId);
-    }
     case "rename_map":
       return world;
     default: {
@@ -408,18 +427,68 @@ export function applyOperationToWorld(world: MapState, operation: MapOperation):
   }
 }
 
-export function applyOperationsToWorld(world: MapState, operations: readonly MapOperation[]): MapState {
+function operationBatchKind(
+  operation: MapOperation,
+): "tile" | "hidden" | "territory" | "other" {
+  switch (operation.type) {
+    case "paint_cells":
+    case "set_tiles":
+      return "tile";
+    case "set_cells_hidden":
+      return "hidden";
+    case "assign_faction_cells":
+    case "set_faction_territories":
+      return "territory";
+    default:
+      return "other";
+  }
+}
+
+export function applyOperationsToWorld(
+  world: MapState,
+  operations: readonly MapOperation[],
+): MapState {
   let nextWorld = world;
   let index = 0;
 
   while (index < operations.length) {
     const operation = operations[index];
+    const batchKind = operationBatchKind(operation);
 
-    if (operation.type === "set_tile") {
-      const batch: SetTileOperation[] = [];
+    if (batchKind === "tile") {
+      const batch: TileMutation[] = [];
 
-      while (index < operations.length && operations[index].type === "set_tile") {
-        batch.push(operations[index] as SetTileOperation);
+      while (
+        index < operations.length &&
+        operationBatchKind(operations[index]) === "tile"
+      ) {
+        const current = operations[index];
+
+        switch (current.type) {
+          case "paint_cells":
+            for (const cell of current.cells) {
+              batch.push({
+                q: cell.q,
+                r: cell.r,
+                terrain: current.terrain,
+                hidden: current.hidden,
+              });
+            }
+            break;
+          case "set_tiles":
+            for (const tile of current.tiles) {
+              batch.push({
+                q: tile.q,
+                r: tile.r,
+                terrain: tile.terrain,
+                hidden: tile.hidden,
+              });
+            }
+            break;
+          default:
+            break;
+        }
+
         index += 1;
       }
 
@@ -427,11 +496,29 @@ export function applyOperationsToWorld(world: MapState, operations: readonly Map
       continue;
     }
 
-    if (operation.type === "set_cell_hidden") {
-      const batch: SetCellHiddenOperation[] = [];
+    if (batchKind === "hidden") {
+      const batch: HiddenMutation[] = [];
 
-      while (index < operations.length && operations[index].type === "set_cell_hidden") {
-        batch.push(operations[index] as SetCellHiddenOperation);
+      while (
+        index < operations.length &&
+        operationBatchKind(operations[index]) === "hidden"
+      ) {
+        const current = operations[index];
+
+        switch (current.type) {
+          case "set_cells_hidden":
+            for (const cell of current.cells) {
+              batch.push({
+                q: cell.q,
+                r: cell.r,
+                hidden: current.hidden,
+              });
+            }
+            break;
+          default:
+            break;
+        }
+
         index += 1;
       }
 
@@ -439,11 +526,38 @@ export function applyOperationsToWorld(world: MapState, operations: readonly Map
       continue;
     }
 
-    if (operation.type === "set_faction_territory") {
-      const batch: SetFactionTerritoryOperation[] = [];
+    if (batchKind === "territory") {
+      const batch: TerritoryMutation[] = [];
 
-      while (index < operations.length && operations[index].type === "set_faction_territory") {
-        batch.push(operations[index] as SetFactionTerritoryOperation);
+      while (
+        index < operations.length &&
+        operationBatchKind(operations[index]) === "territory"
+      ) {
+        const current = operations[index];
+
+        switch (current.type) {
+          case "assign_faction_cells":
+            for (const cell of current.cells) {
+              batch.push({
+                q: cell.q,
+                r: cell.r,
+                factionId: current.factionId,
+              });
+            }
+            break;
+          case "set_faction_territories":
+            for (const territory of current.territories) {
+              batch.push({
+                q: territory.q,
+                r: territory.r,
+                factionId: territory.factionId,
+              });
+            }
+            break;
+          default:
+            break;
+        }
+
         index += 1;
       }
 
@@ -460,7 +574,7 @@ export function applyOperationsToWorld(world: MapState, operations: readonly Map
 
 export const mapStateOperationApplier: OperationApplier<MapState> = {
   apply: applyOperationToWorld,
-  applyMany: applyOperationsToWorld
+  applyMany: applyOperationsToWorld,
 };
 
 export const applyMapOperationToWorld = applyOperationToWorld;

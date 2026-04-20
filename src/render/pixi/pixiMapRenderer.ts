@@ -1,19 +1,42 @@
 import { Application, Graphics } from "pixi.js";
-import { axialToWorldPixel, getLevelScale, type HexId } from "@/core/geometry/hex";
+import { axialToWorldPixel, getLevelScale } from "@/core/geometry/hex";
 import type { MapState } from "@/core/map/worldTypes";
 import type { MapOperation } from "@/core/protocol/types";
 import { nowForRenderTiming } from "@/render/renderPerformance";
-import { createPixiActiveRenderWindow, shouldReusePixiActiveWindow, type PixiActiveRenderWindow } from "./pixiActiveWindow";
-import { createEmptyPixiAssetCatalog, loadPixiAssetCatalog } from "./pixiAssets";
-import { createPixiMapSceneCache, type PixiLevelScene, type PixiMapSceneCache } from "./pixiMapSceneCache";
-import { createSpritePool, createTextPool, getWorldVisibleCellHash } from "./pixiLayers";
+import {
+  createPixiActiveRenderWindow,
+  shouldReusePixiActiveWindow,
+  type PixiActiveRenderWindow,
+} from "./pixiActiveWindow";
+import {
+  createEmptyPixiAssetCatalog,
+  loadPixiAssetCatalog,
+} from "./pixiAssets";
+import {
+  createPixiMapSceneCache,
+  type PixiLevelScene,
+  type PixiMapSceneCache,
+} from "./pixiMapSceneCache";
+import { buildPixiSceneRenderFrame } from "./pixiRenderFrame";
+import { getWorldVisibleCellHash } from "./pixiLayers";
+import {
+  countPixiRendererSprites,
+  createPixiRendererPools,
+  destroyPixiRendererPools,
+} from "./pixiRendererResources";
 import { createPixiStage } from "./pixiStage";
-import { drawPixiBoundaryLayer, resetPixiBoundaryLayerInvalidation } from "./pixiBoundaryLayer";
+import {
+  drawPixiBoundaryLayer,
+  resetPixiBoundaryLayerInvalidation,
+} from "./pixiBoundaryLayer";
 import { drawPixiFactionLayer } from "./pixiFactionLayer";
 import { drawPixiFeatureLayer } from "./pixiFeatureLayer";
 import { drawPixiFogVisibilityLayer } from "./pixiFogVisibilityLayer";
 import { drawPixiOverlayLayer } from "./pixiOverlayLayer";
-import { clearPixiPreviewLayer, drawPixiPreviewLayer } from "./pixiPreviewLayer";
+import {
+  clearPixiPreviewLayer,
+  drawPixiPreviewLayer,
+} from "./pixiPreviewLayer";
 import { drawPixiRiverLayer } from "./pixiRiverLayer";
 import { drawPixiRoadLayer } from "./pixiRoadLayer";
 import { drawPixiTerrainLayer } from "./pixiTerrainLayer";
@@ -26,13 +49,14 @@ import type {
   PixiLayerTimings,
   PixiObjectPools,
   PixiRenderStats,
-  PixiSceneCellRecord,
   PixiSceneRenderFrame,
   PixiStageLayers,
-  RenderWorldPatch
+  RenderWorldPatch,
 } from "./pixiTypes";
 
-function createEmptyStats(layerTimings: PixiLayerTimings = {}): PixiRenderStats {
+function createEmptyStats(
+  layerTimings: PixiLayerTimings = {},
+): PixiRenderStats {
   return {
     activeWindowMs: 0,
     boundaries: 0,
@@ -53,66 +77,51 @@ function createEmptyStats(layerTimings: PixiLayerTimings = {}): PixiRenderStats 
     sceneUpdateMs: 0,
     spriteCount: 0,
     tiles: 0,
-    visibleCellCount: 0
+    visibleCellCount: 0,
   };
 }
 
-function timeLayer<T>(timings: PixiLayerTimings, name: keyof PixiLayerTimings, draw: () => T): T {
+function timeLayer<T>(
+  timings: PixiLayerTimings,
+  name: keyof PixiLayerTimings,
+  draw: () => T,
+): T {
   const start = nowForRenderTiming();
   const result = draw();
   timings[name] = Number((nowForRenderTiming() - start).toFixed(2));
   return result;
 }
 
-function countSprites(pools: PixiObjectPools): number {
-  return pools.terrainSprites.size()
-    + pools.roadSprites.size()
-    + pools.featureSprites.size()
-    + pools.labelTexts.size()
-    + pools.previewTerrainSprites.size()
-    + pools.coordinateTexts.size();
-}
-
-function drawBackground(background: Graphics, width: number, height: number): void {
+function drawBackground(
+  background: Graphics,
+  width: number,
+  height: number,
+): void {
   background.clear();
   background.rect(0, 0, width, height);
   background.fill({ color: 0xffffff });
 }
 
-function createPools(): PixiObjectPools {
-  return {
-    coordinateTexts: createTextPool(),
-    featureSprites: createSpritePool(),
-    labelTexts: createTextPool(),
-    previewTerrainSprites: createSpritePool(),
-    roadSprites: createSpritePool(),
-    terrainSprites: createSpritePool()
-  };
-}
-
-function destroyPools(pools: PixiObjectPools): void {
-  pools.featureSprites.destroy();
-  pools.coordinateTexts.destroy();
-  pools.labelTexts.destroy();
-  pools.previewTerrainSprites.destroy();
-  pools.roadSprites.destroy();
-  pools.terrainSprites.destroy();
-}
-
-function updateCameraTransform(layers: PixiStageLayers, camera: PixiCameraState): number {
+function updateCameraTransform(
+  layers: PixiStageLayers,
+  camera: PixiCameraState,
+): number {
   const start = nowForRenderTiming();
   const worldCenter = axialToWorldPixel(camera.center, camera.level);
   const zoom = camera.visualZoom;
   layers.camera.scale.set(zoom);
   layers.camera.position.set(
     camera.viewport.width / 2 - worldCenter.x * zoom,
-    camera.viewport.height / 2 - worldCenter.y * zoom
+    camera.viewport.height / 2 - worldCenter.y * zoom,
   );
   return Number((nowForRenderTiming() - start).toFixed(2));
 }
 
 function isCoordinateLayerVisible(camera: PixiCameraState): boolean {
-  return camera.showCoordinates && getLevelScale(camera.level) * camera.visualZoom * 32 > 14;
+  return (
+    camera.showCoordinates &&
+    getLevelScale(camera.level) * camera.visualZoom * 32 > 14
+  );
 }
 
 type LayerCache = {
@@ -130,71 +139,6 @@ type FeatureLayerCache = {
   stats: ReturnType<typeof drawPixiFeatureLayer>;
 };
 
-function buildFrameFromScene(
-  world: MapState,
-  scene: PixiLevelScene,
-  activeWindow: PixiActiveRenderWindow,
-  camera: PixiCameraState
-): PixiSceneRenderFrame {
-  const renderCells: PixiSceneCellRecord[] = [];
-  const hiddenCells: PixiSceneCellRecord[] = [];
-  const visibleTerrainCells: PixiSceneCellRecord[] = [];
-  const visibleTerrainKeys = new Set<string>();
-  const featureVisibleKeys = new Set<string>();
-  const isPlayerMode = camera.featureVisibilityMode === "player";
-
-  for (const hexId of activeWindow.cellIds) {
-    const cell = scene.cellsByHex.get(hexId as HexId);
-
-    if (cell) {
-      renderCells.push(cell);
-
-      if (cell.cell.hidden) {
-        hiddenCells.push(cell);
-      }
-
-      if (!isPlayerMode || !cell.cell.hidden) {
-        visibleTerrainCells.push(cell);
-        visibleTerrainKeys.add(cell.key);
-      }
-
-      if (!isPlayerMode) {
-        featureVisibleKeys.add(cell.key);
-      }
-    }
-  }
-
-  if (isPlayerMode) {
-    for (const cell of visibleTerrainCells) {
-      featureVisibleKeys.add(cell.key);
-    }
-  }
-
-  const mapScale = getLevelScale(camera.level) * camera.visualZoom;
-
-  return {
-    cameraWorldCenter: axialToWorldPixel(camera.center, camera.level),
-    factionOverlayColorMap: new Map(visibleTerrainCells
-      .filter((cell) => cell.factionColor)
-      .map((cell) => [cell.key, cell.factionColor as string])),
-    featureVisibleKeys,
-    hiddenCells,
-    highlightedHex: null,
-    hoverRiverEdge: null,
-    renderCells,
-    transform: {
-      level: camera.level,
-      mapScale,
-      scaleMapLength: (length) => length * mapScale,
-      viewport: camera.viewport,
-      zoom: camera.visualZoom
-    },
-    visibleTerrainCells,
-    visibleTerrainKeys,
-    world
-  };
-}
-
 export type PixiMapRenderer = {
   destroy: () => void;
   mount: (container: HTMLElement) => Promise<void>;
@@ -202,7 +146,9 @@ export type PixiMapRenderer = {
   clearPreview: () => PixiRenderStats;
   setCamera: (camera: PixiCameraState) => PixiRenderStats;
   setOverlay: (overlay: MapInteractionOverlay) => PixiRenderStats;
-  setPreviewOperations: (operations: readonly MapOperation[]) => PixiRenderStats;
+  setPreviewOperations: (
+    operations: readonly MapOperation[],
+  ) => PixiRenderStats;
   setTokens: (tokens: readonly MapTokenRecord[]) => PixiRenderStats;
   setWorld: (world: MapState, patch?: RenderWorldPatch) => PixiRenderStats;
 };
@@ -213,7 +159,7 @@ export function createPixiMapRenderer(): PixiMapRenderer {
   let terrainFill: Graphics | null = null;
   let previewGraphics: Graphics | null = null;
   let assets: PixiAssetCatalog = createEmptyPixiAssetCatalog();
-  let pools: PixiObjectPools = createPools();
+  let pools: PixiObjectPools = createPixiRendererPools();
   let viewport = { width: 1, height: 1, dpr: 1 };
   let destroyed = false;
   let sceneCache: PixiMapSceneCache | null = null;
@@ -256,7 +202,14 @@ export function createPixiMapRenderer(): PixiMapRenderer {
     });
   }
 
-  function requireMounted(): { app: Application; layers: PixiStageLayers; terrainFill: Graphics; previewGraphics: Graphics; assets: PixiAssetCatalog; pools: PixiObjectPools } | null {
+  function requireMounted(): {
+    app: Application;
+    layers: PixiStageLayers;
+    terrainFill: Graphics;
+    previewGraphics: Graphics;
+    assets: PixiAssetCatalog;
+    pools: PixiObjectPools;
+  } | null {
     if (!app || !layers || !terrainFill || !previewGraphics) {
       return null;
     }
@@ -264,7 +217,9 @@ export function createPixiMapRenderer(): PixiMapRenderer {
     return { app, assets, layers, pools, previewGraphics, terrainFill };
   }
 
-  function syncBaseLayers(reason: "camera" | "world" | "resize"): PixiRenderStats {
+  function syncBaseLayers(
+    reason: "camera" | "world" | "resize",
+  ): PixiRenderStats {
     const mounted = requireMounted();
 
     if (!mounted || !sceneCache || !cameraState) {
@@ -276,39 +231,63 @@ export function createPixiMapRenderer(): PixiMapRenderer {
     const cameraMs = updateCameraTransform(mounted.layers, cameraState);
     const sceneStart = nowForRenderTiming();
     const scene = sceneCache.getLevelScene(cameraState.level, sceneCache.world);
-    const sceneUpdateMs = Number((nowForRenderTiming() - sceneStart).toFixed(2));
+    const sceneUpdateMs = Number(
+      (nowForRenderTiming() - sceneStart).toFixed(2),
+    );
     let activeWindowMs = 0;
-    const canReuseWindow = shouldReusePixiActiveWindow(activeWindow, cameraState);
+    const canReuseWindow = shouldReusePixiActiveWindow(
+      activeWindow,
+      cameraState,
+    );
 
-    if (!canReuseWindow || !activeWindow || contentDirty || reason === "resize") {
+    if (
+      !canReuseWindow ||
+      !activeWindow ||
+      contentDirty ||
+      reason === "resize"
+    ) {
       const activeWindowStart = nowForRenderTiming();
       activeWindow = createPixiActiveRenderWindow(scene, cameraState);
-      activeWindowMs = Number((nowForRenderTiming() - activeWindowStart).toFixed(2));
-      activeFrame = buildFrameFromScene(sceneCache.world, scene, activeWindow, cameraState);
+      activeWindowMs = Number(
+        (nowForRenderTiming() - activeWindowStart).toFixed(2),
+      );
+      activeFrame = buildPixiSceneRenderFrame(
+        sceneCache.world,
+        scene,
+        activeWindow,
+        cameraState,
+      );
     } else if (activeFrame) {
-      const nextMapScale = getLevelScale(cameraState.level) * cameraState.visualZoom;
+      const nextMapScale =
+        getLevelScale(cameraState.level) * cameraState.visualZoom;
       activeFrame = {
         ...activeFrame,
-        cameraWorldCenter: axialToWorldPixel(cameraState.center, cameraState.level),
+        cameraWorldCenter: axialToWorldPixel(
+          cameraState.center,
+          cameraState.level,
+        ),
         transform: {
           ...activeFrame.transform,
           mapScale: nextMapScale,
           scaleMapLength: (length) => length * nextMapScale,
           viewport: cameraState.viewport,
-          zoom: cameraState.visualZoom
-        }
+          zoom: cameraState.visualZoom,
+        },
       };
     }
 
-    if (!activeFrame || (!contentDirty && canReuseWindow && reason === "camera")) {
+    if (
+      !activeFrame ||
+      (!contentDirty && canReuseWindow && reason === "camera")
+    ) {
       scheduleRender();
       return {
         ...createEmptyStats(layerTimings),
         cameraMs,
         pixiUpdateMs: Number((nowForRenderTiming() - start).toFixed(2)),
         sceneUpdateMs,
-        spriteCount: countSprites(mounted.pools),
-        visibleCellCount: activeFrame?.visibleTerrainCells.length ?? 0
+        spriteCount: countPixiRendererSprites(mounted.pools),
+        visibleCellCount: activeFrame?.visibleTerrainCells.length ?? 0,
       };
     }
 
@@ -316,12 +295,18 @@ export function createPixiMapRenderer(): PixiMapRenderer {
 
     if (backgroundKey !== nextBackgroundKey) {
       timeLayer(layerTimings, "background", () => {
-        drawBackground(mounted.layers.background, viewport.width, viewport.height);
+        drawBackground(
+          mounted.layers.background,
+          viewport.width,
+          viewport.height,
+        );
       });
       backgroundKey = nextBackgroundKey;
     }
 
-    const visibleCellHash = getWorldVisibleCellHash(activeFrame.visibleTerrainCells);
+    const visibleCellHash = getWorldVisibleCellHash(
+      activeFrame.visibleTerrainCells,
+    );
     const versions = sceneCache.world.versions;
     const terrainKey = [
       activeFrame.transform.level,
@@ -329,43 +314,68 @@ export function createPixiMapRenderer(): PixiMapRenderer {
       versions.terrain,
       versions.features,
       cameraState.featureVisibilityMode,
-      cameraState.showCoordinates && activeFrame.transform.scaleMapLength(32) > 14,
-      mounted.assets.ready
+      cameraState.showCoordinates &&
+        activeFrame.transform.scaleMapLength(32) > 14,
+      mounted.assets.ready,
     ].join("|");
-    const terrainStats = terrainCache?.key === terrainKey
-      ? terrainCache.stats
-      : timeLayer(layerTimings, "terrain", () => {
-        const stats = drawPixiTerrainLayer(
-          mounted.terrainFill,
-          mounted.layers.terrain,
-          activeFrame as PixiSceneRenderFrame,
-          mounted.assets,
-          mounted.pools,
-          cameraState?.showCoordinates ?? false
-        );
-        terrainCache = { key: terrainKey, stats };
-        return stats;
-      });
+    const terrainStats =
+      terrainCache?.key === terrainKey
+        ? terrainCache.stats
+        : timeLayer(layerTimings, "terrain", () => {
+            const stats = drawPixiTerrainLayer(
+              mounted.terrainFill,
+              mounted.layers.terrain,
+              activeFrame as PixiSceneRenderFrame,
+              mounted.assets,
+              mounted.pools,
+              cameraState?.showCoordinates ?? false,
+            );
+            terrainCache = { key: terrainKey, stats };
+            return stats;
+          });
 
-    const boundaryKey = [activeFrame.transform.level, activeWindow?.key ?? visibleCellHash, versions.terrain, cameraState.featureVisibilityMode].join("|");
-    const boundaryCount = boundaryCache?.key === boundaryKey
-      ? boundaryCache.stats
-      : timeLayer(layerTimings, "boundaries", () => {
-        const stats = drawPixiBoundaryLayer(mounted.layers.boundary, activeFrame as PixiSceneRenderFrame);
-        boundaryCache = { key: boundaryKey, stats };
-        return stats;
-      });
+    const boundaryKey = [
+      activeFrame.transform.level,
+      activeWindow?.key ?? visibleCellHash,
+      versions.terrain,
+      cameraState.featureVisibilityMode,
+    ].join("|");
+    const boundaryCount =
+      boundaryCache?.key === boundaryKey
+        ? boundaryCache.stats
+        : timeLayer(layerTimings, "boundaries", () => {
+            const stats = drawPixiBoundaryLayer(
+              mounted.layers.boundary,
+              activeFrame as PixiSceneRenderFrame,
+            );
+            boundaryCache = { key: boundaryKey, stats };
+            return stats;
+          });
 
-    const riverKey = [activeFrame.transform.level, activeWindow?.key ?? visibleCellHash, versions.rivers, cameraState.featureVisibilityMode].join("|");
-    const riverCount = riverCache?.key === riverKey
-      ? riverCache.stats
-      : timeLayer(layerTimings, "rivers", () => {
-        const stats = drawPixiRiverLayer(mounted.layers.river, activeFrame as PixiSceneRenderFrame);
-        riverCache = { key: riverKey, stats };
-        return stats;
-      });
+    const riverKey = [
+      activeFrame.transform.level,
+      activeWindow?.key ?? visibleCellHash,
+      versions.rivers,
+      cameraState.featureVisibilityMode,
+    ].join("|");
+    const riverCount =
+      riverCache?.key === riverKey
+        ? riverCache.stats
+        : timeLayer(layerTimings, "rivers", () => {
+            const stats = drawPixiRiverLayer(
+              mounted.layers.river,
+              activeFrame as PixiSceneRenderFrame,
+            );
+            riverCache = { key: riverKey, stats };
+            return stats;
+          });
 
-    const factionKey = [activeFrame.transform.level, activeWindow?.key ?? visibleCellHash, versions.factions, cameraState.featureVisibilityMode].join("|");
+    const factionKey = [
+      activeFrame.transform.level,
+      activeWindow?.key ?? visibleCellHash,
+      versions.factions,
+      cameraState.featureVisibilityMode,
+    ].join("|");
     let factionCount = 0;
 
     if (cameraState.featureVisibilityMode === "player") {
@@ -377,28 +387,39 @@ export function createPixiMapRenderer(): PixiMapRenderer {
         });
       }
     } else {
-      factionCount = factionCache?.key === factionKey
-        ? factionCache.stats
-        : timeLayer(layerTimings, "factions", () => {
-          const stats = drawPixiFactionLayer(mounted.layers.faction, activeFrame as PixiSceneRenderFrame);
-          factionCache = { key: factionKey, stats };
-          return stats;
-        });
+      factionCount =
+        factionCache?.key === factionKey
+          ? factionCache.stats
+          : timeLayer(layerTimings, "factions", () => {
+              const stats = drawPixiFactionLayer(
+                mounted.layers.faction,
+                activeFrame as PixiSceneRenderFrame,
+              );
+              factionCache = { key: factionKey, stats };
+              return stats;
+            });
     }
 
-    const roadKey = [activeFrame.transform.level, activeWindow?.key ?? visibleCellHash, versions.roads, cameraState.featureVisibilityMode, Boolean(mounted.assets.roadTexture)].join("|");
-    const roadCount = roadCache?.key === roadKey
-      ? roadCache.stats
-      : timeLayer(layerTimings, "roads", () => {
-        const stats = drawPixiRoadLayer(
-          activeFrame as PixiSceneRenderFrame,
-          mounted.pools,
-          mounted.assets.roadTexture,
-          mounted.layers.road
-        );
-        roadCache = { key: roadKey, stats };
-        return stats;
-      });
+    const roadKey = [
+      activeFrame.transform.level,
+      activeWindow?.key ?? visibleCellHash,
+      versions.roads,
+      cameraState.featureVisibilityMode,
+      Boolean(mounted.assets.roadTexture),
+    ].join("|");
+    const roadCount =
+      roadCache?.key === roadKey
+        ? roadCache.stats
+        : timeLayer(layerTimings, "roads", () => {
+            const stats = drawPixiRoadLayer(
+              activeFrame as PixiSceneRenderFrame,
+              mounted.pools,
+              mounted.assets.roadTexture,
+              mounted.layers.road,
+            );
+            roadCache = { key: roadKey, stats };
+            return stats;
+          });
 
     const featureKey = [
       activeFrame.transform.level,
@@ -407,23 +428,27 @@ export function createPixiMapRenderer(): PixiMapRenderer {
       terrainKey,
       cameraState.featureVisibilityMode,
       cameraState.fogEditingActive,
-      mounted.assets.ready
+      mounted.assets.ready,
     ].join("|");
-    const featureStats = featureCache?.key === featureKey
-      ? featureCache.stats
-      : timeLayer(layerTimings, "features", () => {
-        const stats = drawPixiFeatureLayer(
-          activeFrame as PixiSceneRenderFrame,
-          mounted.assets,
-          mounted.pools,
-          mounted.layers.feature,
-          terrainStats.terrainOverriddenHexes,
-          cameraState?.featureVisibilityMode ?? "gm",
-          Boolean(cameraState?.fogEditingActive && cameraState.featureVisibilityMode === "gm")
-        );
-        featureCache = { key: featureKey, stats };
-        return stats;
-      });
+    const featureStats =
+      featureCache?.key === featureKey
+        ? featureCache.stats
+        : timeLayer(layerTimings, "features", () => {
+            const stats = drawPixiFeatureLayer(
+              activeFrame as PixiSceneRenderFrame,
+              mounted.assets,
+              mounted.pools,
+              mounted.layers.feature,
+              terrainStats.terrainOverriddenHexes,
+              cameraState?.featureVisibilityMode ?? "gm",
+              Boolean(
+                cameraState?.fogEditingActive &&
+                cameraState.featureVisibilityMode === "gm",
+              ),
+            );
+            featureCache = { key: featureKey, stats };
+            return stats;
+          });
 
     const fogVisibilityMode = cameraState.featureVisibilityMode;
     const fogEditingActive = cameraState.fogEditingActive;
@@ -433,39 +458,52 @@ export function createPixiMapRenderer(): PixiMapRenderer {
       versions.terrain,
       versions.features,
       fogVisibilityMode,
-      fogEditingActive
+      fogEditingActive,
     ].join("|");
     const fogCacheHit = fogCache?.key === fogKey;
     const fogCount = fogCacheHit
       ? (fogCache?.stats ?? 0)
       : timeLayer(layerTimings, "fog", () => {
-        const stats = drawPixiFogVisibilityLayer(
-          mounted.layers.fog,
-          activeFrame as PixiSceneRenderFrame,
-          fogVisibilityMode,
-          fogEditingActive
-        );
-        fogCache = { key: fogKey, stats };
-        return stats;
-      });
+          const stats = drawPixiFogVisibilityLayer(
+            mounted.layers.fog,
+            activeFrame as PixiSceneRenderFrame,
+            fogVisibilityMode,
+            fogEditingActive,
+          );
+          fogCache = { key: fogKey, stats };
+          return stats;
+        });
 
     const tokenKey = [
       activeFrame.transform.level,
       activeWindow?.key ?? visibleCellHash,
       cameraState.featureVisibilityMode,
-      mapTokens.map((token) => `${token.profileId}:${token.q},${token.r}:${token.color}`).sort().join(";")
+      mapTokens
+        .map(
+          (token) => `${token.profileId}:${token.q},${token.r}:${token.color}`,
+        )
+        .sort()
+        .join(";"),
     ].join("|");
-    const tokenCount = tokenCache?.key === tokenKey
-      ? tokenCache.stats
-      : timeLayer(layerTimings, "tokens", () => {
-        const stats = drawPixiTokenLayer(mounted.layers.token, activeFrame as PixiSceneRenderFrame, mapTokens);
-        tokenCache = { key: tokenKey, stats };
-        return stats;
-      });
+    const tokenCount =
+      tokenCache?.key === tokenKey
+        ? tokenCache.stats
+        : timeLayer(layerTimings, "tokens", () => {
+            const stats = drawPixiTokenLayer(
+              mounted.layers.token,
+              activeFrame as PixiSceneRenderFrame,
+              mapTokens,
+            );
+            tokenCache = { key: tokenKey, stats };
+            return stats;
+          });
 
     contentDirty = false;
 
-    const layerPatchMs = Object.values(layerTimings).reduce((total, value) => total + (value ?? 0), 0);
+    const layerPatchMs = Object.values(layerTimings).reduce(
+      (total, value) => total + (value ?? 0),
+      0,
+    );
     const stats: PixiRenderStats = {
       activeWindowMs,
       boundaries: boundaryCount,
@@ -484,10 +522,10 @@ export function createPixiMapRenderer(): PixiMapRenderer {
       roads: roadCount,
       rivers: riverCount,
       sceneUpdateMs,
-      spriteCount: countSprites(mounted.pools),
+      spriteCount: countPixiRendererSprites(mounted.pools),
       tiles: terrainStats.tiles,
       tokens: tokenCount,
-      visibleCellCount: activeFrame.visibleTerrainCells.length
+      visibleCellCount: activeFrame.visibleTerrainCells.length,
     };
 
     scheduleRender();
@@ -498,8 +536,8 @@ export function createPixiMapRenderer(): PixiMapRenderer {
     destroy: () => {
       destroyed = true;
       resetPixiBoundaryLayerInvalidation();
-      destroyPools(pools);
-      pools = createPools();
+      destroyPixiRendererPools(pools);
+      pools = createPixiRendererPools();
       invalidateLayerCaches();
       activeWindow = null;
       activeFrame = null;
@@ -530,7 +568,7 @@ export function createPixiMapRenderer(): PixiMapRenderer {
         height: viewport.height,
         preference: "webgl",
         resolution: viewport.dpr,
-        width: viewport.width
+        width: viewport.width,
       });
 
       if (destroyed) {
@@ -560,7 +598,7 @@ export function createPixiMapRenderer(): PixiMapRenderer {
       viewport = {
         dpr: devicePixelRatio,
         height,
-        width
+        width,
       };
 
       if (!app) {
@@ -585,15 +623,17 @@ export function createPixiMapRenderer(): PixiMapRenderer {
 
       const start = nowForRenderTiming();
       const layerTimings: PixiLayerTimings = {};
-      timeLayer(layerTimings, "preview", () => clearPixiPreviewLayer(mounted.previewGraphics, mounted.pools));
+      timeLayer(layerTimings, "preview", () =>
+        clearPixiPreviewLayer(mounted.previewGraphics, mounted.pools),
+      );
       scheduleRender();
 
       return {
         ...createEmptyStats(layerTimings),
         graphicsCount: 1,
         pixiUpdateMs: Number((nowForRenderTiming() - start).toFixed(2)),
-        spriteCount: countSprites(mounted.pools),
-        visibleCellCount: activeFrame?.visibleTerrainCells.length ?? 0
+        spriteCount: countPixiRendererSprites(mounted.pools),
+        visibleCellCount: activeFrame?.visibleTerrainCells.length ?? 0,
       };
     },
     setCamera: (camera) => {
@@ -601,12 +641,12 @@ export function createPixiMapRenderer(): PixiMapRenderer {
 
       if (
         previousCamera &&
-        (
-          previousCamera.level !== camera.level ||
-          previousCamera.featureVisibilityMode !== camera.featureVisibilityMode ||
+        (previousCamera.level !== camera.level ||
+          previousCamera.featureVisibilityMode !==
+            camera.featureVisibilityMode ||
           previousCamera.fogEditingActive !== camera.fogEditingActive ||
-          isCoordinateLayerVisible(previousCamera) !== isCoordinateLayerVisible(camera)
-        )
+          isCoordinateLayerVisible(previousCamera) !==
+            isCoordinateLayerVisible(camera))
       ) {
         contentDirty = true;
         activeWindow = null;
@@ -628,19 +668,21 @@ export function createPixiMapRenderer(): PixiMapRenderer {
       if (cameraState) {
         updateCameraTransform(mounted.layers, cameraState);
       }
-      timeLayer(layerTimings, "overlay", () => drawPixiOverlayLayer(
-        mounted.layers.overlay,
-        activeFrame as PixiSceneRenderFrame,
-        overlay
-      ));
+      timeLayer(layerTimings, "overlay", () =>
+        drawPixiOverlayLayer(
+          mounted.layers.overlay,
+          activeFrame as PixiSceneRenderFrame,
+          overlay,
+        ),
+      );
       scheduleRender();
 
       return {
         ...createEmptyStats(layerTimings),
         graphicsCount: 1,
         pixiUpdateMs: Number((nowForRenderTiming() - start).toFixed(2)),
-        spriteCount: countSprites(mounted.pools),
-        visibleCellCount: activeFrame.visibleTerrainCells.length
+        spriteCount: countPixiRendererSprites(mounted.pools),
+        visibleCellCount: activeFrame.visibleTerrainCells.length,
       };
     },
     setPreviewOperations: (operations) => {
@@ -655,23 +697,25 @@ export function createPixiMapRenderer(): PixiMapRenderer {
       if (cameraState) {
         updateCameraTransform(mounted.layers, cameraState);
       }
-      const count = timeLayer(layerTimings, "preview", () => drawPixiPreviewLayer(
-        mounted.previewGraphics,
-        mounted.layers.preview,
-        activeFrame as PixiSceneRenderFrame,
-        operations,
-        mounted.assets,
-        mounted.pools
-      ));
+      const count = timeLayer(layerTimings, "preview", () =>
+        drawPixiPreviewLayer(
+          mounted.previewGraphics,
+          mounted.layers.preview,
+          activeFrame as PixiSceneRenderFrame,
+          operations,
+          mounted.assets,
+          mounted.pools,
+        ),
+      );
       scheduleRender();
 
       return {
         ...createEmptyStats(layerTimings),
         graphicsCount: 1,
         pixiUpdateMs: Number((nowForRenderTiming() - start).toFixed(2)),
-        spriteCount: countSprites(mounted.pools),
+        spriteCount: countPixiRendererSprites(mounted.pools),
         tiles: count,
-        visibleCellCount: activeFrame.visibleTerrainCells.length
+        visibleCellCount: activeFrame.visibleTerrainCells.length,
       };
     },
     setTokens: (tokens) => {
@@ -685,14 +729,22 @@ export function createPixiMapRenderer(): PixiMapRenderer {
 
       const start = nowForRenderTiming();
       const layerTimings: PixiLayerTimings = {};
-      const count = timeLayer(layerTimings, "tokens", () => drawPixiTokenLayer(
-        mounted.layers.token,
-        activeFrame as PixiSceneRenderFrame,
-        mapTokens
-      ));
+      const count = timeLayer(layerTimings, "tokens", () =>
+        drawPixiTokenLayer(
+          mounted.layers.token,
+          activeFrame as PixiSceneRenderFrame,
+          mapTokens,
+        ),
+      );
       tokenCache = {
-        key: `${activeFrame.transform.level}|manual|${mapTokens.map((token) => `${token.profileId}:${token.q},${token.r}:${token.color}`).sort().join(";")}`,
-        stats: count
+        key: `${activeFrame.transform.level}|manual|${mapTokens
+          .map(
+            (token) =>
+              `${token.profileId}:${token.q},${token.r}:${token.color}`,
+          )
+          .sort()
+          .join(";")}`,
+        stats: count,
       };
       scheduleRender();
 
@@ -700,9 +752,9 @@ export function createPixiMapRenderer(): PixiMapRenderer {
         ...createEmptyStats(layerTimings),
         graphicsCount: 1,
         pixiUpdateMs: Number((nowForRenderTiming() - start).toFixed(2)),
-        spriteCount: countSprites(mounted.pools),
+        spriteCount: countPixiRendererSprites(mounted.pools),
         tokens: count,
-        visibleCellCount: activeFrame.visibleTerrainCells.length
+        visibleCellCount: activeFrame.visibleTerrainCells.length,
       };
     },
     setWorld: (world, patch) => {
@@ -720,8 +772,10 @@ export function createPixiMapRenderer(): PixiMapRenderer {
       activeWindow = null;
       invalidateLayerCaches();
       const stats = syncBaseLayers("world");
-      stats.sceneUpdateMs = Number(((stats.sceneUpdateMs ?? 0) + nowForRenderTiming() - start).toFixed(2));
+      stats.sceneUpdateMs = Number(
+        ((stats.sceneUpdateMs ?? 0) + nowForRenderTiming() - start).toFixed(2),
+      );
       return stats;
-    }
+    },
   };
 }

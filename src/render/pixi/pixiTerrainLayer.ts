@@ -17,6 +17,17 @@ const coordinateTextStyle = new TextStyle({
   fontSize: 10
 });
 
+function fitTextureSizePreservingAspect(texture: Texture, maxWidth: number, maxHeight: number): { height: number; width: number } {
+  const sourceWidth = Math.max(1, texture.width);
+  const sourceHeight = Math.max(1, texture.height);
+  const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight);
+
+  return {
+    height: sourceHeight * scale,
+    width: sourceWidth * scale
+  };
+}
+
 function textureForCell(cell: PixiSceneCellRecord, assets: PixiAssetCatalog): Texture | null {
   if (
     cell.feature &&
@@ -135,8 +146,9 @@ export function drawPixiTerrainLayer(
     sprite.texture = texture;
     sprite.anchor.set(0.5);
     sprite.position.set(cell.worldCenter.x, cell.worldCenter.y);
-    sprite.width = cell.boundsWidth * 0.92;
-    sprite.height = cell.boundsHeight * 0.92;
+    const fitted = fitTextureSizePreservingAspect(texture, cell.boundsWidth * 0.92, cell.boundsHeight * 0.92);
+    sprite.width = fitted.width;
+    sprite.height = fitted.height;
     sprite.rotation = 0;
     sprite.alpha = 1;
 

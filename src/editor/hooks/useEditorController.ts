@@ -6,34 +6,34 @@ import {
   applyEditGestureCells,
   createEditGesture,
   type EditGesture,
-  type EditGestureAction
+  type EditGestureAction,
 } from "@/editor/tools/editGesture";
 import {
   applyRiverGestureEdges,
   createRiverGesture,
-  type RiverGesture
+  type RiverGesture,
 } from "@/editor/tools/riverGesture";
 import {
   applyRoadGestureCells,
   createRoadGesture,
-  type RoadGesture
+  type RoadGesture,
 } from "@/editor/tools/roadGesture";
 import {
   applyFactionGestureCells,
   createFactionGesture,
-  type FactionGesture
+  type FactionGesture,
 } from "@/editor/tools/factionGesture";
 import {
   applyFogGestureCells,
   createFogGesture,
-  type FogGesture
+  type FogGesture,
 } from "@/editor/tools/fogGesture";
 import {
   createFeature,
   getFeatureAt,
   getFeatureById,
   type Feature,
-  type FeatureKind
+  type FeatureKind,
 } from "@/core/map/features";
 import {
   getFactionById,
@@ -41,7 +41,7 @@ import {
   getLevelMap,
   type RiverEdgeRef,
   type TerrainType,
-  type MapState
+  type MapState,
 } from "@/core/map/world";
 import { useCamera } from "./useCamera";
 import { hexKey, type Axial } from "@/core/geometry/hex";
@@ -49,21 +49,25 @@ import { SOURCE_LEVEL } from "@/core/map/mapRules";
 import { useMapSocketSync } from "@/app/sync/useMapSocketSync";
 import { useFactionControls } from "@/editor/hooks/useFactionControls";
 import { useEditorCanvasProps } from "@/editor/hooks/useEditorCanvasProps";
+import { useTokenControls } from "@/editor/hooks/useTokenControls";
 import { getInteractionLabel } from "@/editor/presentation/interactionLabels";
 import {
   commandAddFeature,
   commandRemoveFeature,
-  commandUpdateFeature
+  commandUpdateFeature,
 } from "@/core/map/commands/mapEditCommands";
 import {
   clearOperationHistory,
   createOperationHistoryState,
   recordOperationHistory,
   takeRedoOperations,
-  takeUndoOperations
+  takeUndoOperations,
 } from "@/core/map/history/mapOperationHistory";
-import type { MapOperation, MapTokenRecord } from "@/core/protocol";
-import type { MapOpenMode } from "@/core/auth/authTypes";
+import type { MapOperation } from "@/core/protocol";
+import type {
+  MapOpenMode,
+  WorkspaceTokenMemberRecord,
+} from "@/core/auth/authTypes";
 import type { ProfileRecord } from "@/core/profile/profileTypes";
 
 type UseEditorControllerOptions = {
@@ -71,6 +75,7 @@ type UseEditorControllerOptions = {
   mapId: string;
   profile: ProfileRecord;
   role: MapOpenMode;
+  tokenMembers: WorkspaceTokenMemberRecord[];
 };
 
 type ActiveEditorGesture =
@@ -80,40 +85,59 @@ type ActiveEditorGesture =
   | { kind: "road"; gesture: RoadGesture; worldBefore: MapState }
   | { kind: "fog"; gesture: FogGesture; worldBefore: MapState };
 
-export function useEditorController({ initialWorld, mapId, profile, role }: UseEditorControllerOptions) {
+export function useEditorController({
+  initialWorld,
+  mapId,
+  profile,
+  role,
+  tokenMembers: initialTokenMembers,
+}: UseEditorControllerOptions) {
   const maxLevels = editorConfig.maxLevels;
   const appRef = useRef<HTMLElement | null>(null);
-  const { changeLevelByDelta, changeVisualZoom, setCenter, view, visualZoom } = useCamera();
-  const [toolPreviewOperations, setToolPreviewOperations] = useState<MapOperation[]>([]);
+  const { changeLevelByDelta, changeVisualZoom, setCenter, view, visualZoom } =
+    useCamera();
+  const [toolPreviewOperations, setToolPreviewOperations] = useState<
+    MapOperation[]
+  >([]);
   const [activeMode, setActiveMode] = useState<EditorMode>("terrain");
   const [activeType, setActiveType] = useState<TerrainType>("plain");
-  const [activeFeatureKind, setActiveFeatureKind] = useState<FeatureKind>("city");
+  const [activeFeatureKind, setActiveFeatureKind] =
+    useState<FeatureKind>("city");
   const [activeFactionId, setActiveFactionId] = useState<string | null>(null);
-  const [activeTokenProfileId, setActiveTokenProfileId] = useState<string | null>(null);
-  const [activeTokenColor, setActiveTokenColor] = useState("#2f6fed");
-  const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
+  const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(
+    null,
+  );
   const [showCoordinates, setShowCoordinates] = useState(false);
   const [hoveredHex, setHoveredHex] = useState<Axial | null>(null);
-  const [playerTokenColor, setPlayerTokenColorState] = useState(() => {
-    try {
-      return window.localStorage.getItem("simplehex:token-color") ?? "#2f6fed";
-    } catch {
-      return "#2f6fed";
-    }
-  });
   const activeGestureRef = useRef<ActiveEditorGesture | null>(null);
   const operationHistoryRef = useRef(createOperationHistoryState());
   const featureIdRef = useRef(0);
-  const publishToolPreviewOperations = useCallback((operations: MapOperation[]) => {
-    if (operations.length === 0) {
+  const publishToolPreviewOperations = useCallback(
+    (operations: MapOperation[]) => {
+      if (operations.length === 0) {
+        return;
+      }
+
+      setToolPreviewOperations((previous) => [...previous, ...operations]);
+    },
+    [],
+  );
+  const clearToolPreview = useCallback(() => {
+    // Keep local paint preview stable while a pointer gesture is still active.
+    if (activeGestureRef.current) {
       return;
     }
 
-    setToolPreviewOperations((previous) => [...previous, ...operations]);
-  }, []);
-  const clearToolPreview = useCallback(() => {
     setToolPreviewOperations([]);
   }, []);
+  const clearUndoRedoHistory = useCallback(() => {
+    clearOperationHistory(operationHistoryRef.current);
+  }, []);
+  const handleAuthoritativeResync = useCallback(() => {
+    clearUndoRedoHistory();
+    activeGestureRef.current = null;
+    setToolPreviewOperations([]);
+  }, [clearUndoRedoHistory]);
   const {
     acknowledgeRenderWorldPatch,
     commitLocalOperations,
@@ -121,24 +145,50 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
     renderWorldPatch,
     sendTokenOperation,
     syncStatus,
-    visibleWorld
+    tokenMembers,
+    visibleWorld,
   } = useMapSocketSync({
     clearPreview: clearToolPreview,
     initialWorld,
     mapId,
-    profileId: profile.id
+    onAuthoritativeResync: handleAuthoritativeResync,
+    onRemoteOperationsApplied: clearUndoRedoHistory,
+    profileId: profile.id,
+    initialTokenMembers,
+  });
+  const {
+    activeTokenProfileId,
+    clearMapTokenSelection,
+    placePlayerToken,
+    placeSelectedMapToken,
+    playerTokenColor,
+    removeMapToken,
+    selectMapTokenMember,
+    setPlayerTokenColor,
+  } = useTokenControls({
+    canEdit: role === "gm",
+    mapId,
+    mapTokens,
+    profileId: profile.id,
+    role,
+    sendTokenOperation,
+    viewLevel: view.level,
+    visibleWorld,
   });
 
   const world = visibleWorld;
   const canEdit = role === "gm";
   const factions = useMemo(() => getFactions(world), [world]);
   const selectedFaction = useMemo(
-    () => activeFactionId ? getFactionById(world, activeFactionId) : null,
-    [activeFactionId, world]
+    () => (activeFactionId ? getFactionById(world, activeFactionId) : null),
+    [activeFactionId, world],
   );
   const selectedFeature = useMemo(
-    () => selectedFeatureId ? getFeatureById(world, view.level, selectedFeatureId) : null,
-    [selectedFeatureId, view.level, world]
+    () =>
+      selectedFeatureId
+        ? getFeatureById(world, view.level, selectedFeatureId)
+        : null,
+    [selectedFeatureId, view.level, world],
   );
   const submitLocalOperations = useCallback(
     (operations: MapOperation[], worldBefore: MapState = visibleWorld) => {
@@ -146,125 +196,15 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
         return;
       }
 
-      recordOperationHistory(operationHistoryRef.current, worldBefore, operations);
+      recordOperationHistory(
+        operationHistoryRef.current,
+        worldBefore,
+        operations,
+      );
       commitLocalOperations(operations);
     },
-    [commitLocalOperations, visibleWorld]
+    [commitLocalOperations, visibleWorld],
   );
-
-  const setPlayerTokenColor = useCallback((color: string) => {
-    setPlayerTokenColorState(color);
-
-    try {
-      window.localStorage.setItem("simplehex:token-color", color);
-    } catch {
-      // Ignore storage failures; the selected color still works for this session.
-    }
-
-    const existingToken = mapTokens.find((token) => token.profileId === profile.id);
-
-    if (existingToken) {
-      sendTokenOperation({
-        type: "set_map_token",
-        token: {
-          ...existingToken,
-          color
-        }
-      });
-    }
-  }, [mapTokens, profile.id, sendTokenOperation]);
-
-  const placePlayerToken = useCallback((axial: Axial) => {
-    if (role !== "player") {
-      return;
-    }
-
-    if (view.level !== SOURCE_LEVEL) {
-      return;
-    }
-
-    const cell = getLevelMap(visibleWorld, view.level).get(hexKey(axial));
-
-    if (!cell || cell.hidden) {
-      return;
-    }
-
-    sendTokenOperation({
-      type: "set_map_token",
-      token: {
-        profileId: profile.id,
-        q: axial.q,
-        r: axial.r,
-        color: playerTokenColor
-      }
-    });
-  }, [playerTokenColor, profile.id, role, sendTokenOperation, view.level, visibleWorld]);
-
-  const selectMapToken = useCallback((token: MapTokenRecord) => {
-    if (!canEdit) {
-      return;
-    }
-
-    if (activeTokenProfileId === token.profileId) {
-      setActiveTokenProfileId(null);
-      return;
-    }
-
-    setActiveTokenProfileId(token.profileId);
-    setActiveTokenColor(token.color);
-  }, [activeTokenProfileId, canEdit]);
-
-  const clearMapTokenSelection = useCallback(() => {
-    if (!canEdit) {
-      return;
-    }
-
-    setActiveTokenProfileId(null);
-  }, [canEdit]);
-
-  const placeSelectedMapToken = useCallback((axial: Axial) => {
-    if (!canEdit || !activeTokenProfileId) {
-      return;
-    }
-
-    if (view.level !== SOURCE_LEVEL) {
-      return;
-    }
-
-    const cell = getLevelMap(visibleWorld, view.level).get(hexKey(axial));
-
-    if (!cell || cell.hidden) {
-      return;
-    }
-
-    sendTokenOperation({
-      type: "set_map_token",
-      token: {
-        profileId: activeTokenProfileId,
-        q: axial.q,
-        r: axial.r,
-        color: activeTokenColor
-      }
-    });
-  }, [activeTokenColor, activeTokenProfileId, canEdit, sendTokenOperation, view.level, visibleWorld]);
-
-  const removeMapToken = useCallback((profileId: string) => {
-    if (!canEdit) {
-      return;
-    }
-
-    const token = mapTokens.find((candidate) => candidate.profileId === profileId);
-
-    if (token) {
-      setActiveTokenProfileId(token.profileId);
-      setActiveTokenColor(token.color);
-    }
-
-    sendTokenOperation({
-      type: "remove_map_token",
-      profileId
-    });
-  }, [canEdit, mapTokens, sendTokenOperation]);
 
   const undoLastOperationBatch = useCallback(() => {
     if (!canEdit) {
@@ -298,14 +238,13 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
     clearOperationHistory(operationHistoryRef.current);
     activeGestureRef.current = null;
     setToolPreviewOperations([]);
-    setActiveTokenProfileId(null);
-    setActiveTokenColor("#2f6fed");
   }, [mapId]);
 
   const applyTerrainGestureCells = useCallback(
     (axials: Axial[]) => {
       const activeGesture = activeGestureRef.current;
-      const gesture = activeGesture?.kind === "terrain" ? activeGesture.gesture : null;
+      const gesture =
+        activeGesture?.kind === "terrain" ? activeGesture.gesture : null;
 
       if (!gesture) {
         return;
@@ -316,10 +255,12 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
       const nextWorld = applyEditGestureCells(gesture, axials);
 
       if (nextWorld !== beforeWorld) {
-        publishToolPreviewOperations(gesture.operations.slice(operationStartIndex));
+        publishToolPreviewOperations(
+          gesture.operations.slice(operationStartIndex),
+        );
       }
     },
-    [publishToolPreviewOperations]
+    [publishToolPreviewOperations],
   );
 
   const applyActiveGestureCells = useCallback(
@@ -334,10 +275,15 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
       if (activeGesture?.kind === "faction") {
         const beforeWorld = activeGesture.gesture.world;
         const operationStartIndex = activeGesture.gesture.operations.length;
-        const nextWorld = applyFactionGestureCells(activeGesture.gesture, axials);
+        const nextWorld = applyFactionGestureCells(
+          activeGesture.gesture,
+          axials,
+        );
 
         if (nextWorld !== beforeWorld) {
-          publishToolPreviewOperations(activeGesture.gesture.operations.slice(operationStartIndex));
+          publishToolPreviewOperations(
+            activeGesture.gesture.operations.slice(operationStartIndex),
+          );
         }
         return;
       }
@@ -348,7 +294,9 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
         const nextWorld = applyRoadGestureCells(activeGesture.gesture, axials);
 
         if (nextWorld !== beforeWorld) {
-          publishToolPreviewOperations(activeGesture.gesture.operations.slice(operationStartIndex));
+          publishToolPreviewOperations(
+            activeGesture.gesture.operations.slice(operationStartIndex),
+          );
         }
         return;
       }
@@ -359,17 +307,20 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
         const nextWorld = applyFogGestureCells(activeGesture.gesture, axials);
 
         if (nextWorld !== beforeWorld) {
-          publishToolPreviewOperations(activeGesture.gesture.operations.slice(operationStartIndex));
+          publishToolPreviewOperations(
+            activeGesture.gesture.operations.slice(operationStartIndex),
+          );
         }
       }
     },
-    [applyTerrainGestureCells, publishToolPreviewOperations]
+    [applyTerrainGestureCells, publishToolPreviewOperations],
   );
 
   const applyActiveRiverGestureEdges = useCallback(
     (edges: RiverEdgeRef[]) => {
       const activeGesture = activeGestureRef.current;
-      const gesture = activeGesture?.kind === "river" ? activeGesture.gesture : null;
+      const gesture =
+        activeGesture?.kind === "river" ? activeGesture.gesture : null;
 
       if (!gesture) {
         return;
@@ -380,10 +331,12 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
       const nextWorld = applyRiverGestureEdges(gesture, edges);
 
       if (nextWorld !== beforeWorld) {
-        publishToolPreviewOperations(gesture.operations.slice(operationStartIndex));
+        publishToolPreviewOperations(
+          gesture.operations.slice(operationStartIndex),
+        );
       }
     },
-    [publishToolPreviewOperations]
+    [publishToolPreviewOperations],
   );
 
   const startEditGesture = useCallback(
@@ -419,7 +372,7 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
           const result = commandAddFeature(
             visibleWorld,
             view.level,
-            createFeature(createFeatureId(), activeFeatureKind, hexKey(axial))
+            createFeature(createFeatureId(), activeFeatureKind, hexKey(axial)),
           );
 
           if (result.operations.length > 0) {
@@ -440,7 +393,9 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
         }
 
         const result = commandRemoveFeature(visibleWorld, existingFeature.id);
-        setSelectedFeatureId(existingFeature.id === selectedFeatureId ? null : selectedFeatureId);
+        setSelectedFeatureId(
+          existingFeature.id === selectedFeatureId ? null : selectedFeatureId,
+        );
 
         if (result.operations.length > 0) {
           submitLocalOperations(result.operations);
@@ -463,9 +418,9 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
           gesture: createRoadGesture(
             action === "paint" ? "add" : "remove",
             visibleWorld,
-            view.level
+            view.level,
           ),
-          worldBefore: visibleWorld
+          worldBefore: visibleWorld,
         };
         applyActiveGestureCells(axials);
         return;
@@ -478,9 +433,9 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
             action === "paint" ? "assign" : "clear",
             visibleWorld,
             view.level,
-            activeFactionId
+            activeFactionId,
           ),
-          worldBefore: visibleWorld
+          worldBefore: visibleWorld,
         };
         applyActiveGestureCells(axials);
         return;
@@ -489,8 +444,12 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
       if (activeMode === "fog") {
         activeGestureRef.current = {
           kind: "fog",
-          gesture: createFogGesture(action === "paint" ? "paint" : "erase", visibleWorld, view.level),
-          worldBefore: visibleWorld
+          gesture: createFogGesture(
+            action === "paint" ? "paint" : "erase",
+            visibleWorld,
+            view.level,
+          ),
+          worldBefore: visibleWorld,
         };
         applyActiveGestureCells(axials);
         return;
@@ -502,9 +461,9 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
           action,
           visibleWorld,
           view.level,
-          activeType
+          activeType,
         ),
-        worldBefore: visibleWorld
+        worldBefore: visibleWorld,
       };
       applyActiveGestureCells(axials);
     },
@@ -519,8 +478,8 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
       canEdit,
       selectedFeatureId,
       submitLocalOperations,
-      view.level
-    ]
+      view.level,
+    ],
   );
 
   const startRiverGesture = useCallback(
@@ -540,13 +499,13 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
         gesture: createRiverGesture(
           action === "paint" ? "add" : "remove",
           visibleWorld,
-          view.level
+          view.level,
         ),
-        worldBefore: visibleWorld
+        worldBefore: visibleWorld,
       };
       applyActiveRiverGestureEdges(edges);
     },
-    [applyActiveRiverGestureEdges, canEdit, visibleWorld, view.level]
+    [applyActiveRiverGestureEdges, canEdit, visibleWorld, view.level],
   );
 
   const finishEditGesture = useCallback(() => {
@@ -561,54 +520,83 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
     }
   }, [submitLocalOperations]);
 
-  const chooseFeatureKind = useCallback((type: FeatureKind) => {
-    if (!canEdit) {
-      return;
-    }
+  const chooseFeatureKind = useCallback(
+    (type: FeatureKind) => {
+      if (!canEdit) {
+        return;
+      }
 
-    setActiveFeatureKind(type);
-    setActiveMode("feature");
-  }, [canEdit]);
+      setActiveFeatureKind(type);
+      setActiveMode("feature");
+    },
+    [canEdit],
+  );
 
-  const changeMode = useCallback((mode: EditorMode) => {
-    if (!canEdit) {
-      return;
-    }
+  const changeMode = useCallback(
+    (mode: EditorMode) => {
+      if (!canEdit) {
+        return;
+      }
 
-    setActiveMode(mode);
+      setActiveMode(mode);
 
-    if (mode !== "feature") {
-      setSelectedFeatureId(null);
-    }
-  }, [canEdit]);
+      if (mode !== "feature") {
+        setSelectedFeatureId(null);
+      }
+    },
+    [canEdit],
+  );
 
-  const changeToolByDelta = useCallback((delta: 1 | -1) => {
-    if (!canEdit) {
-      return;
-    }
+  const changeToolByDelta = useCallback(
+    (delta: 1 | -1) => {
+      if (!canEdit) {
+        return;
+      }
 
-    const currentIndex = editorModeOrder.indexOf(activeMode);
-    const nextIndex = (currentIndex + delta + editorModeOrder.length) % editorModeOrder.length;
-    changeMode(editorModeOrder[nextIndex]);
-  }, [activeMode, canEdit, changeMode]);
+      const currentIndex = editorModeOrder.indexOf(activeMode);
+      const nextIndex =
+        (currentIndex + delta + editorModeOrder.length) %
+        editorModeOrder.length;
+      changeMode(editorModeOrder[nextIndex]);
+    },
+    [activeMode, canEdit, changeMode],
+  );
 
   const clearSelectedFeature = useCallback(() => {
     setSelectedFeatureId(null);
   }, []);
 
   const updateSelectedFeatureLabels = useCallback(
-    (updates: Partial<Pick<Feature, "gmLabel" | "hidden" | "overrideTerrainTile" | "playerLabel">>) => {
+    (
+      updates: Partial<
+        Pick<
+          Feature,
+          "gmLabel" | "hidden" | "overrideTerrainTile" | "playerLabel"
+        >
+      >,
+    ) => {
       if (!canEdit || !selectedFeatureId) {
         return;
       }
 
-      const result = commandUpdateFeature(visibleWorld, view.level, selectedFeatureId, updates);
+      const result = commandUpdateFeature(
+        visibleWorld,
+        view.level,
+        selectedFeatureId,
+        updates,
+      );
 
       if (result.operations.length > 0) {
         submitLocalOperations(result.operations);
       }
     },
-    [canEdit, visibleWorld, selectedFeatureId, submitLocalOperations, view.level]
+    [
+      canEdit,
+      visibleWorld,
+      selectedFeatureId,
+      submitLocalOperations,
+      view.level,
+    ],
   );
 
   useEffect(() => {
@@ -627,20 +615,16 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
     setShowCoordinates((previous) => !previous);
   }, []);
 
-  const {
-    createFaction,
-    deleteFaction,
-    recolorFaction,
-    renameFaction
-  } = useFactionControls({
-    activeFactionId,
-    canEdit,
-    commitLocalOperations: submitLocalOperations,
-    factionCount: factions.length,
-    presentWorld: visibleWorld,
-    setActiveFactionId,
-    setActiveMode
-  });
+  const { createFaction, deleteFaction, recolorFaction, renameFaction } =
+    useFactionControls({
+      activeFactionId,
+      canEdit,
+      commitLocalOperations: submitLocalOperations,
+      factionCount: factions.length,
+      presentWorld: visibleWorld,
+      setActiveFactionId,
+      setActiveMode,
+    });
 
   useKeyboardNavigation({
     center: view.center,
@@ -652,20 +636,34 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
     onLevelStep: changeLevelByDelta,
     onRedo: redoLastOperationBatch,
     onToggleCoordinates: toggleCoordinates,
-    onUndo: undoLastOperationBatch
+    onUndo: undoLastOperationBatch,
   });
 
-  const interactionLabel = useMemo(() => getInteractionLabel({
-    activeFactionId,
-    activeFeatureKind,
-    activeMode,
-    activeTokenProfileId,
-    activeType,
-    canEdit,
-    level: view.level,
-    selectedFaction
-  }), [activeFactionId, activeFeatureKind, activeMode, activeTokenProfileId, activeType, canEdit, selectedFaction, view.level]);
-  const featureVisibilityMode: "gm" | "player" = role === "player" ? "player" : "gm";
+  const interactionLabel = useMemo(
+    () =>
+      getInteractionLabel({
+        activeFactionId,
+        activeFeatureKind,
+        activeMode,
+        activeTokenProfileId,
+        activeType,
+        canEdit,
+        level: view.level,
+        selectedFaction,
+      }),
+    [
+      activeFactionId,
+      activeFeatureKind,
+      activeMode,
+      activeTokenProfileId,
+      activeType,
+      canEdit,
+      selectedFaction,
+      view.level,
+    ],
+  );
+  const featureVisibilityMode: "gm" | "player" =
+    role === "player" ? "player" : "gm";
 
   const canvasProps = useEditorCanvasProps({
     activeMode,
@@ -695,7 +693,7 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
     startEditGesture,
     startRiverGesture,
     visualZoom,
-    world
+    world,
   });
 
   return {
@@ -707,6 +705,7 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
     factions,
     hoveredHex,
     mapTokens,
+    tokenMembers,
     playerTokenColor,
     selectedFeature,
     appRef,
@@ -721,7 +720,7 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
     recolorFaction,
     selectFaction: setActiveFactionId,
     clearMapTokenSelection,
-    selectMapToken,
+    selectMapTokenMember,
     setPlayerTokenColor,
     setActiveMode: changeMode,
     setActiveType,
@@ -730,7 +729,6 @@ export function useEditorController({ initialWorld, mapId, profile, role }: UseE
     updateSelectedFeatureLabels,
     undoLastOperationBatch,
     view,
-    visualZoom
+    visualZoom,
   };
 }
-

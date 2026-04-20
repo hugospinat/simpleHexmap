@@ -4,6 +4,7 @@ import type { PixiStageLayers } from "./pixiTypes";
 
 export function createPixiStage(app: Application): PixiStageLayers {
   const camera = new Container();
+  camera.sortableChildren = true;
   const background = new Graphics();
   const terrain = new Container();
   const boundary = new Graphics();
@@ -15,6 +16,17 @@ export function createPixiStage(app: Application): PixiStageLayers {
   const preview = new Container();
   const overlay = new Graphics();
   const token = new Graphics();
+
+  terrain.zIndex = 10;
+  fog.zIndex = 20;
+  boundary.zIndex = 30;
+  river.zIndex = 40;
+  road.zIndex = 45;
+  faction.zIndex = 50;
+  feature.zIndex = 60;
+  preview.zIndex = 70;
+  overlay.zIndex = 80;
+  token.zIndex = 90;
 
   app.stage.addChild(background);
   app.stage.addChild(camera);

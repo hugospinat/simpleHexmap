@@ -1,671 +1,420 @@
-# Hexmap Editor
+# hexmap_editor
 
-Hexmap Editor est une application React/TypeScript pour créer, éditer, sauvegarder et synchroniser des cartes hexagonales. Le projet contient un client Vite/React, un serveur Node/WebSocket, un modèle de carte pur, une couche de protocole partagée, un renderer PixiJS et des outils d'édition interactifs.
+Technical architecture guide for the repository. This file is the source of truth for system structure, subsystem boundaries, runtime workflow, and technical decisions. Repository coding discipline belongs in `.github/copilot-instructions.md`; architecture belongs here.
 
-Ce README sert de guide d'entrée dans la codebase. Il explique les dossiers, les responsabilités, les flux principaux et les règles d'architecture à respecter.
+## Documentation contract
 
-## Démarrage rapide
+- Update this README whenever architecture, runtime setup, persistence workflow, security boundaries, or major refactor direction changes.
+- Keep `.github/copilot-instructions.md` architecture-independent. It should point here for system-specific guidance.
+- If this README and the code disagree, treat that as documentation drift and fix it in the same change.
 
-Installer les dépendances:
+## Product summary
+
+`hexmap_editor` is a collaborative hex-map editor for tabletop and strategy workflows.
+
+Core capabilities:
+
+- terrain editing
+- fog of war
+- features and labels
+- roads and rivers
+- factions and territories
+- token placement and per-member token color
+- GM and player visibility modes
+- authoritative live sync over WebSocket
+- persisted maps stored in PostgreSQL through Drizzle
+
+## Architectural goals
+
+The repository is moving toward a strict domain-first design.
+
+Non-negotiable goals:
+
+- authoritative server sequencing
+- strict ordered operation application
+- no GM data leakage into player payloads
+- explicit boundaries between domain, transport, persistence, UI, and rendering
+- command-first editor writes
+- generated SQL migrations as the persistence workflow
+- derived render views instead of implicit business logic in Pixi layers
+
+## System invariants
+
+- `MapState` is the runtime editing model, not the persisted document.
+- `SavedMapContent` is the persisted document shape, not the editor state.
+- `MapOperation` is the mutation and transport contract, not a UI command.
+- the server owns authoritative operation sequence numbers.
+- remote operations must never be re-emitted as local intent.
+- player-visible snapshots must be filtered on the server before transport.
+- hidden tiles, features, roads, rivers, faction overlays, and tokens must not leak through player payloads.
+- large files must be decomposed before they regrow into mixed-responsibility modules.
+
+## Core representations
+
+The application intentionally keeps separate representations for the same map.
+
+- `MapState`: pure runtime world used by editor logic and rendering
+- `SavedMapContent`: serialized document used for import/export and SQL materialization
+- `MapOperation`: semantic mutation contract used across client, server, sync, history, and persistence
+
+These representations must not be collapsed into one another.
+
+## Operation model
+
+The live protocol now uses semantic operations instead of older storage-shaped diffs.
+
+Canonical operation families:
+
+- terrain: `paint_cells`, `set_tiles`, `set_cells_hidden`
+- factions: `assign_faction_cells`, `set_faction_territories`, `add_faction`, `update_faction`, `remove_faction`
+- features: `add_feature`, `set_feature_hidden`, `update_feature`, `remove_feature`
+- rivers: `add_river_data`, `remove_river_data`
+- roads: `set_road_edges`
+- map metadata: `rename_map`
+- tokens: `set_map_token`, `remove_map_token`, `set_map_token_color`
+
+Current design choices:
+
+- editor commands emit semantic operations
+- `MapState` reducers and `SavedMapContent` reducers both apply the same operation contract
+- history inverts semantic batches instead of snapshot diffs
+- sync sends one `map_operation` message per operation; the client no longer emits `map_operation_batch`
+
+## End-to-end flow
+
+Normal GM edit flow:
+
+```text
+User gesture
+-> editor tool / gesture state
+-> domain command
+-> MapOperation[]
+-> local optimistic session state
+-> WebSocket send
+-> server validation and authorization
+-> transactional persistence
+-> authoritative ordered broadcast
+-> client authoritative apply or resync snapshot
+-> Pixi render from derived frame data
+```
+
+Normal player view flow:
+
+```text
+HTTP or WebSocket request
+-> server role lookup
+-> server visibility filtering
+-> filtered snapshot payload
+-> client session replace
+-> render only visible terrain-derived content
+```
+
+## Repository structure
+
+```text
+src/
+  app/
+    api/          browser HTTP request helpers and response parsing
+    document/     browser import/export and runtime-document conversion
+    sync/         pure sync session state plus socket orchestration
+  core/
+    auth/         shared auth and role types
+    document/     persisted document codecs and types
+    geometry/     pure hex math and edge detection
+    map/          world model, commands, history, derived views, reducers
+    protocol/     semantic map and token operation contracts
+  editor/
+    context/      editor-scoped React context
+    hooks/        editor orchestration hooks
+    presentation/ labels and editor-facing text helpers
+    tools/        gesture state and edit-intent builders
+    tokens/       token hit-testing and token UI helpers
+  render/
+    pixi/         Pixi stage, scene cache, render window, and layer drawing
+  ui/
+    components/   presentation components
+
+server/
+  src/
+    db/           Drizzle client, schema, and migrations
+    repositories/ storage mapping and visibility filtering
+    routes/       thin HTTP route handlers
+    services/     auth and higher-level server logic
+    validation/   HTTP and WebSocket message schemas
+    wsRoutes.ts   WebSocket entrypoint
+    index.ts      server bootstrap
+
+scripts/
+  authenticated smoke scripts for WebSocket and sync behavior
+```
+
+## Dependency direction
+
+Dependency flow must stay explicit.
+
+```text
+ui -> editor/app/render -> core
+server -> core
+```
+
+Rules:
+
+- `src/core` must stay pure and independent from React, DOM, Pixi, HTTP, WebSocket, and database APIs.
+- `src/editor` may orchestrate React state and domain calls, but should not become the domain itself.
+- `src/render` must consume derived world data, not own business rules.
+- `server/src` may orchestrate validation, auth, persistence, and broadcast, but should not duplicate shared domain rules already defined in `src/core`.
+
+## Current subsystem responsibilities
+
+### Core
+
+`src/core` contains pure logic and shared contracts.
+
+Key areas:
+
+- `geometry`: axial coordinates, hex keys, line walking, pointer math helpers
+- `document`: persisted document types and codec normalization
+- `map`: world model, commands, history, level views, and reducers
+- `protocol`: semantic operation types, validation, coalescing, content-level application, token operations
+
+Current design choices:
+
+- semantic operations are preferred over low-level storage-shaped mutations
+- operation appliers exist both for `MapState` and `SavedMapContent`
+- history inverts semantic batches, not full snapshots
+
+### App
+
+`src/app` owns browser integration boundaries.
+
+Key areas:
+
+- `api`: authenticated HTTP contracts and client-side response parsing
+- `document`: browser import/export and runtime-document conversion
+- `sync`: pure sync session state plus WebSocket orchestration
+
+Current design choices:
+
+- `mapSyncSession.ts` is the pure sync session model
+- `useMapSocketSync.ts` is an integration hook that now manages authoritative resync, render patch publication, and token member sync
+- workspace and map CRUD flows live in `workspaceApi.ts`; map wire-message types remain shared with sync
+
+### Editor
+
+`src/editor` owns interaction orchestration.
+
+Key areas:
+
+- tool gestures build user intent incrementally
+- hooks coordinate camera, keyboard, pointer lifecycle, sync integration, selection state, and preview state
+- editor writes are command-first and operation-first, not persistence-first
+
+Current design choices:
+
+- token behavior is isolated in `useTokenControls.ts`
+- `useEditorController.ts` remains an orchestration hotspot and should continue shrinking
+- `useMapInteraction.ts` remains a pointer-routing hotspot and should continue moving toward smaller intent and gesture modules
+
+### Render
+
+`src/render/pixi` owns Pixi-specific projection and layer drawing.
+
+Render pipeline:
+
+```text
+MapState
+-> MapLevelView / scene derivation
+-> PixiMapSceneCache
+-> PixiActiveRenderWindow
+-> PixiSceneRenderFrame
+-> layer-specific draw functions
+```
+
+Current design choices:
+
+- scene data is cached by level
+- the active render window limits the rendered working set
+- render frame derivation is separate from layer drawing
+- renderer resource management is split out of `pixiMapRenderer.ts`
+
+### Server
+
+`server/src` owns transport, authorization, persistence, and authoritative broadcast.
+
+Current design choices:
+
+- HTTP routes are thin and live under `server/src/routes`
+- auth is cookie/session-based
+- map payload visibility filtering is applied at the server boundary
+- GM WebSocket clients receive ordered operation messages
+- player WebSocket clients receive filtered `sync_snapshot` refreshes instead of raw hidden-capable operations
+
+## HTTP and WebSocket contract
+
+### HTTP
+
+Authentication endpoints:
+
+- `GET /api/auth/me`
+- `POST /api/auth/signup`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+
+Workspace endpoints:
+
+- `GET /api/workspaces`
+- `POST /api/workspaces`
+- `GET /api/workspaces/:workspaceId`
+- `PATCH /api/workspaces/:workspaceId`
+- `DELETE /api/workspaces/:workspaceId`
+- `GET /api/workspaces/:workspaceId/members`
+- `POST /api/workspaces/:workspaceId/members`
+- `PATCH /api/workspaces/:workspaceId/members/:userId`
+- `DELETE /api/workspaces/:workspaceId/members/:userId`
+- `GET /api/workspaces/:workspaceId/maps`
+- `POST /api/workspaces/:workspaceId/maps`
+- `POST /api/workspaces/:workspaceId/maps/import`
+
+Map endpoints:
+
+- `GET /api/maps/:mapId?role=gm|player`
+- `PATCH /api/maps/:mapId`
+- `DELETE /api/maps/:mapId`
+- `GET /api/maps/:mapId/export`
+
+### WebSocket
+
+Socket endpoint:
+
+- `GET /api/maps/:mapId/ws`
+
+Socket lifecycle:
+
+1. client connects with the auth session cookie
+2. server sends `sync_snapshot`
+3. client sends `map_operation` or `map_token_update`
+4. server validates, authorizes, persists, and sequences
+5. GM clients receive `map_operation_applied` and `map_token_updated`
+6. player clients receive filtered snapshot refreshes when authoritative state changes
+
+Important messages:
+
+- `sync_snapshot`
+- `map_operation`
+- `map_operation_applied`
+- `map_token_update`
+- `map_token_updated`
+- `map_token_error`
+- `sync_error`
+
+Deprecated runtime assumptions that no longer apply:
+
+- no unauthenticated map listing for smoke scripts
+- no client-emitted `map_operation_batch`
+- no server-emitted `map_operation_batch_applied`
+
+## Security and visibility model
+
+- auth is cookie/session-based
+- every HTTP and WebSocket request is role-checked on the server
+- player snapshots are visibility-filtered before serialization
+- GM-only labels and hidden content must not be hidden only by rendering tricks
+- player token, terrain, feature, road, river, and faction visibility all derive from filtered server payloads
+
+Relevant server boundaries:
+
+- `server/src/repositories/mapVisibility.ts`
+- `server/src/syncSnapshotService.ts`
+- `server/src/sessionDelivery.ts`
+
+## Persistence model
+
+Persistence is PostgreSQL-first with generated Drizzle migrations.
+
+Canonical workflow:
+
+```bash
+npm run db:generate
+npm run db:migrate
+```
+
+Rules:
+
+- edit `server/src/db/schema.ts`
+- generate SQL migrations into `server/src/db/migrations/`
+- apply them with Drizzle Kit
+- let server startup run the Drizzle runtime migrator against the generated migration folder
+- do not use hand-maintained runtime SQL arrays as the canonical migration path
+- do not treat `drizzle-kit push` as the repository workflow
+
+## Local development
+
+Install dependencies:
 
 ```bash
 npm install
 ```
 
-Lancer le client Vite:
+Start the development database:
 
 ```bash
-npm run dev
+docker compose -f docker-compose.dev.yml up -d postgres
 ```
 
-Lancer le serveur HTTP/WebSocket:
+Default database URL:
+
+```text
+postgres://simplehex:simplehex@localhost:5432/simplehex
+```
+
+If startup fails with `password authentication failed for user "simplehex"`, the most common cause is that `localhost:5432` is owned by some other PostgreSQL instance instead of the repository container.
+
+Start the backend:
 
 ```bash
-npm run server
+npm.cmd run server
 ```
 
-Commandes utiles:
+Start the frontend:
 
 ```bash
-npm run typecheck
-npm test
-npm run build:server
-npm run build
+npm.cmd run dev
 ```
 
-Le serveur écoute par défaut sur `http://localhost:8787`. Le serveur Vite proxifie `/api` vers ce serveur dans `vite.config.ts`.
+## Smoke scripts
 
-## Vue d'ensemble
+The scripts under `scripts/` authenticate, provision an isolated workspace and map, run their checks, and delete their temporary workspace on exit.
 
-L'application manipule trois représentations différentes d'une carte. Elles ne doivent pas être mélangées:
+Available scripts:
 
-- `MapState`: état runtime pur de la carte, utilisé par l'éditeur et le rendu.
-- `SavedMapContent`: format JSON persistant, utilisé pour les fichiers et le stockage serveur.
-- `MapOperation`: mutation transportable, utilisée pour la synchronisation client/serveur.
+- `scripts/ws-sequence-smoke.mjs`
+- `scripts/ws-multi-client-check.mjs`
+- `scripts/ws-stress.mjs`
 
-Le flux normal est:
+These scripts assume the backend is already running.
 
-```text
-Action utilisateur
-  -> outil / geste editor
-  -> MapEditCommand
-  -> MapOperation[]
-  -> application locale via MapState reducer
-  -> envoi WebSocket
-  -> serveur applique sur SavedMapContent
-  -> serveur diffuse les operations ordonnees
-  -> client applique les operations recues au MapState autoritatif
-  -> rendu PixiJS depuis le cache de scene et la fenetre active
-```
+## Verification
 
-Le principe le plus important: les intentions d'édition, les mutations réseau, l'état runtime, le format disque et la projection de rendu sont des concepts séparés.
-
-## Organisation des dossiers
-
-```text
-src/
-  app/
-    api/          Client HTTP et types API.
-    document/     Import/export, codecs JSON, conversion MapState <-> SavedMapContent.
-    sync/         Session de synchronisation client et hook WebSocket.
-    App.tsx       Orchestration menu/editor côté client.
-    EditorScreen.tsx
-
-  core/
-    geometry/     Math hexagonale pure et détection d'arêtes.
-    map/          Modèle de carte pur, règles, commandes, historique, vues logiques.
-    protocol/     Types et validateurs partagés client/serveur pour les operations.
-
-  editor/
-    context/      Context React lié à l'éditeur.
-    hooks/        Contrôleurs React: caméra, clavier, interactions, sync wiring.
-    tools/        Gestes d'édition: terrain, routes, rivières, factions, brouillard.
-    presentation/ Libellés et texte d'interaction.
-
-  render/
-    Rendu PixiJS, assets visuels, previews canvas de palettes et primitives de dessin.
-
-  assets/
-    Registres d'assets terrain/features/routes.
-
-  ui/
-    Composants React de présentation.
-
-server/
-  src/
-    Serveur HTTP, WebSocket, stockage disque, sessions et application des operations.
-
-scripts/
-  Scripts de smoke test WebSocket/multiclient.
-```
-
-## Règles d'architecture
-
-La direction des dépendances est volontaire:
-
-```text
-ui/editor/app/render/server -> core
-```
-
-`core` ne doit pas importer `app`, `editor`, `render`, `ui` ou `assets`. Cette règle est testée par `src/core/architectureBoundary.test.ts`.
-
-Les responsabilités attendues:
-
-- `core`: logique pure, déterministe, testable sans navigateur.
-- `app`: intégration client avec HTTP, WebSocket, fichiers et documents.
-- `editor`: état React et interactions utilisateur.
-- `render`: projection visuelle, scene PixiJS, assets et dessin des previews.
-- `ui`: composants sans logique métier profonde.
-- `server`: persistance disque, sessions, HTTP, WebSocket et diffusion.
-
-Si une fonction a besoin du DOM, d'un canvas, de `window`, de `fetch`, de `WebSocket` ou de React, elle ne doit pas vivre dans `core`.
-
-## Core: géométrie
-
-Chemin principal: `src/core/geometry`.
-
-`hex.ts` contient les primitives mathématiques:
-
-- `Axial`: coordonnées hexagonales `{ q, r }`.
-- `HexId`: string brandée pour les clés `"q,r"`.
-- `hexKey` et `parseHexKey`: conversion entre coordonnées et identifiants.
-- transformations axial/screen.
-- voisins, lignes hexagonales, clusters enfants/parents.
-
-`edgeDetection.ts` contient la détection d'arêtes de rivière depuis le pointeur. Elle reste dans `core` parce qu'elle est pure: elle prend des coordonnées, un viewport et un zoom, puis retourne des références d'arêtes. Elle ne manipule ni DOM ni canvas directement.
-
-## Core: modèle de carte
-
-Chemin principal: `src/core/map`.
-
-Types importants:
-
-- `MapState`: état runtime complet de la carte.
-- `HexCell`: cellule terrain source.
-- `Feature`: ville, village, fort, ruine, marqueur, label, etc.
-- `Faction`: faction avec nom et couleur.
-- `RiverEdgeRef`: référence à une arête de rivière.
-- `RoadEdgeIndex`: index d'arête de route.
-
-Le modèle stocke surtout le niveau source `SOURCE_LEVEL`, actuellement défini dans `mapRules.ts`. Les niveaux plus hauts sont dérivés à la lecture.
-
-Fichiers principaux:
-
-- `worldTypes.ts`: types structurels.
-- `worldState.ts`: ajout/suppression de tuiles et propagation terrain.
-- `features.ts`: règles des features et dérivation par niveau.
-- `factions.ts`: factions et territoires.
-- `roads.ts`: réseau routier.
-- `rivers.ts`: arêtes de rivière.
-- `mapRules.ts`: constantes de niveaux.
-- `world.ts`: barrel public de la couche map.
-
-## Core: vues logiques
-
-Chemin principal: `src/core/map/mapLevelView.ts`.
-
-`MapLevelView` est la projection logique d'un `MapState` pour un niveau donné. Elle pré-calcule:
-
-- terrain visible à ce niveau,
-- features à ce niveau,
-- overlays faction,
-- routes dérivées,
-- rivières dérivées.
-
-Le rendu et l'UI doivent préférer `MapLevelView` aux appels dispersés comme `getLevelMap`, `getFeaturesForLevel`, `getRoadLevelMap`, etc. Cela rend les règles de dérivation plus lisibles et plus cacheables.
-
-## Core: commandes d'édition
-
-Chemin principal: `src/core/map/commands`.
-
-Une commande représente une intention métier d'édition, pas un message réseau. Exemple:
-
-```ts
-{
-  type: "paintTerrain",
-  level: 3,
-  axial: { q: 0, r: 0 },
-  terrainType: "forest"
-}
-```
-
-Entrée publique:
-
-```ts
-executeMapEditCommand(mapState, command)
-```
-
-Résultat:
-
-```ts
-type MapEditCommandResult = {
-  changed: boolean;
-  mapState: MapState;
-  operations: MapOperation[];
-  effects?: MapEditCommandEffects;
-};
-```
-
-Les commandes sont séparées par domaine:
-
-- `terrainCommands.ts`: peinture terrain, effacement terrain, brouillard cellule.
-- `featureCommands.ts`: création, suppression, mise à jour, visibilité feature.
-- `factionCommands.ts`: création/modification faction et territoires.
-- `roadCommands.ts`: connexions routières.
-- `riverCommands.ts`: arêtes de rivière.
-- `mapEditCommands.ts`: point d'entrée public et dispatch.
-
-Règle: les outils d'édition appellent les commandes. Ils ne fabriquent pas eux-mêmes le format persistant.
-
-## Core: historique undo/redo
-
-Chemin principal: `src/core/map/history/mapOperationHistory.ts`.
-
-L'historique est basé sur les operations, pas sur des snapshots complets. Quand un batch local est envoyé, le client calcule les operations inverses à partir du `MapState` avant l'édition.
-
-Types/fonctions clés:
-
-- `MapOperationHistory`
-- `recordOperationHistory`
-- `takeUndoOperations`
-- `takeRedoOperations`
-- `invertOperationBatch`
-
-Undo/redo est server-authoritative: un undo envoie de vraies `MapOperation[]` via le même chemin de synchronisation qu'une édition normale.
-
-## Core: protocole partagé
-
-Chemin principal: `src/core/protocol`.
-
-Cette couche est partagée par le client et le serveur.
-
-Types importants:
-
-- `SavedMapContent`: contenu JSON persistant.
-- `MapOperation`: mutation transportable.
-- `MapOperationEnvelope`: operation avec metadata de sync (`operationId`, `clientId`, `sequence`).
-- `OperationApplier<TState>`: contrat générique pour appliquer une operation.
-
-Fichiers:
-
-- `types.ts`: types DTO du protocole.
-- `validation.ts`: validation des operations reçues.
-- `contentOperations.ts`: application des operations au `SavedMapContent`.
-- `recordHelpers.ts`: helpers pour clés de records, routes, patchs.
-- `operationContracts.ts`: interfaces partagées.
-
-Important: `MapOperation.type` est la forme du protocole. Ne pas renommer ces variantes sans migration explicite du wire format et des données existantes.
-
-## App: API, documents et sync
-
-### API HTTP
-
-Chemin: `src/app/api`.
-
-`mapApi.ts` expose:
-
-- `listMaps`
-- `loadMapById`
-- `createMap`
-- `renameMapById`
-
-Il parse les réponses serveur et valide le contenu avec les codecs document.
-
-`apiBase.ts` construit les URLs HTTP et WebSocket.
-
-### Documents
-
-Chemins:
-
-- `src/core/document`: types et codec de contenu sauvegarde, partages client/serveur.
-- `src/app/document`: import/export navigateur et conversion `MapState <-> SavedMapContent`.
-
-Responsabilités:
-
-- lire/écrire des fichiers `.json`,
-- parser le JSON persistant dans `core/document`,
-- préserver la compatibilité legacy dans `core/document`,
-- convertir `MapState <-> SavedMapContent`,
-- garder la frontiere document distincte du protocole et du `MapState`.
-
-Fichiers clés:
-
-- `core/document/savedMapCodec.ts`: parse, valide et normalise le contenu sauvegarde.
-- `core/document/savedMapTypes.ts`: types document publics.
-- `app/document/worldMapCodec.ts`: conversion runtime/persistant.
-- `app/document/mapFile.ts`: import/export fichier navigateur.
-- Les appliers d'operations vivent dans `core/protocol/contentOperations.ts` pour `SavedMapContent` et `core/map/worldOperationApplier.ts` pour `MapState`.
-
-Compatibilité legacy fichier uniquement:
-
-- `tileId` est encore accepté dans les fichiers importés et normalisé vers `terrain`.
-- `feature.type` est encore accepté dans les fichiers importés et normalisé vers `kind`.
-- Le protocole live `MapOperation` n'accepte plus ces formes legacy.
-
-### Sync client
-
-Chemin: `src/app/sync`.
-
-`MapSyncSession` est un modèle pur de session:
-
-- opérations locales en attente,
-- files d'envoi,
-- queue de réception ordonnée,
-- séquence attendue,
-- statut `connecting | saving | saved | error`.
-
-`useMapSocketSync.ts` est l'adapter React/WebSocket:
-
-- ouvre la connexion,
-- reçoit le snapshot initial,
-- envoie des batches d'operations,
-- applique les operations reçues dans l'ordre,
-- acquitte les echoes locaux,
-- rejoue les operations non confirmées après reconnexion.
-
-Les limites importantes:
-
-- batch maximum: 500 operations.
-- les operations locales ne sont pas considérées sauvegardées avant l'ack serveur.
-- en cas de snapshot, le preview local est effacé et l'état autoritatif est remplacé.
-
-## Editor: contrôleurs et outils
-
-Chemin principal: `src/editor`.
-
-`useEditorController.ts` est le contrôleur principal de l'écran d'édition. Il compose:
-
-- état de mode outil,
-- sélection feature/faction,
-- caméra,
-- gestures,
-- envoi d'operations,
-- undo/redo,
-- props canvas,
-- clavier.
-
-Il est volontairement côté editor parce qu'il mélange React, UI state et orchestration.
-
-### Outils et gestes
-
-Chemin: `src/editor/tools`.
-
-Chaque outil transforme des mouvements utilisateur en commandes:
-
-- `editGesture.ts`: terrain.
-- `fogGesture.ts`: brouillard terrain.
-- `factionGesture.ts`: territoires.
-- `roadGesture.ts`: routes.
-- `riverGesture.ts`: rivières.
-- `gestureSession.ts`: structure commune des gestures.
-
-Le contrat général:
-
-```text
-begin gesture
-  -> update gesture with cells/edges
-  -> collect MapOperation[]
-  -> preview operations in Pixi overlay
-  -> finish gesture
-  -> send operations through sync
-```
-
-### Interactions pointeur
-
-Chemin: `src/editor/hooks/useMapInteraction.ts`.
-
-Ce hook est l'adapter entre les événements canvas et l'intention editor:
-
-- pointer down/move/up,
-- pan,
-- conversion écran -> axial,
-- hover hex,
-- hover arête rivière,
-- batching des mouvements par `requestAnimationFrame`.
-
-`mapPointerIntent.ts` contient les petites règles de décodage du pointeur: bouton gauche = paint, milieu = pan, droit = erase.
-
-## Rendu
-
-Chemin principal: `src/render`.
-
-Le rendu principal utilise PixiJS et suit quatre niveaux:
-
-```text
-MapState
-  -> MapLevelView
-  -> PixiMapSceneCache
-  -> PixiActiveRenderWindow
-  -> couches PixiJS
-```
-
-`PixiMapSceneCache` garde une projection renderable multi-niveau:
-
-- donnees terrain/features/factions/routes/rivieres par niveau,
-- index spatial par cellule,
-- versions de `MapState`,
-- patch par `MapOperation[]` quand c'est possible,
-- rebuild lazy d'un niveau seulement quand il devient stale.
-
-`PixiActiveRenderWindow` limite les objets Pixi actifs:
-
-- recalcul seulement quand la caméra sort de la marge,
-- pan/zoom par transformation du container caméra,
-- hover/preview dans des couches séparées.
-
-`pixiMapRenderer.ts` orchestre les couches:
-
-1. fond,
-2. terrain,
-3. frontières,
-4. rivières,
-5. factions,
-6. routes,
-7. features,
-8. overlay hover/sélection,
-9. preview d'édition.
-
-Les couches sont spécialisées:
-
-- `pixiTerrainLayer.ts`
-- `pixiBoundaryLayer.ts`
-- `pixiRiverLayer.ts`
-- `pixiRoadLayer.ts`
-- `pixiFactionLayer.ts`
-- `pixiFeatureLayer.ts`
-- `pixiOverlayLayer.ts`
-- `pixiPreviewLayer.ts`
-
-Les anciens renderers Canvas de carte ont été supprimés. Les modules Canvas restants servent aux previews de palette ou aux primitives partagées:
-
-- `featurePreview.ts`
-- `tileVisuals.ts`
-
-Le rendu reste volontairement simple: pas de hiérarchie de classes ni scene graph maison au-dessus de PixiJS.
-
-## Assets
-
-Chemin: `src/assets`.
-
-Les assets sont enregistrés dans des catalogues:
-
-- `terrainAssets.ts`
-- `featureAssets.ts`
-- `allAssets.ts`
-- `mapImageAssets.ts`
-
-`AssetCatalog` décrit la forme générale d'un catalogue terrain/features. Le core ne doit jamais importer ces assets. Le rendu et les composants de preview peuvent les consommer.
-
-Le chargement d'images est centralisé par:
-
-- `src/editor/context/MapAssetsContext.tsx`
-- `src/editor/hooks/useMapAssetsVersion.ts`
-- `src/render/assetImages.ts`
-
-## UI React
-
-Chemin: `src/ui/components`.
-
-Composants principaux:
-
-- `MapMenu`: liste, création, import, export et ouverture des cartes.
-- `MapPane`: zone principale de carte.
-- `MapCanvas`: canvas PixiJS et branchement du hook d'interaction.
-- `Sidebar`: palettes et outils GM.
-- `FeatureLabelPopup`: édition rapide des labels GM/joueur des features sélectionnées.
-- `BottomBar`: coordonnées, niveau, zoom.
-- `TilePalette`, `FeaturePalette`, `ToolTabs`: contrôles d'édition.
-
-Règle pratique: les composants UI reçoivent des props et déclenchent des callbacks. Ils ne doivent pas contenir les règles métier de carte.
-
-## Serveur
-
-Chemin principal: `server/src`.
-
-Le serveur est un serveur Node HTTP avec WebSocket `ws`.
-
-Fichiers:
-
-- `index.ts`: démarre le serveur.
-- `httpRoutes.ts`: endpoints REST `/api/maps`.
-- `wsRoutes.ts`: endpoint WebSocket `/api/maps/:id/ws`.
-- `mapStorage.ts`: stockage disque dans `data/`.
-- `sessionStore.ts`: sessions serveur en mémoire.
-- `operationService.ts`: application d'operations et diffusion.
-- `appliedOperationLog.ts`: mémoire des operations déjà appliquées.
-- `broadcastService.ts`: diffusion aux clients.
-- `persistenceScheduler.ts`: sauvegarde debouncée.
-- `types.ts`: types serveur.
-
-Flux WebSocket:
-
-1. client ouvre `/api/maps/:id/ws`,
-2. serveur envoie `sync_snapshot`,
-3. client envoie `map_operation` ou `map_operation_batch`,
-4. serveur valide et applique,
-5. serveur assigne une séquence,
-6. serveur diffuse `map_operation_applied` ou `map_operation_batch_applied`,
-7. client applique uniquement dans l'ordre.
-
-Les doublons sont gérés par `operationId`. Si un client renvoie une operation déjà connue, le serveur renvoie l'ancien payload au client source pour qu'il puisse nettoyer sa file locale.
-
-## Scripts de smoke test WebSocket
-
-Chemin: `scripts`.
-
-- `ws-sequence-smoke.mjs`: vérifie le comportement de séquence.
-- `ws-multi-client-check.mjs`: vérifie plusieurs clients.
-- `ws-stress.mjs`: stress test sync.
-
-Ces scripts supposent généralement que le serveur est lancé.
-
-## Tests
-
-Le projet utilise Vitest.
-
-Lancer tous les tests:
-
-```bash
-npm test
-```
-
-Tests importants:
-
-- `src/core/architectureBoundary.test.ts`: règles de dépendances.
-- `src/core/map/*test.ts`: règles de domaine.
-- `src/core/map/commands/mapEditCommands.test.ts`: commandes d'édition.
-- `src/core/map/history/mapOperationHistory.test.ts`: undo/redo par operations.
-- `src/core/document/savedMapCodec.test.ts`: format persistant et compat legacy.
-- `src/app/document/worldMapCodec.test.ts`: conversion `MapState <-> SavedMapContent`.
-- `src/app/document/operationApplierParity.test.ts`: parité `MapState`/`SavedMapContent` appliers.
-- `src/app/sync/*test.ts`: queue, pending ops et session sync.
-- `src/render/*test.ts`: rendu, transform et visibilité.
-- `src/core/protocol/contentOperations.test.ts`: validation/application du protocole partagé utilisé par client et serveur.
-
-Avant de considérer un changement terminé:
+Mandatory repository checks after meaningful changes:
 
 ```bash
 npm run typecheck
 npm test
 npm run build:server
-npm run build
 ```
 
-## Comment ajouter une nouvelle opération de carte
+Current structural rules:
 
-Une nouvelle operation touche plusieurs couches. Suivre cet ordre:
+- no critical source file should exceed 600 lines without an explicit temporary reason
+- keep sync, editor, and Pixi orchestration moving toward smaller modules
+- keep server routes thin and keep persistence logic out of transport handlers
 
-1. Ajouter le type dans `src/core/protocol/types.ts`.
-2. Ajouter la validation dans `src/core/protocol/validation.ts`.
-3. Ajouter l'application sur `SavedMapContent` dans `contentOperations.ts`.
-4. Ajouter l'application sur `MapState` dans `worldOperationApplier.ts`.
-5. Ajouter la commande métier dans `src/core/map/commands` si l'operation est déclenchée par l'éditeur.
-6. Ajouter ou adapter un outil/gesture dans `src/editor/tools` si nécessaire.
-7. Ajouter les tests de protocole, commande, applier et sync.
+## Active refactor direction
 
-Ne pas faire produire directement des records persistants par un composant UI.
+Priority themes still in flight:
 
-## Comment ajouter un nouvel outil d'édition
-
-1. Définir l'intention métier comme `MapEditCommand`.
-2. Implémenter la commande dans `src/core/map/commands`.
-3. Créer un gesture dans `src/editor/tools`.
-4. Brancher le mode dans `EditorMode`.
-5. Adapter `useEditorController` pour lancer le gesture.
-6. Ajouter les entrées UI dans `ToolTabs` ou la sidebar.
-7. Ajouter des tests de commande et de gesture.
-
-L'outil doit produire des `MapOperation[]`; il ne doit pas modifier directement le serveur, le stockage ou le format JSON.
-
-## Comment ajouter un nouveau terrain ou type de feature
-
-Terrain:
-
-1. Ajouter le type dans `terrainTypes.ts`.
-2. Ajouter le label et/ou le fallback visuel côté rendu.
-3. Ajouter l'asset dans `src/assets/terrain`.
-4. Mettre à jour `terrainAssets.ts`.
-5. Vérifier import/export via `SavedMapContent`.
-
-Feature:
-
-1. Ajouter le kind dans `features.ts`.
-2. Ajouter le label et les règles d'override terrain si besoin.
-3. Ajouter l'asset dans `src/assets/features`.
-4. Mettre à jour `featureAssets.ts`.
-5. Vérifier le rendu dans `src/render/pixi/pixiFeatureLayer.ts` et les previews dans `featurePreview.ts`.
-
-## Conventions importantes
-
-- Utiliser `hexKey` et `parseHexKey` au lieu de construire `"q,r"` à la main.
-- Garder `core` pur et sans dépendance navigateur.
-- Préférer `MapEditCommand` pour les intentions utilisateur.
-- Préférer `MapOperation` pour la synchronisation et les mutations partagées.
-- Préférer `MapLevelView` pour lire une projection de niveau.
-- Préférer `PixiMapSceneCache` et `PixiActiveRenderWindow` pour le rendu carte.
-- Ne pas mélanger `MapState` et `SavedMapContent`.
-- Ne pas renommer les variantes `MapOperation.type` sans migration.
-- Garder les hooks React dans `editor` ou `app`, jamais dans `core`.
-- Garder les composants `ui` aussi déclaratifs que possible.
-
-## Debug sync
-
-En développement, les logs détaillés de sync peuvent être activés dans le navigateur:
-
-```js
-localStorage.setItem("hexmap:sync-debug", "1")
-```
-
-Puis recharger la page. Les logs `[MapSync]` détaillent:
-
-- creation d'operations,
-- envoi,
-- réception,
-- gaps de séquence,
-- application locale,
-- temps d'application.
-
-Pour désactiver:
-
-```js
-localStorage.removeItem("hexmap:sync-debug")
-```
-
-## Glossaire
-
-`MapState`: état runtime utilisé dans l'éditeur.
-
-`SavedMapContent`: format JSON sauvegardé et servi par le serveur.
-
-`MapOperation`: mutation transportable entre client et serveur.
-
-`MapOperationEnvelope`: operation avec metadata de transport.
-
-`MapEditCommand`: intention métier produite par un outil d'édition.
-
-`GestureSession`: état temporaire d'un drag/clic utilisateur.
-
-`MapLevelView`: projection logique d'une carte pour un niveau.
-
-`PixiMapSceneCache`: projection renderable multi-niveau utilisée par le renderer PixiJS.
-
-`PixiActiveRenderWindow`: fenêtre active de cellules dont les objets Pixi doivent exister.
-
-`SOURCE_LEVEL`: niveau source éditable directement.
-
-`ViewerRole`: rôle `gm` ou `player`, utilisé pour limiter l'édition et filtrer la visibilité.
-
-## Où commencer pour comprendre le code
-
-Lecture recommandée:
-
-1. `src/app/App.tsx`: cycle menu, création, import, ouverture.
-2. `src/app/EditorScreen.tsx`: composition de l'écran d'éditeur.
-3. `src/editor/hooks/useEditorController.ts`: orchestration de l'éditeur.
-4. `src/core/map/commands/mapEditCommands.ts`: point d'entrée des commandes.
-5. `src/app/sync/useMapSocketSync.ts`: synchronisation client.
-6. `src/render/pixi/pixiMapRenderer.ts`: pipeline de rendu PixiJS.
-7. `server/src/wsRoutes.ts` puis `server/src/operationService.ts`: sync serveur.
-8. `src/core/protocol/types.ts`: contrat partagé.
-
-Cette séquence donne une vue complète: UI, édition, operations, sync, rendu, serveur et format de données.
+- keep finishing the semantic operation rollout at every boundary
+- continue decomposing sync, editor, and Pixi orchestration hotspots
+- keep visibility filtering strictly server-side
+- keep workspace and map terminology aligned across code, docs, and storage
+- reduce dead terminology and dead adapters instead of preserving historical naming compromises

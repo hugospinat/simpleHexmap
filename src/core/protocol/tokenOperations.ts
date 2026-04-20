@@ -30,6 +30,15 @@ export function validateMapTokenOperation(operation: unknown): string | null {
       : "Invalid remove_map_token operation.";
   }
 
+  if (operation.type === "set_map_token_color") {
+    return typeof operation.profileId === "string"
+      && operation.profileId.trim()
+      && typeof operation.color === "string"
+      && isHexColor(operation.color)
+      ? null
+      : "Invalid set_map_token_color operation.";
+  }
+
   return "Unknown token operation.";
 }
 
@@ -57,6 +66,15 @@ export function applyMapTokenOperation<TSnapshot extends SavedMapContent>(
       return {
         ...snapshot,
         tokens: snapshot.tokens.filter((token) => token.profileId !== operation.profileId)
+      };
+    case "set_map_token_color":
+      return {
+        ...snapshot,
+        tokens: snapshot.tokens.map((token) => (
+          token.profileId === operation.profileId
+            ? { ...token, color: operation.color }
+            : token
+        ))
       };
     default: {
       const exhaustive: never = operation;
