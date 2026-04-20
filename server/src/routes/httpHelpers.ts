@@ -99,11 +99,7 @@ export async function readBody(request): Promise<any> {
 }
 
 export function parseContentInput(value: unknown) {
-  try {
-    return parseSavedMapContent(value);
-  } catch {
-    return defaultMapContent;
-  }
+  return parseSavedMapContent(value);
 }
 
 export function parseWorkspaceMemberRole(value: unknown): "gm" | "player" | null {

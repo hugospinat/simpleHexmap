@@ -1,6 +1,6 @@
 import { buildApiUrl } from "@/app/api/apiBase";
 import { parseSavedMapContent } from "@/core/document/savedMapCodec";
-import type { SavedMapContent } from "@/core/document/savedMapTypes";
+import type { SavedMapContent } from "@/core/protocol";
 import type {
   MapOpenMode,
   WorkspaceMemberRecord,

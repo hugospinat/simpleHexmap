@@ -1,6 +1,6 @@
 import type { MapOperation, MapTokenOperation } from "@/core/protocol";
 import type { WorkspaceTokenMemberRecord } from "@/core/auth/authTypes";
-import type { SavedMapContent } from "@/core/document/savedMapTypes";
+import type { SavedMapContent } from "@/core/protocol";
 
 export type MapOperationMessage = {
   type: "map_operation_applied";

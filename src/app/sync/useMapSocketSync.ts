@@ -546,6 +546,21 @@ export function useMapSocketSync({
         if (parsed.type === "unknown") {
           logMapSync("unknown_message_ignored", { mapId });
         }
+
+        if (parsed.type === "invalid_message") {
+          console.error("[MapSync] invalid_message", {
+            error: parsed.error,
+            mapId,
+          });
+          markSessionError(sessionRef.current);
+          publishSessionState();
+        }
+
+        if (parsed.type === "invalid_json") {
+          console.error("[MapSync] invalid_json", { mapId });
+          markSessionError(sessionRef.current);
+          publishSessionState();
+        }
       };
 
       socket.onerror = (event) => {
