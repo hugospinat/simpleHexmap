@@ -1,5 +1,4 @@
 import {
-  mapFileVersion,
   type MapFactionRecord,
   type MapFactionTerritoryRecord,
   type MapFeatureRecord,
@@ -8,7 +7,9 @@ import {
   type MapTileRecord,
   type MapTokenRecord,
   type SavedMapContent,
-} from "./savedMapTypes.js";
+} from "../protocol/index.js";
+
+export const mapFileVersion = 1;
 
 const terrainTypes = [
   "empty",
@@ -75,66 +76,54 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
   if (
     !Array.isArray(raw.tiles) ||
     !Array.isArray(raw.features) ||
-    !Array.isArray(raw.rivers)
+    !Array.isArray(raw.rivers) ||
+    !Array.isArray(raw.roads) ||
+    !Array.isArray(raw.factions) ||
+    !Array.isArray(raw.factionTerritories) ||
+    !Array.isArray(raw.tokens)
   ) {
     throw new Error("Map file is missing required arrays.");
   }
 
-  const rawRoads = Array.isArray(raw.roads) ? raw.roads : [];
-  const rawFactions = Array.isArray(raw.factions) ? raw.factions : [];
-  const rawFactionTerritories = Array.isArray(raw.factionTerritories)
-    ? raw.factionTerritories
-    : [];
-  const rawTokens = Array.isArray(raw.tokens) ? raw.tokens : [];
-
   const tiles = raw.tiles.map((tile, index): MapTileRecord => {
-    const terrain =
-      isObject(tile) && typeof tile.terrain === "string"
-        ? tile.terrain
-        : isObject(tile) && typeof tile.tileId === "string"
-          ? tile.tileId
-          : null;
-
     if (
       !isObject(tile) ||
       !isInteger(tile.q) ||
       !isInteger(tile.r) ||
-      typeof terrain !== "string"
+      typeof tile.terrain !== "string" ||
+      typeof tile.hidden !== "boolean"
     ) {
       throw new Error(`Invalid tile entry at index ${index}.`);
     }
 
-    if (!terrainTypes.includes(terrain as TerrainType)) {
-      throw new Error(`Unknown terrain at index ${index}: ${terrain}.`);
+    if (!terrainTypes.includes(tile.terrain as TerrainType)) {
+      throw new Error(`Unknown terrain at index ${index}: ${tile.terrain}.`);
     }
 
     return {
       q: tile.q,
       r: tile.r,
-      terrain,
-      hidden: typeof tile.hidden === "boolean" ? tile.hidden : false,
+      terrain: tile.terrain,
+      hidden: tile.hidden,
     };
   });
 
   const features = raw.features.map((feature, index): MapFeatureRecord => {
-    const kind =
-      isObject(feature) && typeof feature.kind === "string"
-        ? feature.kind
-        : isObject(feature) && typeof feature.type === "string"
-          ? feature.type
-          : null;
-
     if (
       !isObject(feature) ||
       !isInteger(feature.q) ||
       !isInteger(feature.r) ||
-      typeof kind !== "string"
+      typeof feature.kind !== "string" ||
+      typeof feature.id !== "string" ||
+      !feature.id.trim()
     ) {
       throw new Error(`Invalid feature entry at index ${index}.`);
     }
 
-    if (!featureKinds.includes(kind as (typeof featureKinds)[number])) {
-      throw new Error(`Unknown feature kind at index ${index}: ${kind}.`);
+    if (!featureKinds.includes(feature.kind as (typeof featureKinds)[number])) {
+      throw new Error(
+        `Unknown feature kind at index ${index}: ${feature.kind}.`,
+      );
     }
 
     if (feature.visibility !== "visible" && feature.visibility !== "hidden") {
@@ -157,14 +146,9 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
       throw new Error(`Invalid labelRevealed at index ${index}.`);
     }
 
-    const id =
-      typeof feature.id === "string" && feature.id.trim()
-        ? feature.id
-        : `loaded-feature-${index}-${feature.q}-${feature.r}`;
-
     return {
-      id,
-      kind,
+      id: feature.id,
+      kind: feature.kind,
       q: feature.q,
       r: feature.r,
       visibility: feature.visibility,
@@ -192,7 +176,7 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
     };
   });
 
-  const roads = rawRoads.map((road, index): MapRoadRecord => {
+  const roads = raw.roads.map((road, index): MapRoadRecord => {
     if (
       !isObject(road) ||
       !isInteger(road.q) ||
@@ -217,7 +201,7 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
     };
   });
 
-  const factions = rawFactions.map((faction, index): MapFactionRecord => {
+  const factions = raw.factions.map((faction, index): MapFactionRecord => {
     if (
       !isObject(faction) ||
       typeof faction.id !== "string" ||
@@ -244,7 +228,7 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
     };
   });
 
-  const factionTerritories = rawFactionTerritories.map(
+  const factionTerritories = raw.factionTerritories.map(
     (territory, index): MapFactionTerritoryRecord => {
       if (
         !isObject(territory) ||
@@ -263,7 +247,7 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
     },
   );
 
-  const tokens = rawTokens.map((token, index): MapTokenRecord => {
+  const tokens = raw.tokens.map((token, index): MapTokenRecord => {
     if (
       !isObject(token) ||
       typeof token.userId !== "string" ||

@@ -10,7 +10,6 @@
     "build:server": "tsc -p tsconfig.server.json && node --check server/dist/server/src/index.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "migrate:json-data": "npm run build:server && node server/dist/server/src/migration/jsonImport.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

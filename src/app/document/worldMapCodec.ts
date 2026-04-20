@@ -10,16 +10,16 @@ import {
 } from "@/core/map/world";
 import { SOURCE_LEVEL } from "@/core/map/mapRules";
 import { createInitialMapStateVersions } from "@/core/map/worldTypes";
-import {
-  mapFileVersion,
-  type MapFactionRecord,
-  type MapFactionTerritoryRecord,
-  type MapFeatureRecord,
-  type MapRiverRecord,
-  type MapRoadRecord,
-  type MapTileRecord,
-  type SavedMapContent,
-} from "@/core/document/savedMapTypes";
+import { mapFileVersion } from "@/core/document/savedMapCodec";
+import type {
+  MapFactionRecord,
+  MapFactionTerritoryRecord,
+  MapFeatureRecord,
+  MapRiverRecord,
+  MapRoadRecord,
+  MapTileRecord,
+  SavedMapContent,
+} from "@/core/protocol";
 import type {
   Feature,
   FeatureKind,

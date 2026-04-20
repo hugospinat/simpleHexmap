@@ -1,4 +1,4 @@
-import type { SavedMapContent } from "@/core/document/savedMapTypes";
+import type { SavedMapContent } from "@/core/protocol";
 import { parseSavedMapContentText } from "@/core/document/savedMapCodec";
 
 async function readFileAsText(file: File): Promise<string> {
