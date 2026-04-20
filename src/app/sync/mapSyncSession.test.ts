@@ -46,8 +46,8 @@ describe("mapSyncSession", () => {
   it("queues local operations with stable client-scoped ids and batch boundaries", () => {
     const session = createMapSyncSession("client-a", createEmptyWorld());
     const operations = Array.from({ length: 501 }, (_, index) => ({
-      type: "rename_map" as const,
-      name: `Map ${index}`,
+      type: "add_faction" as const,
+      faction: { id: `f-${index}`, name: `Faction ${index}`, color: "#112233" },
     }));
 
     const envelopes = commitSessionLocalOperations(session, operations, 100);
@@ -109,7 +109,12 @@ describe("mapSyncSession", () => {
     const session = createMapSyncSession("client-a", createEmptyWorld());
     const [envelope] = commitSessionLocalOperations(
       session,
-      [{ type: "rename_map", name: "A" }],
+      [
+        {
+          type: "add_faction",
+          faction: { id: "f-a", name: "A", color: "#112233" },
+        },
+      ],
       1,
     );
     markSessionOperationsSent(session, [envelope]);

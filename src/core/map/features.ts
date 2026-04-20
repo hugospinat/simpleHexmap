@@ -1,4 +1,10 @@
-import { getAncestorAtLevel, hexKey, parseHexKey, type Axial, type HexId } from "@/core/geometry/hex";
+import {
+  getAncestorAtLevel,
+  hexKey,
+  parseHexKey,
+  type Axial,
+  type HexId,
+} from "@/core/geometry/hex";
 import type { MapState } from "./worldTypes";
 import { bumpMapStateVersion } from "./worldTypes";
 import { SOURCE_LEVEL } from "./mapRules";
@@ -18,7 +24,6 @@ export type Feature = {
   id: string;
   kind: FeatureKind;
   hexId: string;
-  overrideTerrainTile: boolean;
   hidden: boolean;
   gmLabel?: string;
   playerLabel?: string;
@@ -33,7 +38,6 @@ export type FeatureInput = {
   gmLabel?: string;
   hidden?: boolean;
   labelRevealed?: boolean;
-  overrideTerrainTile?: boolean;
   playerLabel?: string;
 };
 
@@ -50,7 +54,7 @@ export const featureKinds: FeatureKind[] = [
   "tower",
   "dungeon",
   "marker",
-  "label"
+  "label",
 ];
 
 export const featureKindLabels: Record<FeatureKind, string> = {
@@ -62,15 +66,11 @@ export const featureKindLabels: Record<FeatureKind, string> = {
   tower: "Tower",
   dungeon: "Dungeon",
   marker: "Marker",
-  label: "Label"
+  label: "Label",
 };
 
 export function canFeatureKindOverrideTerrain(kind: FeatureKind): boolean {
   return kind !== "label" && kind !== "marker";
-}
-
-function getDefaultOverrideTerrainTile(kind: FeatureKind): boolean {
-  return canFeatureKindOverrideTerrain(kind);
 }
 
 function optionalTrim(value: string | undefined): string | undefined {
@@ -91,24 +91,35 @@ export function normalizeFeature(feature: FeatureInput): Feature {
     id: feature.id,
     kind: feature.kind,
     hexId: feature.hexId,
-    overrideTerrainTile: feature.overrideTerrainTile ?? getDefaultOverrideTerrainTile(feature.kind),
     hidden: feature.hidden ?? false,
     gmLabel: optionalTrim(feature.gmLabel),
     playerLabel: optionalTrim(feature.playerLabel),
-    labelRevealed: feature.labelRevealed
+    labelRevealed: feature.labelRevealed,
   };
 }
 
-function getStoredFeaturesForLevel(world: MapState, level: number): FeatureLevelMap {
+function getStoredFeaturesForLevel(
+  world: MapState,
+  level: number,
+): FeatureLevelMap {
   return world.featuresByLevel[level] ?? new Map();
 }
 
-function deriveFeaturesForLevelFromSource(world: MapState, level: number): FeatureLevelMap {
+function deriveFeaturesForLevelFromSource(
+  world: MapState,
+  level: number,
+): FeatureLevelMap {
   const sourceFeatures = getStoredFeaturesForLevel(world, SOURCE_LEVEL);
   const derived = new Map<string, Feature>();
 
-  for (const feature of Array.from(sourceFeatures.values()).sort((a, b) => a.hexId.localeCompare(b.hexId))) {
-    const parent = getAncestorAtLevel(featureHexIdToAxial(feature.hexId), SOURCE_LEVEL, level);
+  for (const feature of Array.from(sourceFeatures.values()).sort((a, b) =>
+    a.hexId.localeCompare(b.hexId),
+  )) {
+    const parent = getAncestorAtLevel(
+      featureHexIdToAxial(feature.hexId),
+      SOURCE_LEVEL,
+      level,
+    );
     const parentHexId = hexKey(parent);
 
     if (derived.has(parentHexId)) {
@@ -117,25 +128,31 @@ function deriveFeaturesForLevelFromSource(world: MapState, level: number): Featu
 
     derived.set(parentHexId, {
       ...feature,
-      hexId: parentHexId
+      hexId: parentHexId,
     });
   }
 
   return derived;
 }
 
-export function createFeature(id: string, kind: FeatureKind, hexId: HexId | string): Feature {
+export function createFeature(
+  id: string,
+  kind: FeatureKind,
+  hexId: HexId | string,
+): Feature {
   return normalizeFeature({
     id,
     kind,
     hexId,
-    overrideTerrainTile: getDefaultOverrideTerrainTile(kind),
     hidden: false,
-    labelRevealed: false
+    labelRevealed: false,
   });
 }
 
-export function getFeaturesForLevel(world: MapState, level: number): FeatureLevelMap {
+export function getFeaturesForLevel(
+  world: MapState,
+  level: number,
+): FeatureLevelMap {
   if (level === SOURCE_LEVEL) {
     return getStoredFeaturesForLevel(world, level);
   }
@@ -143,11 +160,21 @@ export function getFeaturesForLevel(world: MapState, level: number): FeatureLeve
   return deriveFeaturesForLevelFromSource(world, level);
 }
 
-export function getFeatureAt(world: MapState, level: number, coord: Axial): Feature | null {
-  return getFeaturesForLevel(world, level).get(axialToFeatureHexId(coord)) ?? null;
+export function getFeatureAt(
+  world: MapState,
+  level: number,
+  coord: Axial,
+): Feature | null {
+  return (
+    getFeaturesForLevel(world, level).get(axialToFeatureHexId(coord)) ?? null
+  );
 }
 
-export function getFeatureById(world: MapState, level: number, featureId: string): Feature | null {
+export function getFeatureById(
+  world: MapState,
+  level: number,
+  featureId: string,
+): Feature | null {
   for (const feature of getFeaturesForLevel(world, level).values()) {
     if (feature.id === featureId) {
       return feature;
@@ -157,7 +184,11 @@ export function getFeatureById(world: MapState, level: number, featureId: string
   return null;
 }
 
-export function addFeature(world: MapState, level: number, feature: FeatureInput): MapState {
+export function addFeature(
+  world: MapState,
+  level: number,
+  feature: FeatureInput,
+): MapState {
   if (level !== SOURCE_LEVEL) {
     return world;
   }
@@ -176,9 +207,9 @@ export function addFeature(world: MapState, level: number, feature: FeatureInput
     ...world,
     featuresByLevel: {
       ...world.featuresByLevel,
-      [level]: nextLevelFeatures
+      [level]: nextLevelFeatures,
     },
-    versions: bumpMapStateVersion(world, "features")
+    versions: bumpMapStateVersion(world, "features"),
   };
 }
 
@@ -187,8 +218,11 @@ export function updateFeature(
   level: number,
   featureId: string,
   updates: Partial<
-    Pick<Feature, "gmLabel" | "hidden" | "kind" | "labelRevealed" | "overrideTerrainTile" | "playerLabel">
-  >
+    Pick<
+      Feature,
+      "gmLabel" | "hidden" | "kind" | "labelRevealed" | "playerLabel"
+    >
+  >,
 ): MapState {
   const targetLevel = level === SOURCE_LEVEL ? level : SOURCE_LEVEL;
   const allowedUpdates: typeof updates = level === SOURCE_LEVEL ? updates : {};
@@ -202,9 +236,6 @@ export function updateFeature(
     }
     if ("labelRevealed" in updates) {
       allowedUpdates.labelRevealed = updates.labelRevealed;
-    }
-    if ("overrideTerrainTile" in updates) {
-      allowedUpdates.overrideTerrainTile = updates.overrideTerrainTile;
     }
     if ("playerLabel" in updates) {
       allowedUpdates.playerLabel = updates.playerLabel;
@@ -222,7 +253,7 @@ export function updateFeature(
 
     const nextFeature = normalizeFeature({
       ...feature,
-      ...allowedUpdates
+      ...allowedUpdates,
     });
     nextLevelFeatures.set(hexId, nextFeature);
     changed = true;
@@ -237,13 +268,17 @@ export function updateFeature(
     ...world,
     featuresByLevel: {
       ...world.featuresByLevel,
-      [targetLevel]: nextLevelFeatures
+      [targetLevel]: nextLevelFeatures,
     },
-    versions: bumpMapStateVersion(world, "features")
+    versions: bumpMapStateVersion(world, "features"),
   };
 }
 
-export function removeFeatureAt(world: MapState, level: number, coord: Axial): MapState {
+export function removeFeatureAt(
+  world: MapState,
+  level: number,
+  coord: Axial,
+): MapState {
   if (level !== SOURCE_LEVEL) {
     return world;
   }
@@ -262,13 +297,16 @@ export function removeFeatureAt(world: MapState, level: number, coord: Axial): M
     ...world,
     featuresByLevel: {
       ...world.featuresByLevel,
-      [level]: nextLevelFeatures
+      [level]: nextLevelFeatures,
     },
-    versions: bumpMapStateVersion(world, "features")
+    versions: bumpMapStateVersion(world, "features"),
   };
 }
 
-export function getFeatureLabel(feature: Feature, mode: FeatureVisibilityMode): string | undefined {
+export function getFeatureLabel(
+  feature: Feature,
+  mode: FeatureVisibilityMode,
+): string | undefined {
   if (mode === "player") {
     return feature.playerLabel;
   }
@@ -276,6 +314,9 @@ export function getFeatureLabel(feature: Feature, mode: FeatureVisibilityMode): 
   return feature.gmLabel;
 }
 
-export function isFeatureVisible(feature: Feature, mode: FeatureVisibilityMode): boolean {
+export function isFeatureVisible(
+  feature: Feature,
+  mode: FeatureVisibilityMode,
+): boolean {
   return mode === "gm" || !feature.hidden;
 }

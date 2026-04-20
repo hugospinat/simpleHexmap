@@ -41,29 +41,17 @@ export function commandPaintTerrain(
   let operations: MapOperation[] = [];
 
   if (tiles.length > 0) {
-    const hiddenValue = tiles[0].hidden;
-    const allSameHidden = tiles.every((tile) => tile.hidden === hiddenValue);
-
-    operations = allSameHidden
-      ? [
-          {
-            type: "paint_cells",
-            cells: tiles.map((tile) => ({ q: tile.q, r: tile.r })),
-            terrain: terrainType,
-            hidden: hiddenValue,
-          },
-        ]
-      : [
-          {
-            type: "set_tiles",
-            tiles: tiles.map((tile) => ({
-              q: tile.q,
-              r: tile.r,
-              terrain: tile.terrain,
-              hidden: tile.hidden,
-            })),
-          },
-        ];
+    operations = [
+      {
+        type: "set_tiles",
+        tiles: tiles.map((tile) => ({
+          q: tile.q,
+          r: tile.r,
+          terrain: tile.terrain,
+          hidden: tile.hidden,
+        })),
+      },
+    ];
   }
 
   return operations.length > 0
@@ -81,24 +69,23 @@ export function commandEraseTerrain(
   axial: Axial,
 ): MapEditCommandResult {
   const sourceMap = world.levels[SOURCE_LEVEL] ?? new Map();
-  const cells: Array<{ q: number; r: number }> = [];
+  const tiles: Array<{ q: number; r: number; terrain: null; hidden: boolean }> =
+    [];
 
   for (const target of terrainTargets(level, axial)) {
     if (!sourceMap.has(hexKey(target))) {
       continue;
     }
 
-    cells.push({ q: target.q, r: target.r });
+    tiles.push({ q: target.q, r: target.r, terrain: null, hidden: false });
   }
 
   const operations: MapOperation[] =
-    cells.length > 0
+    tiles.length > 0
       ? [
           {
-            type: "paint_cells",
-            cells,
-            terrain: null,
-            hidden: false,
+            type: "set_tiles",
+            tiles,
           },
         ]
       : [];
@@ -119,7 +106,12 @@ export function commandSetCellHidden(
   hidden: boolean,
 ): MapEditCommandResult {
   const sourceMap = world.levels[SOURCE_LEVEL] ?? new Map();
-  const cells: Array<{ q: number; r: number }> = [];
+  const tiles: Array<{
+    q: number;
+    r: number;
+    terrain: string;
+    hidden: boolean;
+  }> = [];
 
   for (const target of terrainTargets(level, axial)) {
     const current = sourceMap.get(hexKey(target));
@@ -128,16 +120,15 @@ export function commandSetCellHidden(
       continue;
     }
 
-    cells.push({ q: target.q, r: target.r });
+    tiles.push({ q: target.q, r: target.r, terrain: current.type, hidden });
   }
 
   const operations: MapOperation[] =
-    cells.length > 0
+    tiles.length > 0
       ? [
           {
-            type: "set_cells_hidden",
-            cells,
-            hidden,
+            type: "set_tiles",
+            tiles,
           },
         ]
       : [];

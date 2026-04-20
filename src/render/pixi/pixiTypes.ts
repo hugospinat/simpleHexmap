@@ -2,10 +2,15 @@ import type { Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import type { Axial, HexId, Pixel } from "@/core/geometry/hex";
 import type { FeatureVisibilityMode } from "@/core/map/features";
 import type { MapLevel } from "@/core/map/mapRules";
-import type { HexCell, MapState, RiverEdgeRef, RiverEdgeSet } from "@/core/map/worldTypes";
+import type {
+  HexCell,
+  MapState,
+  RiverEdgeRef,
+  RiverEdgeSet,
+} from "@/core/map/worldTypes";
 import type { Feature } from "@/core/map/features";
 import type { RoadEdgeSet } from "@/core/map/roads";
-import type { MapTokenRecord } from "@/core/protocol";
+import type { MapTokenPlacement } from "@/core/protocol";
 import type { RenderWorldPatch } from "@/render/renderWorldPatch";
 import type { RenderCell, RenderStats, Viewport } from "@/render/renderTypes";
 
@@ -133,7 +138,7 @@ export type PixiStageLayers = {
   token: Graphics;
 };
 
-export type { MapTokenRecord };
+export type MapTokenRenderable = MapTokenPlacement & { color?: string };
 
 export type SpritePool = {
   acquire: (key: string, parent: Container) => Sprite;

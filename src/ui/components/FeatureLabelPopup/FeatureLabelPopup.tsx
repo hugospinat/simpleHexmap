@@ -6,7 +6,7 @@ import {
 
 type FeatureLabelPopupProps = {
   feature: Feature;
-  onChange: (updates: Partial<Pick<Feature, "gmLabel" | "hidden" | "overrideTerrainTile" | "playerLabel">>) => void;
+  onChange: (updates: Partial<Pick<Feature, "gmLabel" | "hidden" | "playerLabel">>) => void;
   onClose: () => void;
 };
 
@@ -53,15 +53,6 @@ export function FeatureLabelPopup({ feature, onChange, onClose }: FeatureLabelPo
           onChange={(event) => onChange({ hidden: event.target.checked })}
         />
         <span>Hidden from players</span>
-      </label>
-
-      <label className="check-field">
-        <input
-          type="checkbox"
-          checked={feature.overrideTerrainTile}
-          onChange={(event) => onChange({ overrideTerrainTile: event.target.checked })}
-        />
-        <span>Override terrain art</span>
       </label>
     </aside>
   );

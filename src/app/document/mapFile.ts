@@ -1,5 +1,5 @@
-import type { SavedMapContent } from "@/core/protocol";
-import { parseSavedMapContentText } from "@/core/document/savedMapCodec";
+import type { MapDocument } from "@/core/protocol";
+import { parseMapDocumentText } from "@/core/document/savedMapCodec";
 
 async function readFileAsText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -20,14 +20,16 @@ function sanitizeFileName(name: string): string {
   return normalized || "map";
 }
 
-export async function readSavedMapContentFile(file: File): Promise<SavedMapContent> {
+export async function readMapDocumentFile(file: File): Promise<MapDocument> {
   const text = await readFileAsText(file);
-  return parseSavedMapContentText(text);
+  return parseMapDocumentText(text);
 }
 
-export function downloadSavedMapContentFile(name: string, map: SavedMapContent): void {
+export function downloadMapDocumentFile(name: string, map: MapDocument): void {
   const fileName = `${sanitizeFileName(name)}.json`;
-  const blob = new Blob([`${JSON.stringify(map, null, 2)}\n`], { type: "application/json" });
+  const blob = new Blob([`${JSON.stringify(map, null, 2)}\n`], {
+    type: "application/json",
+  });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
 

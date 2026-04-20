@@ -25,7 +25,8 @@ For project architecture, subsystem responsibilities, runtime flow, persistence 
 
 - Keep modules focused on one strong responsibility.
 - Split large files before they become hard to reason about.
-- No source file should exceed 600 lines unless a smaller split would create immediate regression risk.
+- The 600-line threshold is only a rough smell, not a target or permission slip.
+- If a file has any real logical separation available, split it even when it is well below 600 lines.
 - If a file approaches the limit, extract one coherent slice instead of adding more unrelated logic.
 - Prefer composition over catch-all controller modules.
 - Keep pure logic in pure modules and keep I/O at boundaries.

@@ -10,8 +10,8 @@ import {
   type MapState,
 } from "@/core/map/world";
 import {
-  applyMapOperation,
-  applyMapOperations,
+  applyMapDocumentOperation,
+  applyMapDocumentOperations,
   type MapOperation,
 } from "@/core/protocol";
 import { applyMapOperationToWorld } from "@/core/map/worldOperationApplier";
@@ -31,7 +31,6 @@ function createSampleWorld(): MapState {
     kind: "city",
     hexId: "0,0",
     hidden: false,
-    overrideTerrainTile: true,
     labelRevealed: true,
     gmLabel: "GM",
     playerLabel: "City",
@@ -41,7 +40,6 @@ function createSampleWorld(): MapState {
     kind: "village",
     hexId: "1,0",
     hidden: false,
-    overrideTerrainTile: false,
     labelRevealed: false,
   });
   world = addRiverEdge(world, 3, {
@@ -53,16 +51,18 @@ function createSampleWorld(): MapState {
   return world;
 }
 
-function applySavedMapContentRoundTrip(
+function applyMapDocumentRoundTrip(
   world: MapState,
   operation: MapOperation,
 ): MapState {
-  return deserializeWorld(applyMapOperation(serializeWorld(world), operation));
+  return deserializeWorld(
+    applyMapDocumentOperation(serializeWorld(world), operation),
+  );
 }
 
 function expectDirectParity(world: MapState, operation: MapOperation) {
   const direct = applyMapOperationToWorld(world, operation);
-  const roundTrip = applySavedMapContentRoundTrip(world, operation);
+  const roundTrip = applyMapDocumentRoundTrip(world, operation);
 
   expect(serializeWorld(direct)).toEqual(serializeWorld(roundTrip));
 }
@@ -70,7 +70,7 @@ function expectDirectParity(world: MapState, operation: MapOperation) {
 describe("operation applier parity", () => {
   test("set_tiles updates snapshots incrementally", () => {
     const empty = serializeWorld(createEmptyWorld());
-    const updated = applyMapOperation(empty, {
+    const updated = applyMapDocumentOperation(empty, {
       type: "set_tiles",
       tiles: [{ q: 2, r: 1, terrain: "forest", hidden: false }],
     });
@@ -80,7 +80,7 @@ describe("operation applier parity", () => {
     ]);
   });
 
-  test("applyMapOperationToWorld matches saved-map round-trip for semantic tile and hidden operations", () => {
+  test("applyMapOperationToWorld matches document round-trip for tile operations", () => {
     const world = createSampleWorld();
 
     expectDirectParity(world, {
@@ -92,9 +92,8 @@ describe("operation applier parity", () => {
       tiles: [{ q: 0, r: 0, terrain: null, hidden: false }],
     });
     expectDirectParity(world, {
-      type: "set_cells_hidden",
-      cells: [{ q: 1, r: 0 }],
-      hidden: true,
+      type: "set_tiles",
+      tiles: [{ q: 1, r: 0, terrain: "forest", hidden: true }],
     });
   });
 
@@ -108,28 +107,26 @@ describe("operation applier parity", () => {
         kind: "tower",
         q: 2,
         r: 0,
-        visibility: "visible",
-        overrideTerrainTile: true,
+        hidden: false,
         gmLabel: "Watch",
         playerLabel: null,
         labelRevealed: false,
       },
     });
     expectDirectParity(world, {
-      type: "set_feature_hidden",
+      type: "update_feature",
       featureId: "feature-1",
-      hidden: true,
+      patch: { hidden: true },
     });
     expectDirectParity(world, {
       type: "update_feature",
       featureId: "feature-1",
       patch: {
         kind: "capital",
-        visibility: "hidden",
+        hidden: true,
         gmLabel: null,
         playerLabel: "Capital",
         labelRevealed: false,
-        overrideTerrainTile: false,
       },
     });
     expectDirectParity(world, {
@@ -166,7 +163,7 @@ describe("operation applier parity", () => {
     });
   });
 
-  test("applyMapOperationToWorld matches saved-map round-trip for faction operations and rename no-op", () => {
+  test("applyMapOperationToWorld matches document round-trip for faction operations", () => {
     const world = createSampleWorld();
 
     expectDirectParity(world, {
@@ -190,10 +187,6 @@ describe("operation applier parity", () => {
       type: "remove_faction",
       factionId: "f-1",
     });
-    expectDirectParity(world, {
-      type: "rename_map",
-      name: "New name",
-    });
   });
 
   test("applyMapOperationToWorld preserves ordered mixed operation semantics", () => {
@@ -209,8 +202,7 @@ describe("operation applier parity", () => {
           kind: "marker",
           q: 2,
           r: -1,
-          visibility: "visible",
-          overrideTerrainTile: false,
+          hidden: false,
           gmLabel: "A",
           playerLabel: null,
           labelRevealed: false,
@@ -220,7 +212,10 @@ describe("operation applier parity", () => {
         type: "set_faction_territories",
         territories: [{ q: 2, r: -1, factionId: "f-2" }],
       },
-      { type: "set_cells_hidden", cells: [{ q: 2, r: -1 }], hidden: true },
+      {
+        type: "set_tiles",
+        tiles: [{ q: 2, r: -1, terrain: "desert", hidden: true }],
+      },
       {
         type: "set_tiles",
         tiles: [{ q: 0, r: 0, terrain: null, hidden: false }],
@@ -237,8 +232,9 @@ describe("operation applier parity", () => {
       (current, operation) => applyMapOperationToWorld(current, operation),
       createSampleWorld(),
     );
+
     const roundTrip = operations.reduce(
-      (current, operation) => applySavedMapContentRoundTrip(current, operation),
+      (current, operation) => applyMapDocumentRoundTrip(current, operation),
       createSampleWorld(),
     );
 
@@ -256,7 +252,10 @@ describe("operation applier parity", () => {
         type: "set_tiles",
         tiles: [{ q: 2, r: -1, terrain: "forest", hidden: true }],
       },
-      { type: "set_cells_hidden", cells: [{ q: 2, r: -1 }], hidden: false },
+      {
+        type: "set_tiles",
+        tiles: [{ q: 2, r: -1, terrain: "forest", hidden: false }],
+      },
       {
         type: "add_feature",
         feature: {
@@ -264,8 +263,7 @@ describe("operation applier parity", () => {
           kind: "marker",
           q: 2,
           r: -1,
-          visibility: "visible",
-          overrideTerrainTile: false,
+          hidden: false,
           gmLabel: "A",
           playerLabel: null,
           labelRevealed: false,
@@ -288,10 +286,10 @@ describe("operation applier parity", () => {
     ];
 
     const reduced = operations.reduce(
-      (current, operation) => applyMapOperation(current, operation),
+      (current, operation) => applyMapDocumentOperation(current, operation),
       snapshot,
     );
 
-    expect(applyMapOperations(snapshot, operations)).toEqual(reduced);
+    expect(applyMapDocumentOperations(snapshot, operations)).toEqual(reduced);
   });
 });

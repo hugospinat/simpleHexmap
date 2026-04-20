@@ -1,13 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "../db/client.js";
-import {
-  users,
-  workspaceMembers,
-  workspaces,
-  workspaceMemberTokens,
-  maps,
-} from "../db/schema.js";
+import { maps, users, workspaceMembers, workspaces } from "../db/schema.js";
 import {
   findUserByNormalizedUsername,
   normalizeUsername,
@@ -19,20 +13,21 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../errors.js";
-import type { SavedMapContent } from "../../../src/core/protocol/index.js";
 import {
   defaultWorkspaceTokenColor,
   type UserId,
-  type WorkspaceMemberRecord,
+  type WorkspaceMember,
   type WorkspaceRole,
-  type WorkspaceTokenMemberRecord,
 } from "../../../src/core/auth/authTypes.js";
+import type {
+  MapDocument,
+  MapTokenPlacement,
+} from "../../../src/core/protocol/index.js";
 
 export type WorkspaceSummary = {
   currentUserRole: WorkspaceRole;
   id: string;
   name: string;
-  ownerUserId: string;
   updatedAt: string;
 };
 
@@ -44,22 +39,37 @@ export type WorkspaceMapSummary = {
 };
 
 export type WorkspaceMapRecord = WorkspaceMapSummary & {
-  content: SavedMapContent;
   currentUserRole: WorkspaceRole;
+  document: MapDocument;
   nextSequence: number;
-  ownerUserId: string;
-  tokenMembers: WorkspaceTokenMemberRecord[];
+  tokenPlacements: MapTokenPlacement[];
+  workspaceMembers: WorkspaceMember[];
   workspaceName: string;
 };
 
 export type WorkspaceMembersView = {
   currentUserRole: WorkspaceRole;
-  members: WorkspaceMemberRecord[];
+  members: WorkspaceMember[];
   updatedAt: string;
   workspaceId: string;
   workspaceName: string;
-  ownerUserId: string;
 };
+
+type WorkspaceRow = typeof workspaces.$inferSelect;
+
+function roleRank(role: WorkspaceRole): number {
+  if (role === "owner") return 0;
+  if (role === "gm") return 1;
+  return 2;
+}
+
+function compareMembers(left: WorkspaceMember, right: WorkspaceMember): number {
+  if (left.role !== right.role) {
+    return roleRank(left.role) - roleRank(right.role);
+  }
+
+  return left.username.localeCompare(right.username);
+}
 
 export function toRole(role: string | null | undefined): WorkspaceRole | null {
   if (role === "owner" || role === "gm" || role === "player") {
@@ -70,14 +80,13 @@ export function toRole(role: string | null | undefined): WorkspaceRole | null {
 }
 
 function toWorkspaceSummary(
-  workspace: typeof workspaces.$inferSelect,
+  workspace: WorkspaceRow,
   role: WorkspaceRole,
 ): WorkspaceSummary {
   return {
     currentUserRole: role,
     id: workspace.id,
     name: workspace.name,
-    ownerUserId: workspace.ownerUserId,
     updatedAt: workspace.updatedAt.toISOString(),
   };
 }
@@ -89,7 +98,7 @@ export function toMapSummary(
     id: map.id,
     name: map.name,
     updatedAt: map.updatedAt.toISOString(),
-    workspaceId: map.workspaceId ?? map.id,
+    workspaceId: map.workspaceId,
   };
 }
 
@@ -101,43 +110,22 @@ function isMutableWorkspaceRole(role: unknown): role is "gm" | "player" {
   return role === "gm" || role === "player";
 }
 
-function compareMembers(
-  left: WorkspaceMemberRecord,
-  right: WorkspaceMemberRecord,
-): number {
-  if (left.isOwner !== right.isOwner) {
-    return left.isOwner ? -1 : 1;
-  }
-
-  if (left.role !== right.role) {
-    if (left.role === "gm") {
-      return -1;
-    }
-
-    if (right.role === "gm") {
-      return 1;
-    }
-  }
-
-  return left.username.localeCompare(right.username);
-}
-
-async function getWorkspaceRow(workspaceId: string) {
+async function getWorkspaceRow(
+  workspaceId: string,
+): Promise<WorkspaceRow | null> {
   const rows = await db
     .select()
     .from(workspaces)
     .where(eq(workspaces.id, workspaceId))
     .limit(1);
+
   return rows[0] ?? null;
 }
 
 export async function requireWorkspaceAndRole(
   workspaceId: string,
   userId: UserId,
-): Promise<{
-  role: WorkspaceRole;
-  workspace: typeof workspaces.$inferSelect;
-}> {
+): Promise<{ role: WorkspaceRole; workspace: WorkspaceRow }> {
   const workspace = await getWorkspaceRow(workspaceId);
 
   if (!workspace) {
@@ -158,7 +146,7 @@ export async function getWorkspaceRole(
   userId: UserId,
 ): Promise<WorkspaceRole | null> {
   const rows = await db
-    .select()
+    .select({ role: workspaceMembers.role })
     .from(workspaceMembers)
     .where(
       and(
@@ -169,6 +157,40 @@ export async function getWorkspaceRole(
     .limit(1);
 
   return toRole(rows[0]?.role);
+}
+
+export async function listWorkspaceMembersForWorkspace(
+  workspaceId: string,
+): Promise<WorkspaceMember[]> {
+  const rows = await db
+    .select({
+      role: workspaceMembers.role,
+      tokenColor: workspaceMembers.tokenColor,
+      userId: users.id,
+      username: users.username,
+    })
+    .from(workspaceMembers)
+    .innerJoin(users, eq(workspaceMembers.userId, users.id))
+    .where(eq(workspaceMembers.workspaceId, workspaceId))
+    .orderBy(asc(users.username));
+
+  return rows
+    .map((row): WorkspaceMember | null => {
+      const role = toRole(row.role);
+
+      if (!role) {
+        return null;
+      }
+
+      return {
+        role,
+        tokenColor: row.tokenColor,
+        userId: row.userId,
+        username: row.username,
+      };
+    })
+    .filter((member): member is WorkspaceMember => member !== null)
+    .sort(compareMembers);
 }
 
 export async function listWorkspacesForUser(
@@ -194,7 +216,7 @@ export async function listWorkspacesForUser(
 
       return toWorkspaceSummary(row.workspace, role);
     })
-    .filter((summary): summary is WorkspaceSummary => summary !== null);
+    .filter((workspace): workspace is WorkspaceSummary => workspace !== null);
 }
 
 export async function getWorkspaceSummary(
@@ -242,8 +264,8 @@ export async function listWorkspaceMaps(input: {
 }
 
 export async function createWorkspace(input: {
+  creatorUserId: UserId;
   name: string;
-  ownerUserId: UserId;
 }): Promise<WorkspaceSummary> {
   const now = new Date();
   const workspaceId = randomUUID();
@@ -253,23 +275,19 @@ export async function createWorkspace(input: {
       createdAt: now,
       id: workspaceId,
       name: input.name,
-      ownerUserId: input.ownerUserId,
       updatedAt: now,
     });
     await tx.insert(workspaceMembers).values({
+      createdAt: now,
       role: "owner",
-      userId: input.ownerUserId,
-      workspaceId,
-    });
-    await tx.insert(workspaceMemberTokens).values({
-      color: defaultWorkspaceTokenColor,
+      tokenColor: defaultWorkspaceTokenColor,
       updatedAt: now,
-      userId: input.ownerUserId,
+      userId: input.creatorUserId,
       workspaceId,
     });
   });
 
-  const created = await getWorkspaceSummary(workspaceId, input.ownerUserId);
+  const created = await getWorkspaceSummary(workspaceId, input.creatorUserId);
 
   if (!created) {
     throw new NotFoundError("Could not create workspace.");
@@ -314,40 +332,11 @@ export async function listWorkspaceMembers(input: {
     input.workspaceId,
     input.actorUserId,
   );
-  const rows = await db
-    .select({
-      role: workspaceMembers.role,
-      userId: users.id,
-      username: users.username,
-    })
-    .from(workspaceMembers)
-    .innerJoin(users, eq(workspaceMembers.userId, users.id))
-    .where(eq(workspaceMembers.workspaceId, input.workspaceId))
-    .orderBy(asc(users.username));
-
-  const members = rows
-    .map((row): WorkspaceMemberRecord | null => {
-      const mappedRole = toRole(row.role);
-
-      if (!mappedRole) {
-        return null;
-      }
-
-      return {
-        isOwner: row.userId === workspace.ownerUserId,
-        role: row.userId === workspace.ownerUserId ? "owner" : mappedRole,
-        userId: row.userId,
-        username: row.username,
-      };
-    })
-    .filter((member): member is WorkspaceMemberRecord => member !== null)
-    .sort(compareMembers);
 
   return {
     currentUserRole: role,
-    members,
+    members: await listWorkspaceMembersForWorkspace(input.workspaceId),
     updatedAt: workspace.updatedAt.toISOString(),
-    ownerUserId: workspace.ownerUserId,
     workspaceId: workspace.id,
     workspaceName: workspace.name,
   };
@@ -359,7 +348,7 @@ export async function addWorkspaceMemberByUsername(input: {
   username: unknown;
   workspaceId: string;
 }): Promise<void> {
-  const { role: actorRole, workspace } = await requireWorkspaceAndRole(
+  const { role: actorRole } = await requireWorkspaceAndRole(
     input.workspaceId,
     input.actorUserId,
   );
@@ -385,7 +374,7 @@ export async function addWorkspaceMemberByUsername(input: {
   }
 
   const existingRows = await db
-    .select()
+    .select({ userId: workspaceMembers.userId })
     .from(workspaceMembers)
     .where(
       and(
@@ -399,21 +388,15 @@ export async function addWorkspaceMemberByUsername(input: {
     throw new ConflictError("User is already in this workspace.");
   }
 
+  const now = new Date();
   await db.insert(workspaceMembers).values({
-    role: user.id === workspace.ownerUserId ? "owner" : input.role,
+    createdAt: now,
+    role: input.role,
+    tokenColor: defaultWorkspaceTokenColor,
+    updatedAt: now,
     userId: user.id,
     workspaceId: input.workspaceId,
   });
-
-  await db
-    .insert(workspaceMemberTokens)
-    .values({
-      color: defaultWorkspaceTokenColor,
-      updatedAt: new Date(),
-      userId: user.id,
-      workspaceId: input.workspaceId,
-    })
-    .onConflictDoNothing();
 
   await touchWorkspaceUpdatedAt(input.workspaceId);
 }
@@ -423,7 +406,7 @@ export async function removeWorkspaceMember(input: {
   targetUserId: UserId;
   workspaceId: string;
 }): Promise<void> {
-  const { role: actorRole, workspace } = await requireWorkspaceAndRole(
+  const { role: actorRole } = await requireWorkspaceAndRole(
     input.workspaceId,
     input.actorUserId,
   );
@@ -432,30 +415,32 @@ export async function removeWorkspaceMember(input: {
     throw new ForbiddenError("Owner access denied.");
   }
 
-  if (input.targetUserId === workspace.ownerUserId) {
-    throw new ConflictError("Cannot remove the workspace owner.");
-  }
-
-  const deleted = await db
-    .delete(workspaceMembers)
+  const targetRows = await db
+    .select({ role: workspaceMembers.role })
+    .from(workspaceMembers)
     .where(
       and(
         eq(workspaceMembers.workspaceId, input.workspaceId),
         eq(workspaceMembers.userId, input.targetUserId),
       ),
     )
-    .returning({ userId: workspaceMembers.userId });
+    .limit(1);
+  const targetRole = toRole(targetRows[0]?.role);
 
-  if (deleted.length === 0) {
+  if (!targetRole) {
     throw new NotFoundError("Workspace member not found.");
   }
 
+  if (targetRole === "owner") {
+    throw new ConflictError("Cannot remove the workspace owner.");
+  }
+
   await db
-    .delete(workspaceMemberTokens)
+    .delete(workspaceMembers)
     .where(
       and(
-        eq(workspaceMemberTokens.workspaceId, input.workspaceId),
-        eq(workspaceMemberTokens.userId, input.targetUserId),
+        eq(workspaceMembers.workspaceId, input.workspaceId),
+        eq(workspaceMembers.userId, input.targetUserId),
       ),
     );
 
@@ -468,7 +453,7 @@ export async function updateWorkspaceMemberRole(input: {
   targetUserId: UserId;
   workspaceId: string;
 }): Promise<void> {
-  const { role: actorRole, workspace } = await requireWorkspaceAndRole(
+  const { role: actorRole } = await requireWorkspaceAndRole(
     input.workspaceId,
     input.actorUserId,
   );
@@ -481,24 +466,35 @@ export async function updateWorkspaceMemberRole(input: {
     throw new BadRequestError("Invalid workspace role.");
   }
 
-  if (input.targetUserId === workspace.ownerUserId) {
-    throw new ConflictError("Cannot change the workspace owner role.");
-  }
-
-  const updated = await db
-    .update(workspaceMembers)
-    .set({ role: input.role })
+  const targetRows = await db
+    .select({ role: workspaceMembers.role })
+    .from(workspaceMembers)
     .where(
       and(
         eq(workspaceMembers.workspaceId, input.workspaceId),
         eq(workspaceMembers.userId, input.targetUserId),
       ),
     )
-    .returning({ userId: workspaceMembers.userId });
+    .limit(1);
+  const targetRole = toRole(targetRows[0]?.role);
 
-  if (updated.length === 0) {
+  if (!targetRole) {
     throw new NotFoundError("Workspace member not found.");
   }
+
+  if (targetRole === "owner") {
+    throw new ConflictError("Cannot change the workspace owner role.");
+  }
+
+  await db
+    .update(workspaceMembers)
+    .set({ role: input.role, updatedAt: new Date() })
+    .where(
+      and(
+        eq(workspaceMembers.workspaceId, input.workspaceId),
+        eq(workspaceMembers.userId, input.targetUserId),
+      ),
+    );
 
   await touchWorkspaceUpdatedAt(input.workspaceId);
 }

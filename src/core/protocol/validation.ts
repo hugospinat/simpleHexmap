@@ -14,17 +14,6 @@ function isValidCellRef(value: unknown): value is { q: number; r: number } {
   return isObject(value) && isInteger(value.q) && isInteger(value.r);
 }
 
-function isValidCellRefArray(
-  value: unknown,
-): value is Array<{ q: number; r: number }> {
-  return (
-    Array.isArray(value) &&
-    value.length > 0 &&
-    value.length <= maxSemanticCellsPerOperation &&
-    value.every(isValidCellRef)
-  );
-}
-
 export function validateMapOperation(operation: unknown): string | null {
   if (!isObject(operation) || typeof operation.type !== "string") {
     return "Invalid operation payload.";
@@ -32,40 +21,6 @@ export function validateMapOperation(operation: unknown): string | null {
 
   const candidate = operation as Partial<MapOperation> &
     Record<string, unknown>;
-
-  if (candidate.type === "paint_cells") {
-    if (
-      !isValidCellRefArray(candidate.cells) ||
-      typeof candidate.hidden !== "boolean" ||
-      (candidate.terrain !== null && typeof candidate.terrain !== "string")
-    ) {
-      return "Invalid paint_cells operation.";
-    }
-
-    return null;
-  }
-
-  if (candidate.type === "set_cells_hidden") {
-    if (
-      !isValidCellRefArray(candidate.cells) ||
-      typeof candidate.hidden !== "boolean"
-    ) {
-      return "Invalid set_cells_hidden operation.";
-    }
-
-    return null;
-  }
-
-  if (candidate.type === "assign_faction_cells") {
-    if (
-      !isValidCellRefArray(candidate.cells) ||
-      (candidate.factionId !== null && typeof candidate.factionId !== "string")
-    ) {
-      return "Invalid assign_faction_cells operation.";
-    }
-
-    return null;
-  }
 
   if (candidate.type === "set_tiles") {
     const tiles = candidate.tiles;
@@ -119,7 +74,8 @@ export function validateMapOperation(operation: unknown): string | null {
       typeof feature.id !== "string" ||
       !isInteger(feature.q) ||
       !isInteger(feature.r) ||
-      typeof feature.kind !== "string"
+      typeof feature.kind !== "string" ||
+      typeof feature.hidden !== "boolean"
     ) {
       return "Invalid add_feature operation.";
     }
@@ -138,18 +94,6 @@ export function validateMapOperation(operation: unknown): string | null {
 
     return null;
   }
-
-  if (candidate.type === "set_feature_hidden") {
-    if (
-      typeof candidate.featureId !== "string" ||
-      typeof candidate.hidden !== "boolean"
-    ) {
-      return "Invalid set_feature_hidden operation.";
-    }
-
-    return null;
-  }
-
   if (candidate.type === "remove_feature") {
     return typeof candidate.featureId === "string"
       ? null
@@ -221,12 +165,5 @@ export function validateMapOperation(operation: unknown): string | null {
       ? null
       : "Invalid remove_faction operation.";
   }
-
-  if (candidate.type === "rename_map") {
-    return typeof candidate.name === "string"
-      ? null
-      : "Invalid rename_map operation.";
-  }
-
   return "Unknown operation type.";
 }

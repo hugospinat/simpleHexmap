@@ -1,6 +1,10 @@
-import type { MapOperation, MapTokenOperation } from "@/core/protocol";
-import type { WorkspaceTokenMemberRecord } from "@/core/auth/authTypes";
-import type { SavedMapContent } from "@/core/protocol";
+import type {
+  MapDocument,
+  MapOperation,
+  MapTokenOperation,
+  MapTokenPlacement,
+} from "@/core/protocol";
+import type { WorkspaceMember } from "@/core/auth/authTypes";
 
 export type MapOperationMessage = {
   type: "map_operation_applied";
@@ -16,9 +20,10 @@ export type MapAppliedOperationEntry = Omit<MapOperationMessage, "type">;
 export type MapSyncSnapshotMessage = {
   type: "sync_snapshot";
   lastSequence: number;
-  tokenMembers: WorkspaceTokenMemberRecord[];
+  workspaceMembers: WorkspaceMember[];
   updatedAt: string;
-  content: SavedMapContent;
+  document: MapDocument;
+  tokenPlacements: MapTokenPlacement[];
 };
 
 export type MapTokenUpdateRequest = {

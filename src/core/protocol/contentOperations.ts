@@ -1,5 +1,6 @@
 import type { OperationApplier } from "./operationContracts.js";
 import type {
+  MapDocument,
   MapFactionRecord,
   MapFactionTerritoryRecord,
   MapFeatureRecord,
@@ -7,8 +8,6 @@ import type {
   MapRiverRecord,
   MapRoadRecord,
   MapTileRecord,
-  MapTokenRecord,
-  SavedMapContent,
 } from "./types.js";
 import {
   normalizeRoad,
@@ -19,16 +18,14 @@ import {
   tileKey,
 } from "./recordHelpers.js";
 
-export function applyOperationToSavedMapContent<
-  TSnapshot extends SavedMapContent,
->(snapshot: TSnapshot, operation: MapOperation): TSnapshot {
+export function applyOperationToMapDocument<TSnapshot extends MapDocument>(
+  snapshot: TSnapshot,
+  operation: MapOperation,
+): TSnapshot {
   switch (operation.type) {
-    case "paint_cells":
-    case "set_cells_hidden":
-    case "assign_faction_cells":
     case "set_tiles":
     case "set_faction_territories":
-      return applyOperationsToSavedMapContentIndexed(snapshot, [operation]);
+      return applyOperationsToMapDocumentIndexed(snapshot, [operation]);
     case "add_feature": {
       if (
         snapshot.features.some((feature) => feature.id === operation.feature.id)
@@ -40,28 +37,6 @@ export function applyOperationToSavedMapContent<
         ...snapshot,
         features: [...snapshot.features, operation.feature],
       };
-    }
-    case "set_feature_hidden": {
-      const visibility: "hidden" | "visible" = operation.hidden
-        ? "hidden"
-        : "visible";
-      let changed = false;
-      const features = snapshot.features.map((feature) => {
-        if (
-          feature.id !== operation.featureId ||
-          feature.visibility === visibility
-        ) {
-          return feature;
-        }
-
-        changed = true;
-        return {
-          ...feature,
-          visibility,
-        };
-      });
-
-      return changed ? { ...snapshot, features } : snapshot;
     }
     case "update_feature": {
       const patch = sanitizeFeaturePatch(operation.patch);
@@ -164,8 +139,6 @@ export function applyOperationToSavedMapContent<
           (territory) => territory.factionId !== operation.factionId,
         ),
       };
-    case "rename_map":
-      return snapshot;
     default: {
       const exhaustive: never = operation;
       void exhaustive;
@@ -174,38 +147,35 @@ export function applyOperationToSavedMapContent<
   }
 }
 
-export function applyOperationsToSavedMapContent<
-  TSnapshot extends SavedMapContent,
->(snapshot: TSnapshot, operations: readonly MapOperation[]): TSnapshot {
+export function applyOperationsToMapDocument<TSnapshot extends MapDocument>(
+  snapshot: TSnapshot,
+  operations: readonly MapOperation[],
+): TSnapshot {
   if (operations.length === 0) {
     return snapshot;
   }
 
-  return applyOperationsToSavedMapContentIndexed(snapshot, operations);
+  return applyOperationsToMapDocumentIndexed(snapshot, operations);
 }
 
-export const savedMapContentOperationApplier: OperationApplier<SavedMapContent> =
-  {
-    apply: applyOperationToSavedMapContent,
-    applyMany: applyOperationsToSavedMapContent,
-  };
+export const mapDocumentOperationApplier: OperationApplier<MapDocument> = {
+  apply: applyOperationToMapDocument,
+  applyMany: applyOperationsToMapDocument,
+};
 
-export const applyMapOperation = applyOperationToSavedMapContent;
-export const applyMapOperations = applyOperationsToSavedMapContent;
+export const applyMapDocumentOperation = applyOperationToMapDocument;
+export const applyMapDocumentOperations = applyOperationsToMapDocument;
 
-export type SavedMapContentIndex = {
+export type MapDocumentIndex = {
   factionTerritoriesByHex: Map<string, MapFactionTerritoryRecord>;
   factionsById: Map<string, MapFactionRecord>;
   featuresById: Map<string, MapFeatureRecord>;
   riversByKey: Map<string, MapRiverRecord>;
   roads: MapRoadRecord[];
   tilesByHex: Map<string, MapTileRecord>;
-  tokensByUserId: Map<string, MapTokenRecord>;
 };
 
-export function indexSavedMapContent(
-  snapshot: SavedMapContent,
-): SavedMapContentIndex {
+export function indexMapDocument(snapshot: MapDocument): MapDocumentIndex {
   return {
     factionTerritoriesByHex: new Map(
       snapshot.factionTerritories.map((territory) => [
@@ -224,15 +194,12 @@ export function indexSavedMapContent(
     ),
     roads: snapshot.roads,
     tilesByHex: new Map(snapshot.tiles.map((tile) => [tileKey(tile), tile])),
-    tokensByUserId: new Map(
-      snapshot.tokens.map((token) => [token.userId, token]),
-    ),
   };
 }
 
-export function materializeSavedMapContent<TSnapshot extends SavedMapContent>(
+export function materializeMapDocument<TSnapshot extends MapDocument>(
   snapshot: TSnapshot,
-  index: SavedMapContentIndex,
+  index: MapDocumentIndex,
 ): TSnapshot {
   return {
     ...snapshot,
@@ -242,65 +209,14 @@ export function materializeSavedMapContent<TSnapshot extends SavedMapContent>(
     roads: index.roads,
     factions: Array.from(index.factionsById.values()),
     factionTerritories: Array.from(index.factionTerritoriesByHex.values()),
-    tokens: Array.from(index.tokensByUserId.values()),
   };
 }
 
-export function applyOperationToSavedMapContentIndex(
-  index: SavedMapContentIndex,
+export function applyOperationToMapDocumentIndex(
+  index: MapDocumentIndex,
   operation: MapOperation,
 ): void {
   switch (operation.type) {
-    case "paint_cells": {
-      for (const cell of operation.cells) {
-        const key = tileKey(cell);
-        index.tilesByHex.delete(key);
-
-        if (operation.terrain === null) {
-          index.factionTerritoriesByHex.delete(key);
-          continue;
-        }
-
-        index.tilesByHex.set(key, {
-          hidden: operation.hidden,
-          q: cell.q,
-          r: cell.r,
-          terrain: operation.terrain,
-        });
-      }
-      return;
-    }
-    case "set_cells_hidden": {
-      for (const cell of operation.cells) {
-        const key = tileKey(cell);
-        const tile = index.tilesByHex.get(key);
-
-        if (!tile || tile.hidden === operation.hidden) {
-          continue;
-        }
-
-        index.tilesByHex.set(key, {
-          ...tile,
-          hidden: operation.hidden,
-        });
-      }
-      return;
-    }
-    case "assign_faction_cells": {
-      for (const cell of operation.cells) {
-        const key = tileKey(cell);
-        index.factionTerritoriesByHex.delete(key);
-
-        if (operation.factionId) {
-          index.factionTerritoriesByHex.set(key, {
-            q: cell.q,
-            r: cell.r,
-            factionId: operation.factionId,
-          });
-        }
-      }
-      return;
-    }
     case "set_tiles": {
       for (const tile of operation.tiles) {
         const key = tileKey(tile);
@@ -341,22 +257,6 @@ export function applyOperationToSavedMapContentIndex(
       }
 
       index.featuresById.set(operation.feature.id, operation.feature);
-      return;
-    }
-    case "set_feature_hidden": {
-      const feature = index.featuresById.get(operation.featureId);
-      const visibility: "hidden" | "visible" = operation.hidden
-        ? "hidden"
-        : "visible";
-
-      if (!feature || feature.visibility === visibility) {
-        return;
-      }
-
-      index.featuresById.set(operation.featureId, {
-        ...feature,
-        visibility,
-      });
       return;
     }
     case "update_feature": {
@@ -428,8 +328,6 @@ export function applyOperationToSavedMapContentIndex(
         }
       }
       return;
-    case "rename_map":
-      return;
     default: {
       const exhaustive: never = operation;
       void exhaustive;
@@ -437,14 +335,15 @@ export function applyOperationToSavedMapContentIndex(
   }
 }
 
-function applyOperationsToSavedMapContentIndexed<
-  TSnapshot extends SavedMapContent,
->(snapshot: TSnapshot, operations: readonly MapOperation[]): TSnapshot {
-  const index = indexSavedMapContent(snapshot);
+function applyOperationsToMapDocumentIndexed<TSnapshot extends MapDocument>(
+  snapshot: TSnapshot,
+  operations: readonly MapOperation[],
+): TSnapshot {
+  const index = indexMapDocument(snapshot);
 
   for (const operation of operations) {
-    applyOperationToSavedMapContentIndex(index, operation);
+    applyOperationToMapDocumentIndex(index, operation);
   }
 
-  return materializeSavedMapContent(snapshot, index);
+  return materializeMapDocument(snapshot, index);
 }

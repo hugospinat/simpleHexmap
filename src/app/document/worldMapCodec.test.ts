@@ -7,7 +7,7 @@ import {
   addTile,
   assignFactionAt,
   createEmptyWorld,
-  type MapState
+  type MapState,
 } from "@/core/map/world";
 import { deserializeWorld, serializeWorld } from "@/app/document/worldMapCodec";
 
@@ -23,14 +23,13 @@ function createSampleWorld(): MapState {
     kind: "city",
     hexId: "0,0",
     hidden: false,
-    overrideTerrainTile: true,
     labelRevealed: true,
     gmLabel: "GM",
-    playerLabel: "City"
+    playerLabel: "City",
   });
   world = addRiverEdge(world, 3, {
     axial: { q: 0, r: 0 },
-    edge: 1
+    edge: 1,
   });
   world = addRoadConnection(world, 3, { q: 0, r: 0 }, { q: 1, r: 0 });
 

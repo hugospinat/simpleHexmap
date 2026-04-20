@@ -9,14 +9,14 @@ import {
 } from "@/core/geometry/hex";
 import { SOURCE_LEVEL } from "@/core/map/mapRules";
 import { getLevelMap, type MapState } from "@/core/map/world";
-import type { MapTokenRecord } from "@/core/protocol";
+import type { MapTokenPlacement } from "@/core/protocol";
 import type { Viewport } from "@/render/renderTypes";
 
 type MapTokenHitTestInput = {
   center: Axial;
   level: number;
   point: Pixel;
-  tokens: readonly MapTokenRecord[];
+  tokens: readonly MapTokenPlacement[];
   viewport: Viewport;
   visualZoom: number;
   world: MapState;
@@ -69,11 +69,11 @@ function getScreenBounds(corners: Pixel[]): { height: number; width: number } {
   };
 }
 
-function tokenSourceAxial(token: MapTokenRecord): Axial {
+function tokenSourceAxial(token: MapTokenPlacement): Axial {
   return { q: token.q, r: token.r };
 }
 
-function tokenFrameAxial(token: MapTokenRecord, level: number): Axial {
+function tokenFrameAxial(token: MapTokenPlacement, level: number): Axial {
   const sourceAxial = tokenSourceAxial(token);
   return level === SOURCE_LEVEL
     ? sourceAxial
@@ -91,7 +91,7 @@ export function findMapTokenUserAtPoint({
 }: MapTokenHitTestInput): string | null {
   const sourceCells = getLevelMap(world, SOURCE_LEVEL);
   const levelCells = getLevelMap(world, level);
-  const tokensByHex = new Map<HexId, MapTokenRecord[]>();
+  const tokensByHex = new Map<HexId, MapTokenPlacement[]>();
 
   for (const token of tokens) {
     const sourceAxial = tokenSourceAxial(token);

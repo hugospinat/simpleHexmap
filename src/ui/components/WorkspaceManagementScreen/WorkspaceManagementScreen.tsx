@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type FormEvent } from "react";
-import { canOpenWorkspaceAsGM, type MapOpenMode, type UserRecord, type WorkspaceMemberRecord } from "@/core/auth/authTypes";
+import { canOpenWorkspaceAsGM, type MapOpenMode, type UserRecord, type WorkspaceMember } from "@/core/auth/authTypes";
 import type { WorkspaceMapSummary, WorkspaceSummary } from "@/app/api/workspaceApi";
 
 type WorkspaceManagementScreenProps = {
@@ -7,7 +7,7 @@ type WorkspaceManagementScreenProps = {
   errorMessage: string | null;
   isBusy: boolean;
   maps: WorkspaceMapSummary[];
-  members: WorkspaceMemberRecord[];
+  members: WorkspaceMember[];
   onAddMember: (workspaceId: string, username: string, role: "gm" | "player") => Promise<void>;
   onBackToWorkspaces: () => void;
   onCreateMap: (workspaceId: string, name: string) => Promise<void>;
@@ -58,8 +58,14 @@ export function WorkspaceManagementScreen({
 
   const sortedMembers = useMemo(() => {
     return [...members].sort((left, right) => {
-      if (left.isOwner !== right.isOwner) {
-        return left.isOwner ? -1 : 1;
+      if (left.role !== right.role) {
+        if (left.role === "owner") {
+          return -1;
+        }
+
+        if (right.role === "owner") {
+          return 1;
+        }
       }
 
       if (left.role !== right.role) {
@@ -314,8 +320,8 @@ export function WorkspaceManagementScreen({
               ) : (
                 <ul className="map-list">
                   {sortedMembers.map((member) => {
-                    const canEditRole = !member.isOwner;
-                    const canRemoveMember = !member.isOwner;
+                    const canEditRole = member.role !== "owner";
+                    const canRemoveMember = member.role !== "owner";
 
                     return (
                       <li key={member.userId} className="map-list-item workspace-row-item">

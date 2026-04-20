@@ -64,9 +64,18 @@ describe("world operation applier", () => {
     world = addTile(world, SOURCE_LEVEL, { q: 0, r: 0 }, "plain");
     world = addTile(world, SOURCE_LEVEL, { q: 1, r: 0 }, "plain");
     const operations: MapOperation[] = [
-      { type: "set_cells_hidden", cells: [{ q: 0, r: 0 }], hidden: true },
-      { type: "set_cells_hidden", cells: [{ q: 1, r: 0 }], hidden: true },
-      { type: "set_cells_hidden", cells: [{ q: 1, r: 0 }], hidden: false },
+      {
+        type: "set_tiles",
+        tiles: [{ q: 0, r: 0, terrain: "plain", hidden: true }],
+      },
+      {
+        type: "set_tiles",
+        tiles: [{ q: 1, r: 0, terrain: "plain", hidden: true }],
+      },
+      {
+        type: "set_tiles",
+        tiles: [{ q: 1, r: 0, terrain: "plain", hidden: false }],
+      },
     ];
 
     expectSameMapData(

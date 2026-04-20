@@ -30,9 +30,10 @@ export async function sendSyncSnapshot(
     JSON.stringify({
       type: "sync_snapshot",
       lastSequence: visibleMap.nextSequence - 1,
-      tokenMembers: visibleMap.tokenMembers,
+      workspaceMembers: visibleMap.workspaceMembers,
       updatedAt: visibleMap.updatedAt,
-      content: visibleMap.content,
+      document: visibleMap.document,
+      tokenPlacements: visibleMap.tokenPlacements,
     }),
   );
   return true;

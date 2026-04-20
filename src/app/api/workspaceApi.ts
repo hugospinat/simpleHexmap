@@ -1,18 +1,16 @@
 import { buildApiUrl } from "@/app/api/apiBase";
-import { parseSavedMapContent } from "@/core/document/savedMapCodec";
-import type { SavedMapContent } from "@/core/protocol";
+import { parseMapDocument } from "@/core/document/savedMapCodec";
+import type { MapDocument, MapTokenPlacement } from "@/core/protocol";
 import type {
   MapOpenMode,
-  WorkspaceMemberRecord,
+  WorkspaceMember,
   WorkspaceRole,
-  WorkspaceTokenMemberRecord
 } from "@/core/auth/authTypes";
 
 export type WorkspaceSummary = {
   currentUserRole: WorkspaceRole;
   id: string;
   name: string;
-  ownerUserId: string;
   updatedAt: string;
 };
 
@@ -24,15 +22,15 @@ export type WorkspaceMapSummary = {
 };
 
 export type WorkspaceMapRecord = WorkspaceMapSummary & {
-  content: SavedMapContent;
   currentUserRole: WorkspaceRole;
-  ownerUserId: string;
-  tokenMembers: WorkspaceTokenMemberRecord[];
+  document: MapDocument;
+  tokenPlacements: MapTokenPlacement[];
+  workspaceMembers: WorkspaceMember[];
   workspaceName: string;
 };
 
 export type WorkspaceMembersPayload = {
-  members: WorkspaceMemberRecord[];
+  members: WorkspaceMember[];
   workspace: WorkspaceSummary;
 };
 
@@ -47,7 +45,7 @@ type CreateWorkspaceInput = {
 };
 
 type CreateWorkspaceMapInput = {
-  content?: SavedMapContent;
+  content?: MapDocument;
   name: string;
 };
 
@@ -61,16 +59,17 @@ async function requestJson(path: string, init?: RequestInit): Promise<unknown> {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      ...(init?.headers ?? {})
-    }
+      ...(init?.headers ?? {}),
+    },
   });
 
-  const payload = await response.json() as unknown;
+  const payload = (await response.json()) as unknown;
 
   if (!response.ok) {
-    const errorMessage = isObject(payload) && typeof payload.error === "string"
-      ? payload.error
-      : `Request failed with status ${response.status}.`;
+    const errorMessage =
+      isObject(payload) && typeof payload.error === "string"
+        ? payload.error
+        : `Request failed with status ${response.status}.`;
     throw new Error(errorMessage);
   }
 
@@ -83,11 +82,10 @@ function parseWorkspaceRole(value: unknown): WorkspaceRole {
 
 function parseWorkspaceSummary(raw: unknown): WorkspaceSummary {
   if (
-    !isObject(raw)
-    || typeof raw.id !== "string"
-    || typeof raw.name !== "string"
-    || typeof raw.ownerUserId !== "string"
-    || typeof raw.updatedAt !== "string"
+    !isObject(raw) ||
+    typeof raw.id !== "string" ||
+    typeof raw.name !== "string" ||
+    typeof raw.updatedAt !== "string"
   ) {
     throw new Error("Invalid workspace summary response.");
   }
@@ -96,18 +94,34 @@ function parseWorkspaceSummary(raw: unknown): WorkspaceSummary {
     currentUserRole: parseWorkspaceRole(raw.currentUserRole),
     id: raw.id,
     name: raw.name,
-    ownerUserId: raw.ownerUserId,
-    updatedAt: raw.updatedAt
+    updatedAt: raw.updatedAt,
+  };
+}
+
+function parseTokenPlacement(raw: unknown): MapTokenPlacement {
+  if (
+    !isObject(raw) ||
+    typeof raw.userId !== "string" ||
+    typeof raw.q !== "number" ||
+    typeof raw.r !== "number"
+  ) {
+    throw new Error("Invalid map token placement response.");
+  }
+
+  return {
+    userId: raw.userId,
+    q: raw.q,
+    r: raw.r,
   };
 }
 
 function parseWorkspaceMapSummary(raw: unknown): WorkspaceMapSummary {
   if (
-    !isObject(raw)
-    || typeof raw.id !== "string"
-    || typeof raw.name !== "string"
-    || typeof raw.updatedAt !== "string"
-    || typeof raw.workspaceId !== "string"
+    !isObject(raw) ||
+    typeof raw.id !== "string" ||
+    typeof raw.name !== "string" ||
+    typeof raw.updatedAt !== "string" ||
+    typeof raw.workspaceId !== "string"
   ) {
     throw new Error("Invalid workspace map summary response.");
   }
@@ -116,56 +130,45 @@ function parseWorkspaceMapSummary(raw: unknown): WorkspaceMapSummary {
     id: raw.id,
     name: raw.name,
     updatedAt: raw.updatedAt,
-    workspaceId: raw.workspaceId
+    workspaceId: raw.workspaceId,
   };
 }
 
 function parseWorkspaceMapRecord(raw: unknown): WorkspaceMapRecord {
   if (
-    !isObject(raw)
-    || typeof raw.ownerUserId !== "string"
-    || typeof raw.workspaceName !== "string"
-    || !Array.isArray(raw.tokenMembers)
+    !isObject(raw) ||
+    typeof raw.workspaceName !== "string" ||
+    !Array.isArray(raw.workspaceMembers) ||
+    !Array.isArray(raw.tokenPlacements)
   ) {
     throw new Error("Invalid workspace map response.");
   }
 
   return {
     ...parseWorkspaceMapSummary(raw),
-    content: parseSavedMapContent(raw.content),
     currentUserRole: parseWorkspaceRole(raw.currentUserRole),
-    ownerUserId: raw.ownerUserId,
-    tokenMembers: raw.tokenMembers.map(parseWorkspaceTokenMember),
-    workspaceName: raw.workspaceName
+    document: parseMapDocument(raw.document),
+    tokenPlacements: raw.tokenPlacements.map(parseTokenPlacement),
+    workspaceMembers: raw.workspaceMembers.map(parseWorkspaceMember),
+    workspaceName: raw.workspaceName,
   };
 }
 
-function parseWorkspaceMember(raw: unknown): WorkspaceMemberRecord {
+function parseWorkspaceMember(raw: unknown): WorkspaceMember {
   if (
-    !isObject(raw)
-    || typeof raw.userId !== "string"
-    || typeof raw.username !== "string"
-    || typeof raw.isOwner !== "boolean"
+    !isObject(raw) ||
+    typeof raw.userId !== "string" ||
+    typeof raw.username !== "string" ||
+    typeof raw.tokenColor !== "string"
   ) {
     throw new Error("Invalid workspace member response.");
   }
 
   return {
-    isOwner: raw.isOwner,
     role: parseWorkspaceRole(raw.role),
+    tokenColor: raw.tokenColor,
     userId: raw.userId,
-    username: raw.username
-  };
-}
-
-function parseWorkspaceTokenMember(raw: unknown): WorkspaceTokenMemberRecord {
-  if (!isObject(raw) || typeof raw.color !== "string") {
-    throw new Error("Invalid workspace token member response.");
-  }
-
-  return {
-    ...parseWorkspaceMember(raw),
-    color: raw.color
+    username: raw.username,
   };
 }
 
@@ -176,23 +179,19 @@ function parseWorkspaceMembersPayload(raw: unknown): WorkspaceMembersPayload {
 
   return {
     members: raw.members.map(parseWorkspaceMember),
-    workspace: parseWorkspaceSummary(raw.workspace)
+    workspace: parseWorkspaceSummary(raw.workspace),
   };
 }
 
 function parseWorkspaceMapsPayload(raw: unknown): WorkspaceMapsPayload {
-  if (
-    !isObject(raw)
-    || !Array.isArray(raw.maps)
-    || !("workspace" in raw)
-  ) {
+  if (!isObject(raw) || !Array.isArray(raw.maps) || !("workspace" in raw)) {
     throw new Error("Invalid workspace maps response.");
   }
 
   return {
     currentUserRole: parseWorkspaceRole(raw.currentUserRole),
     maps: raw.maps.map(parseWorkspaceMapSummary),
-    workspace: parseWorkspaceSummary(raw.workspace)
+    workspace: parseWorkspaceSummary(raw.workspace),
   };
 }
 
@@ -206,10 +205,12 @@ export async function listWorkspaces(): Promise<WorkspaceSummary[]> {
   return payload.workspaces.map(parseWorkspaceSummary);
 }
 
-export async function createWorkspace(input: CreateWorkspaceInput): Promise<WorkspaceSummary> {
+export async function createWorkspace(
+  input: CreateWorkspaceInput,
+): Promise<WorkspaceSummary> {
   const payload = await requestJson("/api/workspaces", {
     body: JSON.stringify(input),
-    method: "POST"
+    method: "POST",
   });
 
   if (!isObject(payload) || !("workspace" in payload)) {
@@ -219,11 +220,17 @@ export async function createWorkspace(input: CreateWorkspaceInput): Promise<Work
   return parseWorkspaceSummary(payload.workspace);
 }
 
-export async function renameWorkspaceById(workspaceId: string, name: string): Promise<WorkspaceSummary> {
-  const payload = await requestJson(`/api/workspaces/${encodeURIComponent(workspaceId)}`, {
-    body: JSON.stringify({ name }),
-    method: "PATCH"
-  });
+export async function renameWorkspaceById(
+  workspaceId: string,
+  name: string,
+): Promise<WorkspaceSummary> {
+  const payload = await requestJson(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}`,
+    {
+      body: JSON.stringify({ name }),
+      method: "PATCH",
+    },
+  );
 
   if (!isObject(payload) || !("workspace" in payload)) {
     throw new Error("Invalid workspace rename response.");
@@ -233,72 +240,101 @@ export async function renameWorkspaceById(workspaceId: string, name: string): Pr
 }
 
 export async function deleteWorkspaceById(workspaceId: string): Promise<void> {
-  const payload = await requestJson(`/api/workspaces/${encodeURIComponent(workspaceId)}`, {
-    method: "DELETE"
-  });
+  const payload = await requestJson(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}`,
+    {
+      method: "DELETE",
+    },
+  );
 
   if (!isObject(payload) || payload.deleted !== true) {
     throw new Error("Invalid workspace delete response.");
   }
 }
 
-export async function listWorkspaceMembersById(workspaceId: string): Promise<WorkspaceMembersPayload> {
-  return parseWorkspaceMembersPayload(await requestJson(`/api/workspaces/${encodeURIComponent(workspaceId)}/members`, {
-    method: "GET"
-  }));
+export async function listWorkspaceMembersById(
+  workspaceId: string,
+): Promise<WorkspaceMembersPayload> {
+  return parseWorkspaceMembersPayload(
+    await requestJson(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/members`,
+      {
+        method: "GET",
+      },
+    ),
+  );
 }
 
 export async function addWorkspaceMemberByUsername(
   workspaceId: string,
   username: string,
-  role: Extract<WorkspaceRole, "gm" | "player">
+  role: Extract<WorkspaceRole, "gm" | "player">,
 ): Promise<WorkspaceMembersPayload> {
-  return parseWorkspaceMembersPayload(await requestJson(`/api/workspaces/${encodeURIComponent(workspaceId)}/members`, {
-    body: JSON.stringify({ role, username }),
-    method: "POST"
-  }));
+  return parseWorkspaceMembersPayload(
+    await requestJson(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/members`,
+      {
+        body: JSON.stringify({ role, username }),
+        method: "POST",
+      },
+    ),
+  );
 }
 
 export async function updateWorkspaceMemberRoleById(
   workspaceId: string,
   userId: string,
-  role: Extract<WorkspaceRole, "gm" | "player">
+  role: Extract<WorkspaceRole, "gm" | "player">,
 ): Promise<WorkspaceMembersPayload> {
-  return parseWorkspaceMembersPayload(await requestJson(
-    `/api/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`,
-    {
-      body: JSON.stringify({ role }),
-      method: "PATCH"
-    }
-  ));
+  return parseWorkspaceMembersPayload(
+    await requestJson(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`,
+      {
+        body: JSON.stringify({ role }),
+        method: "PATCH",
+      },
+    ),
+  );
 }
 
 export async function removeWorkspaceMemberById(
   workspaceId: string,
-  userId: string
+  userId: string,
 ): Promise<WorkspaceMembersPayload> {
-  return parseWorkspaceMembersPayload(await requestJson(
-    `/api/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`,
-    {
-      method: "DELETE"
-    }
-  ));
+  return parseWorkspaceMembersPayload(
+    await requestJson(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`,
+      {
+        method: "DELETE",
+      },
+    ),
+  );
 }
 
-export async function listWorkspaceMapsById(workspaceId: string): Promise<WorkspaceMapsPayload> {
-  return parseWorkspaceMapsPayload(await requestJson(`/api/workspaces/${encodeURIComponent(workspaceId)}/maps`, {
-    method: "GET"
-  }));
+export async function listWorkspaceMapsById(
+  workspaceId: string,
+): Promise<WorkspaceMapsPayload> {
+  return parseWorkspaceMapsPayload(
+    await requestJson(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/maps`,
+      {
+        method: "GET",
+      },
+    ),
+  );
 }
 
 export async function createWorkspaceMapById(
   workspaceId: string,
-  input: CreateWorkspaceMapInput
+  input: CreateWorkspaceMapInput,
 ): Promise<WorkspaceMapRecord> {
-  const payload = await requestJson(`/api/workspaces/${encodeURIComponent(workspaceId)}/maps`, {
-    body: JSON.stringify(input),
-    method: "POST"
-  });
+  const payload = await requestJson(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/maps`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+  );
 
   if (!isObject(payload) || !("map" in payload)) {
     throw new Error("Invalid create workspace map response.");
@@ -309,12 +345,15 @@ export async function createWorkspaceMapById(
 
 export async function importWorkspaceMapById(
   workspaceId: string,
-  input: CreateWorkspaceMapInput
+  input: CreateWorkspaceMapInput,
 ): Promise<WorkspaceMapRecord> {
-  const payload = await requestJson(`/api/workspaces/${encodeURIComponent(workspaceId)}/maps/import`, {
-    body: JSON.stringify(input),
-    method: "POST"
-  });
+  const payload = await requestJson(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/maps/import`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+  );
 
   if (!isObject(payload) || !("map" in payload)) {
     throw new Error("Invalid map import response.");
@@ -323,10 +362,16 @@ export async function importWorkspaceMapById(
   return parseWorkspaceMapRecord(payload.map);
 }
 
-export async function loadMapById(mapId: string, mode: MapOpenMode): Promise<WorkspaceMapRecord> {
-  const payload = await requestJson(`/api/maps/${encodeURIComponent(mapId)}?role=${encodeURIComponent(mode)}`, {
-    method: "GET"
-  });
+export async function loadMapById(
+  mapId: string,
+  mode: MapOpenMode,
+): Promise<WorkspaceMapRecord> {
+  const payload = await requestJson(
+    `/api/maps/${encodeURIComponent(mapId)}?role=${encodeURIComponent(mode)}`,
+    {
+      method: "GET",
+    },
+  );
 
   if (!isObject(payload) || !("map" in payload)) {
     throw new Error("Invalid map load response.");
@@ -335,10 +380,13 @@ export async function loadMapById(mapId: string, mode: MapOpenMode): Promise<Wor
   return parseWorkspaceMapRecord(payload.map);
 }
 
-export async function renameMapById(mapId: string, name: string): Promise<WorkspaceMapRecord> {
+export async function renameMapById(
+  mapId: string,
+  name: string,
+): Promise<WorkspaceMapRecord> {
   const payload = await requestJson(`/api/maps/${encodeURIComponent(mapId)}`, {
     body: JSON.stringify({ name }),
-    method: "PATCH"
+    method: "PATCH",
   });
 
   if (!isObject(payload) || !("map" in payload)) {
@@ -350,7 +398,7 @@ export async function renameMapById(mapId: string, name: string): Promise<Worksp
 
 export async function deleteMapById(mapId: string): Promise<void> {
   const payload = await requestJson(`/api/maps/${encodeURIComponent(mapId)}`, {
-    method: "DELETE"
+    method: "DELETE",
   });
 
   if (!isObject(payload) || payload.deleted !== true) {
@@ -358,17 +406,22 @@ export async function deleteMapById(mapId: string): Promise<void> {
   }
 }
 
-export async function exportMapById(mapId: string): Promise<{ content: SavedMapContent; name: string }> {
-  const payload = await requestJson(`/api/maps/${encodeURIComponent(mapId)}/export`, {
-    method: "GET"
-  });
+export async function exportMapById(
+  mapId: string,
+): Promise<{ document: MapDocument; name: string }> {
+  const payload = await requestJson(
+    `/api/maps/${encodeURIComponent(mapId)}/export`,
+    {
+      method: "GET",
+    },
+  );
 
   if (!isObject(payload) || typeof payload.name !== "string") {
     throw new Error("Invalid map export response.");
   }
 
   return {
-    content: parseSavedMapContent(payload.content),
-    name: payload.name
+    document: parseMapDocument(payload.document),
+    name: payload.name,
   };
 }

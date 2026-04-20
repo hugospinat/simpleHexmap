@@ -26,7 +26,8 @@ function factionTerritoryOperations(
 
   const sourceMap = world.levels[SOURCE_LEVEL] ?? new Map();
   const assignments = getFactionLevelMap(world, SOURCE_LEVEL);
-  const cells: Array<{ q: number; r: number }> = [];
+  const territories: Array<{ q: number; r: number; factionId: string | null }> =
+    [];
 
   for (const target of terrainTargets(level, axial)) {
     const key = hexKey(target);
@@ -39,18 +40,17 @@ function factionTerritoryOperations(
       continue;
     }
 
-    cells.push({ q: target.q, r: target.r });
+    territories.push({ q: target.q, r: target.r, factionId });
   }
 
-  if (cells.length === 0) {
+  if (territories.length === 0) {
     return [];
   }
 
   return [
     {
-      type: "assign_faction_cells",
-      cells,
-      factionId,
+      type: "set_faction_territories",
+      territories,
     },
   ];
 }

@@ -1,21 +1,29 @@
 import {
+  boolean,
+  foreignKey,
   index,
-  integer,
   jsonb,
+  pgEnum,
   pgTable,
   primaryKey,
   text,
   timestamp,
   uniqueIndex,
   uuid,
+  integer,
 } from "drizzle-orm/pg-core";
 import type { MapOperation } from "../../../src/core/protocol/index.js";
+
+export const workspaceRole = pgEnum("workspace_role", [
+  "owner",
+  "gm",
+  "player",
+]);
 
 export const users = pgTable(
   "users",
   {
     id: uuid("id").primaryKey(),
-    legacyId: text("legacy_id"),
     username: text("username").notNull(),
     usernameNormalized: text("username_normalized").notNull(),
     passwordHash: text("password_hash").notNull(),
@@ -26,7 +34,6 @@ export const users = pgTable(
     usernameNormalizedUnique: uniqueIndex(
       "users_username_normalized_unique",
     ).on(table.usernameNormalized),
-    legacyIdUnique: uniqueIndex("users_legacy_id_unique").on(table.legacyId),
   }),
 );
 
@@ -51,21 +58,12 @@ export const sessions = pgTable(
   }),
 );
 
-export const workspaces = pgTable(
-  "workspaces",
-  {
-    id: uuid("id").primaryKey(),
-    ownerUserId: uuid("owner_user_id")
-      .notNull()
-      .references(() => users.id),
-    name: text("name").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
-  },
-  (table) => ({
-    ownerIndex: index("workspaces_owner_user_id_idx").on(table.ownerUserId),
-  }),
-);
+export const workspaces = pgTable("workspaces", {
+  id: uuid("id").primaryKey(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+});
 
 export const workspaceMembers = pgTable(
   "workspace_members",
@@ -76,7 +74,10 @@ export const workspaceMembers = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    role: text("role").notNull(),
+    role: workspaceRole("role").notNull(),
+    tokenColor: text("token_color").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },
   (table) => ({
     pk: primaryKey({ columns: [table.workspaceId, table.userId] }),
@@ -84,62 +85,20 @@ export const workspaceMembers = pgTable(
   }),
 );
 
-export const workspaceMemberTokens = pgTable(
-  "workspace_member_tokens",
-  {
-    workspaceId: uuid("workspace_id")
-      .notNull()
-      .references(() => workspaces.id, { onDelete: "cascade" }),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    color: text("color").notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
-  },
-  (table) => ({
-    pk: primaryKey({ columns: [table.workspaceId, table.userId] }),
-    userIndex: index("workspace_member_tokens_user_id_idx").on(table.userId),
-  }),
-);
-
 export const maps = pgTable(
   "maps",
   {
     id: uuid("id").primaryKey(),
-    workspaceId: uuid("workspace_id").references(() => workspaces.id, {
-      onDelete: "cascade",
-    }),
-    legacyId: text("legacy_id"),
-    ownerUserId: uuid("owner_user_id")
+    workspaceId: uuid("workspace_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    settings: jsonb("settings").notNull().$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
     nextSequence: integer("next_sequence").notNull(),
   },
   (table) => ({
-    legacyIdUnique: uniqueIndex("maps_legacy_id_unique").on(table.legacyId),
-    ownerIndex: index("maps_owner_user_id_idx").on(table.ownerUserId),
     workspaceIndex: index("maps_workspace_id_idx").on(table.workspaceId),
-  }),
-);
-
-export const mapMembers = pgTable(
-  "map_members",
-  {
-    mapId: uuid("map_id")
-      .notNull()
-      .references(() => maps.id, { onDelete: "cascade" }),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    role: text("role").notNull(),
-  },
-  (table) => ({
-    pk: primaryKey({ columns: [table.mapId, table.userId] }),
-    userIndex: index("map_members_user_id_idx").on(table.userId),
   }),
 );
 
@@ -152,7 +111,7 @@ export const hexCells = pgTable(
     q: integer("q").notNull(),
     r: integer("r").notNull(),
     terrain: text("terrain").notNull(),
-    hidden: integer("hidden").notNull(),
+    hidden: boolean("hidden").notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },
   (table) => ({
@@ -164,28 +123,27 @@ export const hexCells = pgTable(
 export const features = pgTable(
   "features",
   {
-    id: text("id").primaryKey(),
     mapId: uuid("map_id")
       .notNull()
       .references(() => maps.id, { onDelete: "cascade" }),
+    id: text("id").notNull(),
     kind: text("kind").notNull(),
     q: integer("q").notNull(),
     r: integer("r").notNull(),
-    visibility: text("visibility").notNull(),
-    overrideTerrainTile: integer("override_terrain_tile").notNull(),
+    hidden: boolean("hidden").notNull(),
     gmLabel: text("gm_label"),
     playerLabel: text("player_label"),
-    labelRevealed: integer("label_revealed").notNull(),
+    labelRevealed: boolean("label_revealed").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },
   (table) => ({
+    pk: primaryKey({ columns: [table.mapId, table.id] }),
     mapHexIndex: index("features_map_hex_idx").on(
       table.mapId,
       table.q,
       table.r,
     ),
-    mapIndex: index("features_map_id_idx").on(table.mapId),
   }),
 );
 
@@ -224,14 +182,15 @@ export const roads = pgTable(
 export const factions = pgTable(
   "factions",
   {
-    id: text("id").primaryKey(),
     mapId: uuid("map_id")
       .notNull()
       .references(() => maps.id, { onDelete: "cascade" }),
+    id: text("id").notNull(),
     name: text("name").notNull(),
     color: text("color").notNull(),
   },
   (table) => ({
+    pk: primaryKey({ columns: [table.mapId, table.id] }),
     mapIndex: index("factions_map_id_idx").on(table.mapId),
   }),
 );
@@ -244,15 +203,19 @@ export const factionTerritories = pgTable(
       .references(() => maps.id, { onDelete: "cascade" }),
     q: integer("q").notNull(),
     r: integer("r").notNull(),
-    factionId: text("faction_id")
-      .notNull()
-      .references(() => factions.id, { onDelete: "cascade" }),
+    factionId: text("faction_id").notNull(),
   },
   (table) => ({
     pk: primaryKey({ columns: [table.mapId, table.q, table.r] }),
-    factionIndex: index("faction_territories_faction_id_idx").on(
+    factionIndex: index("faction_territories_faction_idx").on(
+      table.mapId,
       table.factionId,
     ),
+    factionFk: foreignKey({
+      columns: [table.mapId, table.factionId],
+      foreignColumns: [factions.mapId, factions.id],
+      name: "faction_territories_map_faction_fk",
+    }).onDelete("cascade"),
   }),
 );
 

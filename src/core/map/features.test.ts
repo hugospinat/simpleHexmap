@@ -8,29 +8,36 @@ import {
   getFeaturesForLevel,
   isFeatureVisible,
   removeFeatureAt,
-  updateFeature
+  updateFeature,
 } from "./features";
 import type { MapState } from "./world";
 
 describe("features", () => {
   it("stores features separately from terrain tiles", () => {
-    const terrainWorld = addTile(createEmptyWorld(), 3, { q: 2, r: -1 }, "forest");
+    const terrainWorld = addTile(
+      createEmptyWorld(),
+      3,
+      { q: 2, r: -1 },
+      "forest",
+    );
     const world = addFeature(terrainWorld, 3, {
       id: "f1",
       kind: "city",
       hexId: "2,-1",
       hidden: false,
-      gmLabel: "Blackford"
+      gmLabel: "Blackford",
     });
 
-    expect(getLevelMap(world, 3).get("2,-1")).toEqual({ hidden: true, type: "forest" });
+    expect(getLevelMap(world, 3).get("2,-1")).toEqual({
+      hidden: true,
+      type: "forest",
+    });
     expect(getFeatureAt(world, 3, { q: 2, r: -1 })).toEqual({
       id: "f1",
       kind: "city",
       hexId: "2,-1",
-      overrideTerrainTile: true,
       hidden: false,
-      gmLabel: "Blackford"
+      gmLabel: "Blackford",
     });
   });
 
@@ -39,7 +46,7 @@ describe("features", () => {
       id: "f1",
       kind: "ruin",
       hexId: "0,0",
-      hidden: false
+      hidden: false,
     });
     const second = addFeature(first, 3, {
       id: "f2",
@@ -48,7 +55,7 @@ describe("features", () => {
       hidden: true,
       gmLabel: "Steps",
       playerLabel: "Old cellar",
-      labelRevealed: false
+      labelRevealed: false,
     });
 
     expect(second).toBe(first);
@@ -56,8 +63,7 @@ describe("features", () => {
       id: "f1",
       kind: "ruin",
       hexId: "0,0",
-      overrideTerrainTile: true,
-      hidden: false
+      hidden: false,
     });
   });
 
@@ -66,7 +72,7 @@ describe("features", () => {
       id: "f1",
       kind: "city",
       hexId: "0,0",
-      hidden: false
+      hidden: false,
     });
 
     expect(unchanged).toEqual(createEmptyWorld());
@@ -75,7 +81,7 @@ describe("features", () => {
       id: "f2",
       kind: "city",
       hexId: "0,0",
-      hidden: false
+      hidden: false,
     });
 
     expect(removeFeatureAt(withFeature, 2, { q: 0, r: 0 })).toBe(withFeature);
@@ -86,22 +92,21 @@ describe("features", () => {
       id: "f1",
       kind: "marker",
       hexId: "0,0",
-      hidden: false
+      hidden: false,
     });
     const nextWorld = updateFeature(world, 3, "f1", {
       gmLabel: "Secret",
-      hidden: true
+      hidden: true,
     });
 
     expect(getFeatureById(nextWorld, 3, "f1")).toEqual({
       id: "f1",
       kind: "marker",
       hexId: "0,0",
-      overrideTerrainTile: false,
       hidden: true,
       gmLabel: "Secret",
       playerLabel: undefined,
-      labelRevealed: undefined
+      labelRevealed: undefined,
     });
   });
 
@@ -110,27 +115,26 @@ describe("features", () => {
       id: "f1",
       kind: "marker",
       hexId: "0,0",
-      hidden: false
+      hidden: false,
     });
 
     expect(getFeatureAt(world, 2, { q: 0, r: 0 })).toEqual({
       id: "f1",
       kind: "marker",
       hexId: "0,0",
-      overrideTerrainTile: false,
-      hidden: false
+      hidden: false,
     });
 
     const nextWorld = updateFeature(world, 2, "f1", {
       gmLabel: "Source label",
       hidden: true,
-      kind: "city"
+      kind: "city",
     });
 
     expect(getFeatureById(nextWorld, 3, "f1")).toMatchObject({
       gmLabel: "Source label",
       hidden: true,
-      kind: "marker"
+      kind: "marker",
     });
   });
 
@@ -139,11 +143,10 @@ describe("features", () => {
       id: "f1",
       kind: "label",
       hexId: "0,0",
-      overrideTerrainTile: false,
       hidden: false,
       gmLabel: "Secret shrine",
       playerLabel: "Weathered stones",
-      labelRevealed: false
+      labelRevealed: false,
     } as const;
 
     expect(getFeatureLabel(feature, "gm")).toBe("Secret shrine");
@@ -155,12 +158,13 @@ describe("features", () => {
       id: "f1",
       kind: "marker",
       hexId: "0,0",
-      overrideTerrainTile: false,
-      hidden: true
+      hidden: true,
     } as const;
 
     expect(isFeatureVisible(hiddenFeature, "gm")).toBe(true);
     expect(isFeatureVisible(hiddenFeature, "player")).toBe(false);
-    expect(isFeatureVisible({ ...hiddenFeature, hidden: false }, "player")).toBe(true);
+    expect(
+      isFeatureVisible({ ...hiddenFeature, hidden: false }, "player"),
+    ).toBe(true);
   });
 });

@@ -25,7 +25,7 @@ export default function MapCanvas({
   world,
   renderWorldPatch,
   previewOperations,
-  mapTokens,
+  tokenPlacements,
   activeTokenUserId,
   canEdit,
   playerMode,
@@ -90,7 +90,7 @@ export default function MapCanvas({
     onGmTokenPlace,
     onGmTokenRemove,
     onPlayerTokenPlace,
-    mapTokens,
+    mapTokens: tokenPlacements,
     playerMode,
     viewport,
     visualZoom,
@@ -216,8 +216,8 @@ export default function MapCanvas({
       return;
     }
 
-    renderer.setTokens(mapTokens);
-  }, [mapTokens, rendererReady]);
+    renderer.setTokens(tokenPlacements);
+  }, [rendererReady, tokenPlacements]);
 
   useEffect(() => {
     const renderer = rendererRef.current;

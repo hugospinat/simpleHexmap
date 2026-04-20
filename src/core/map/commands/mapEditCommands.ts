@@ -4,81 +4,106 @@ import {
   emptyCommandResult,
   type MapEditCommand,
   type MapEditCommandEffects,
-  type MapEditCommandResult
+  type MapEditCommandResult,
 } from "./commandTypes";
 import {
   commandEraseTerrain,
   commandPaintTerrain,
-  commandSetCellHidden
+  commandSetCellHidden,
 } from "./terrainCommands";
 import {
   commandAddFeature,
   commandRemoveFeature,
   commandSetFeatureHidden,
   commandToggleFeatureHiddenAt,
-  commandUpdateFeature
+  commandUpdateFeature,
 } from "./featureCommands";
 import {
   commandAddFaction,
   commandAssignFaction,
   commandClearFaction,
   commandRemoveFaction,
-  commandUpdateFaction
+  commandUpdateFaction,
 } from "./factionCommands";
 import {
   commandAddRoadConnection,
-  commandRemoveRoadConnectionsAt
+  commandRemoveRoadConnection,
+  commandRemoveRoadConnectionsAt,
 } from "./roadCommands";
 import { commandSetRiverEdge } from "./riverCommands";
 
 export type {
   MapEditCommand,
   MapEditCommandEffects,
-  MapEditCommandResult
+  MapEditCommandResult,
 } from "./commandTypes";
 export {
   commandEraseTerrain,
   commandPaintTerrain,
-  commandSetCellHidden
+  commandSetCellHidden,
 } from "./terrainCommands";
 export {
   commandAddFeature,
   commandRemoveFeature,
   commandSetFeatureHidden,
   commandToggleFeatureHiddenAt,
-  commandUpdateFeature
+  commandUpdateFeature,
 } from "./featureCommands";
 export {
   commandAddFaction,
   commandAssignFaction,
   commandClearFaction,
   commandRemoveFaction,
-  commandUpdateFaction
+  commandUpdateFaction,
 } from "./factionCommands";
 export {
   commandAddRoadConnection,
-  commandRemoveRoadConnectionsAt
+  commandRemoveRoadConnection,
+  commandRemoveRoadConnectionsAt,
 } from "./roadCommands";
 export { commandSetRiverEdge } from "./riverCommands";
 
-export function executeMapEditCommand(world: MapState, command: MapEditCommand): MapEditCommandResult {
+export function executeMapEditCommand(
+  world: MapState,
+  command: MapEditCommand,
+): MapEditCommandResult {
   switch (command.type) {
     case "paintTerrain":
-      return commandPaintTerrain(world, command.level, command.axial, command.terrainType);
+      return commandPaintTerrain(
+        world,
+        command.level,
+        command.axial,
+        command.terrainType,
+      );
     case "eraseTerrain":
       return commandEraseTerrain(world, command.level, command.axial);
     case "setCellHidden":
-      return commandSetCellHidden(world, command.level, command.axial, command.hidden);
+      return commandSetCellHidden(
+        world,
+        command.level,
+        command.axial,
+        command.hidden,
+      );
     case "addFeature":
       return commandAddFeature(world, command.level, command.feature);
     case "updateFeature":
-      return commandUpdateFeature(world, command.level, command.featureId, command.updates);
+      return commandUpdateFeature(
+        world,
+        command.level,
+        command.featureId,
+        command.updates,
+      );
     case "setFeatureHidden":
       return commandSetFeatureHidden(world, command.featureId, command.hidden);
     case "removeFeature":
       return commandRemoveFeature(world, command.featureId);
     case "assignFaction":
-      return commandAssignFaction(world, command.level, command.axial, command.factionId);
+      return commandAssignFaction(
+        world,
+        command.level,
+        command.axial,
+        command.factionId,
+      );
     case "clearFaction":
       return commandClearFaction(world, command.level, command.axial);
     case "addFaction":
@@ -88,11 +113,32 @@ export function executeMapEditCommand(world: MapState, command: MapEditCommand):
     case "removeFaction":
       return commandRemoveFaction(world, command.factionId);
     case "addRoadConnection":
-      return commandAddRoadConnection(world, command.level, command.from, command.to);
+      return commandAddRoadConnection(
+        world,
+        command.level,
+        command.from,
+        command.to,
+      );
+    case "removeRoadConnection":
+      return commandRemoveRoadConnection(
+        world,
+        command.level,
+        command.from,
+        command.to,
+      );
     case "removeRoadConnectionsAt":
-      return commandRemoveRoadConnectionsAt(world, command.level, command.axial);
+      return commandRemoveRoadConnectionsAt(
+        world,
+        command.level,
+        command.axial,
+      );
     case "setRiverEdge":
-      return commandSetRiverEdge(world, command.level, command.ref, command.enabled);
+      return commandSetRiverEdge(
+        world,
+        command.level,
+        command.ref,
+        command.enabled,
+      );
     case "toggleFeatureHiddenAt":
       return commandToggleFeatureHiddenAt(world, command.level, command.axial);
     default: {

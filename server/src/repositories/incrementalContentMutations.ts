@@ -5,14 +5,9 @@ import type {
   IncrementalContentOperation,
   IncrementalOperationHandler,
 } from "./mutations/mutationHelpers.js";
-import {
-  paintCells,
-  setCellsHidden,
-  setTiles,
-} from "./mutations/tileMutations.js";
+import { setTiles } from "./mutations/tileMutations.js";
 import {
   addFaction,
-  assignFactionCells,
   removeFaction,
   setFactionTerritories,
   updateFaction,
@@ -20,7 +15,6 @@ import {
 import {
   addFeature,
   removeFeature,
-  setFeatureHidden,
   updateFeature,
 } from "./mutations/featureMutations.js";
 import { setRoadEdges } from "./mutations/roadMutations.js";
@@ -29,16 +23,12 @@ import { addRiverData, removeRiverData } from "./mutations/riverMutations.js";
 const incrementalOperationHandlers: {
   [K in IncrementalContentOperation["type"]]: IncrementalOperationHandler<K>;
 } = {
-  paint_cells: paintCells,
-  set_cells_hidden: setCellsHidden,
   set_tiles: setTiles,
-  assign_faction_cells: assignFactionCells,
   set_faction_territories: setFactionTerritories,
   add_faction: addFaction,
   update_faction: updateFaction,
   remove_faction: removeFaction,
   add_feature: addFeature,
-  set_feature_hidden: setFeatureHidden,
   update_feature: updateFeature,
   remove_feature: removeFeature,
   add_river_data: addRiverData,

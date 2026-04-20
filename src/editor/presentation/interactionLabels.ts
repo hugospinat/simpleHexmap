@@ -55,19 +55,21 @@ export function getInteractionLabel({
       return "Roads are derived here. Use A/E to switch to level 3 and edit road edges.";
     }
 
-    return "Left click and drag to draw roads, right click a road to remove it, middle drag pans.";
+    return "Left click and drag to draw roads, right click and drag between neighboring hexes to remove road edges, middle drag pans.";
   }
 
   if (activeMode === "fog") {
-    if (!activeTokenUserId) {
-      return "Left adds fog to terrain, then features. Right reveals hidden features, then terrain. Middle drag pans.";
-    }
+    return "Left click edits terrain fog, right click edits feature visibility, and the first valid cell locks hide or reveal for the whole drag. Middle drag pans.";
+  }
 
+  if (activeMode === "token") {
     if (level !== SOURCE_LEVEL) {
       return "Token selected: interactions apply on level 3 only. Use A/E to switch to level 3.";
     }
 
-    return "Token selected: left click places it, right click removes clicked visible token. Middle drag pans.";
+    return activeTokenUserId
+      ? "Token selected: left click places it, right click removes clicked visible token. Middle drag pans."
+      : "Select a workspace member to place their token. Right click removes clicked visible tokens. Middle drag pans.";
   }
 
   if (level !== SOURCE_LEVEL) {

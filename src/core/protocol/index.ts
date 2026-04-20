@@ -1,6 +1,7 @@
 export type {
   FactionPatch,
   FeaturePatch,
+  MapDocument,
   MapFactionRecord,
   MapFactionTerritoryRecord,
   MapFeatureRecord,
@@ -9,26 +10,26 @@ export type {
   MapRoadRecord,
   MapTileRecord,
   MapTokenOperation,
-  MapTokenRecord,
+  MapTokenPlacement,
+  MapView,
   RiverEdgeIndex,
   RoadEdgeIndex,
-  SavedMapContent,
 } from "./types.js";
 export type {
   MapOperationEnvelope,
   OperationApplier,
 } from "./operationContracts.js";
 export {
-  applyMapOperation,
-  applyMapOperations,
-  applyOperationToSavedMapContentIndex,
-  applyOperationToSavedMapContent,
-  applyOperationsToSavedMapContent,
-  indexSavedMapContent,
-  materializeSavedMapContent,
-  savedMapContentOperationApplier,
+  applyMapDocumentOperation,
+  applyMapDocumentOperations,
+  applyOperationToMapDocumentIndex,
+  applyOperationToMapDocument,
+  applyOperationsToMapDocument,
+  indexMapDocument,
+  materializeMapDocument,
+  mapDocumentOperationApplier,
 } from "./contentOperations.js";
-export type { SavedMapContentIndex } from "./contentOperations.js";
+export type { MapDocumentIndex } from "./contentOperations.js";
 export { coalesceMapOperations } from "./mapOperationCoalescer.js";
 export {
   addRoadConnectionToRecords,

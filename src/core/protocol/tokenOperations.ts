@@ -1,8 +1,4 @@
-import type {
-  MapTokenOperation,
-  MapTokenRecord,
-  SavedMapContent,
-} from "./types.js";
+import type { MapTokenOperation, MapTokenPlacement } from "./types.js";
 import { isHexColor, isInteger, isObject } from "./recordHelpers.js";
 
 export function validateMapTokenOperation(operation: unknown): string | null {
@@ -11,16 +7,14 @@ export function validateMapTokenOperation(operation: unknown): string | null {
   }
 
   if (operation.type === "set_map_token") {
-    const token = operation.token;
+    const placement = operation.placement;
 
     if (
-      !isObject(token) ||
-      typeof token.userId !== "string" ||
-      !token.userId.trim() ||
-      !isInteger(token.q) ||
-      !isInteger(token.r) ||
-      typeof token.color !== "string" ||
-      !isHexColor(token.color)
+      !isObject(placement) ||
+      typeof placement.userId !== "string" ||
+      !placement.userId.trim() ||
+      !isInteger(placement.q) ||
+      !isInteger(placement.r)
     ) {
       return "Invalid set_map_token operation.";
     }
@@ -46,58 +40,44 @@ export function validateMapTokenOperation(operation: unknown): string | null {
   return "Unknown token operation.";
 }
 
-export function applyMapTokenOperation<TSnapshot extends SavedMapContent>(
-  snapshot: TSnapshot,
+export function applyMapTokenOperation(
+  placements: readonly MapTokenPlacement[],
   operation: MapTokenOperation,
-): TSnapshot {
+): MapTokenPlacement[] {
   switch (operation.type) {
     case "set_map_token": {
-      const token: MapTokenRecord = {
-        userId: operation.token.userId,
-        q: operation.token.q,
-        r: operation.token.r,
-        color: operation.token.color,
+      const placement: MapTokenPlacement = {
+        userId: operation.placement.userId,
+        q: operation.placement.q,
+        r: operation.placement.r,
       };
-      return {
-        ...snapshot,
-        tokens: [
-          ...snapshot.tokens.filter(
-            (existing) => existing.userId !== token.userId,
-          ),
-          token,
-        ],
-      };
+      return [
+        ...placements.filter(
+          (existing) => existing.userId !== placement.userId,
+        ),
+        placement,
+      ];
     }
     case "remove_map_token":
-      return {
-        ...snapshot,
-        tokens: snapshot.tokens.filter(
-          (token) => token.userId !== operation.userId,
-        ),
-      };
+      return placements.filter(
+        (placement) => placement.userId !== operation.userId,
+      );
     case "set_map_token_color":
-      return {
-        ...snapshot,
-        tokens: snapshot.tokens.map((token) =>
-          token.userId === operation.userId
-            ? { ...token, color: operation.color }
-            : token,
-        ),
-      };
+      return [...placements];
     default: {
       const exhaustive: never = operation;
       void exhaustive;
-      return snapshot;
+      return [...placements];
     }
   }
 }
 
-export function applyMapTokenOperations<TSnapshot extends SavedMapContent>(
-  snapshot: TSnapshot,
+export function applyMapTokenOperations(
+  placements: readonly MapTokenPlacement[],
   operations: readonly MapTokenOperation[],
-): TSnapshot {
+): MapTokenPlacement[] {
   return operations.reduce(
     (current, operation) => applyMapTokenOperation(current, operation),
-    snapshot,
+    [...placements],
   );
 }

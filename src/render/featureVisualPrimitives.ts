@@ -1,13 +1,13 @@
 import {
   canFeatureOverrideTerrain,
   getFeatureAsset,
-  getFeatureTerrainOverrideAsset
+  getFeatureTerrainOverrideAsset,
 } from "@/assets/featureAssets";
 import type { Pixel } from "@/core/geometry/hex";
 import {
   featureKindLabels,
   type Feature,
-  type FeatureKind
+  type FeatureKind,
 } from "@/core/map/features";
 import { getLoadedImage } from "./assetImages";
 import { drawMaskedHexImage } from "./maskedHexSprites";
@@ -21,7 +21,7 @@ export const featureGlyphs: Record<FeatureKind, string> = {
   tower: "|",
   dungeon: "[]",
   marker: "+",
-  label: "Aa"
+  label: "Aa",
 };
 
 export const featureImagePadding = 0.08;
@@ -33,12 +33,15 @@ export function getHexPoints(center: Pixel, radius: number): Pixel[] {
     const angle = Math.PI / 6 + (Math.PI / 3) * index;
     return {
       x: center.x + radius * Math.cos(angle),
-      y: center.y + radius * Math.sin(angle)
+      y: center.y + radius * Math.sin(angle),
     };
   });
 }
 
-export function tracePolygon(context: CanvasRenderingContext2D, points: Pixel[]) {
+export function tracePolygon(
+  context: CanvasRenderingContext2D,
+  points: Pixel[],
+) {
   context.beginPath();
   context.moveTo(points[0].x, points[0].y);
 
@@ -49,7 +52,12 @@ export function tracePolygon(context: CanvasRenderingContext2D, points: Pixel[])
   context.closePath();
 }
 
-export function drawPathWithHalo(context: CanvasRenderingContext2D, drawPath: () => void, baseLineWidth: number, haloWidth: number) {
+export function drawPathWithHalo(
+  context: CanvasRenderingContext2D,
+  drawPath: () => void,
+  baseLineWidth: number,
+  haloWidth: number,
+) {
   context.save();
   context.strokeStyle = "#ffffff";
   context.lineWidth = haloWidth;
@@ -65,7 +73,12 @@ export function drawPathWithHalo(context: CanvasRenderingContext2D, drawPath: ()
   context.restore();
 }
 
-export function drawLabel(context: CanvasRenderingContext2D, text: string, center: Pixel, scale: number) {
+export function drawLabel(
+  context: CanvasRenderingContext2D,
+  text: string,
+  center: Pixel,
+  scale: number,
+) {
   context.save();
   context.strokeStyle = "#ffffff";
   context.lineWidth = 2.4;
@@ -78,7 +91,7 @@ export function drawFeatureAsset(
   context: CanvasRenderingContext2D,
   type: FeatureKind,
   center: Pixel,
-  imageOverride?: HTMLImageElement | null
+  imageOverride?: HTMLImageElement | null,
 ): boolean {
   const asset = getFeatureAsset(type);
 
@@ -103,7 +116,7 @@ export function drawFeatureTerrainOverrideTile(
   context: CanvasRenderingContext2D,
   featureKind: FeatureKind,
   points: Pixel[],
-  imageOverride?: HTMLImageElement | null
+  imageOverride?: HTMLImageElement | null,
 ): boolean {
   const asset = getFeatureTerrainOverrideAsset(featureKind);
 
@@ -128,5 +141,5 @@ export function getFeatureTitle(type: FeatureKind): string {
 export function featureCanOverrideTerrainTile(feature: Feature): boolean {
   // Hidden features must never override terrain visuals to avoid leaking
   // unrevealed information through the rendered tile appearance.
-  return !feature.hidden && feature.overrideTerrainTile && canFeatureOverrideTerrain(feature.kind);
+  return !feature.hidden && canFeatureOverrideTerrain(feature.kind);
 }

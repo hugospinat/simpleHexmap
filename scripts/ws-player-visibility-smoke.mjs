@@ -129,7 +129,7 @@ async function main() {
             kind: "city",
             q: visibleCell.q,
             r: visibleCell.r,
-            visibility: "visible",
+            hidden: false,
             overrideTerrainTile: false,
             gmLabel: "GM Secret",
             playerLabel: "Visible Town",
@@ -146,7 +146,7 @@ async function main() {
             kind: "ruin",
             q: visibleCell.q,
             r: visibleCell.r,
-            visibility: "hidden",
+            hidden: true,
             overrideTerrainTile: false,
             gmLabel: "Hidden Ruin",
             playerLabel: null,
@@ -163,7 +163,7 @@ async function main() {
             kind: "fort",
             q: hiddenCell.q,
             r: hiddenCell.r,
-            visibility: "visible",
+            hidden: false,
             overrideTerrainTile: false,
             gmLabel: "Hidden Tile Fort",
             playerLabel: "Should Not Leak",
@@ -185,9 +185,8 @@ async function main() {
       {
         operationId: `${gmClientId}-6`,
         operation: {
-          type: "assign_faction_cells",
-          cells: [{ q: visibleCell.q, r: visibleCell.r }],
-          factionId,
+          type: "set_faction_territories",
+          territories: [{ q: visibleCell.q, r: visibleCell.r, factionId }],
         },
       },
     ];
@@ -210,11 +209,10 @@ async function main() {
         type: "map_token_update",
         operation: {
           type: "set_map_token",
-          token: {
+          placement: {
             userId: playerAccount.user.id,
             q: visibleCell.q,
             r: visibleCell.r,
-            color: "#ff8800",
           },
         },
       }),
@@ -255,23 +253,23 @@ async function main() {
     const gmTokenEventCount = gmMessages.messages.filter(
       (message) => message.type === "map_token_updated",
     ).length;
-    const finalPlayerContent = finalPlayerSnapshot?.content;
-    const visibleFeature = findFeature(finalPlayerContent, visibleFeatureId);
-    const hiddenFeature = findFeature(finalPlayerContent, hiddenFeatureId);
-    const hiddenTileFeature = findFeature(finalPlayerContent, hiddenTileFeatureId);
+    const finalPlayerDocument = finalPlayerSnapshot?.document;
+    const visibleFeature = findFeature(finalPlayerDocument, visibleFeatureId);
+    const hiddenFeature = findFeature(finalPlayerDocument, hiddenFeatureId);
+    const hiddenTileFeature = findFeature(finalPlayerDocument, hiddenTileFeatureId);
     const playerLoad = await loadMap(base, playerAccount.cookie, map.id, "player");
     const gmLoad = await loadMap(base, gmAccount.cookie, map.id, "gm");
 
     const validation = {
       initialHiddenDefaultTileFiltered:
-        Array.isArray(initialPlayerLoad?.content?.tiles) &&
-        initialPlayerLoad.content.tiles.length === 0,
+        Array.isArray(initialPlayerLoad?.document?.tiles) &&
+        initialPlayerLoad.document.tiles.length === 0,
       gmReceivedOrderedOperations: gmAppliedCount >= operations.length,
       gmReceivedTokenUpdate: gmTokenEventCount >= 1,
       playerReceivedOnlySnapshots: playerUnexpectedTypes.length === 0,
       playerReceivedRefreshSnapshots: playerSnapshots.length >= 2,
-      visibleTilePresent: hasTile(finalPlayerContent, visibleCell.q, visibleCell.r, false),
-      hiddenTileFiltered: !hasTile(finalPlayerContent, hiddenCell.q, hiddenCell.r, true),
+      visibleTilePresent: hasTile(finalPlayerDocument, visibleCell.q, visibleCell.r, false),
+      hiddenTileFiltered: !hasTile(finalPlayerDocument, hiddenCell.q, hiddenCell.r, true),
       visibleFeaturePresent: Boolean(visibleFeature),
       visibleFeatureGmLabelStripped: visibleFeature?.gmLabel === null,
       visibleFeaturePlayerLabelVisible:
@@ -279,35 +277,37 @@ async function main() {
       hiddenFeatureFiltered: !hiddenFeature,
       hiddenTileFeatureFiltered: !hiddenTileFeature,
       visibleFactionPresent:
-        Array.isArray(finalPlayerContent?.factions) &&
-        finalPlayerContent.factions.some((faction) => faction.id === factionId),
+        Array.isArray(finalPlayerDocument?.factions) &&
+        finalPlayerDocument.factions.some((faction) => faction.id === factionId),
       visibleFactionTerritoryPresent:
-        Array.isArray(finalPlayerContent?.factionTerritories) &&
-        finalPlayerContent.factionTerritories.some(
+        Array.isArray(finalPlayerDocument?.factionTerritories) &&
+        finalPlayerDocument.factionTerritories.some(
           (territory) =>
             territory.q === visibleCell.q &&
             territory.r === visibleCell.r &&
             territory.factionId === factionId,
         ),
       visiblePlayerTokenPresent:
-        Array.isArray(finalPlayerContent?.tokens) &&
-        finalPlayerContent.tokens.some(
-          (token) =>
-            token.userId === playerAccount.user.id &&
-            token.q === visibleCell.q &&
-            token.r === visibleCell.r,
+        Array.isArray(finalPlayerSnapshot?.tokenPlacements) &&
+        finalPlayerSnapshot.tokenPlacements.some(
+          (placement) =>
+            placement.userId === playerAccount.user.id &&
+            placement.q === visibleCell.q &&
+            placement.r === visibleCell.r,
         ),
-      snapshotTokenMembersPresent:
-        Array.isArray(finalPlayerSnapshot?.tokenMembers) &&
-        finalPlayerSnapshot.tokenMembers.some(
+      snapshotWorkspaceMembersPresent:
+        Array.isArray(finalPlayerSnapshot?.workspaceMembers) &&
+        finalPlayerSnapshot.workspaceMembers.some(
           (member) => member.userId === playerAccount.user.id,
         ),
       httpPlayerLoadMatchesSnapshot:
-        JSON.stringify(playerLoad.content) === JSON.stringify(finalPlayerContent),
+        JSON.stringify(playerLoad.document) === JSON.stringify(finalPlayerDocument) &&
+        JSON.stringify(playerLoad.tokenPlacements) ===
+          JSON.stringify(finalPlayerSnapshot?.tokenPlacements ?? []),
       gmStillSeesHiddenContent:
-        hasTile(gmLoad.content, hiddenCell.q, hiddenCell.r, true) &&
-        Boolean(findFeature(gmLoad.content, hiddenFeatureId)) &&
-        Boolean(findFeature(gmLoad.content, hiddenTileFeatureId)),
+        hasTile(gmLoad.document, hiddenCell.q, hiddenCell.r, true) &&
+        Boolean(findFeature(gmLoad.document, hiddenFeatureId)) &&
+        Boolean(findFeature(gmLoad.document, hiddenTileFeatureId)),
     };
 
     const failed = Object.values(validation).some((value) => value !== true);

@@ -32,6 +32,42 @@ const previewTerrainAlpha = 0.72;
 const previewFogAlpha = 0.38;
 const previewFactionAlpha = 0.42;
 
+export function getPreviewRoadEdgeChanges(
+  currentEdges: Iterable<RoadEdgeIndex>,
+  nextEdges: Iterable<RoadEdgeIndex>,
+): { added: RoadEdgeIndex[]; removed: RoadEdgeIndex[] } {
+  const current = new Set(currentEdges);
+  const next = new Set(nextEdges);
+
+  return {
+    added: Array.from(next).filter((edge) => !current.has(edge)),
+    removed: Array.from(current).filter((edge) => !next.has(edge)),
+  };
+}
+
+export function getPreviewFactionOverlayStyle(
+  currentFactionColor: string | null,
+  nextFactionColor: string | null,
+): { alpha: number; color: number; removed: boolean } | null {
+  if (nextFactionColor) {
+    return {
+      alpha: previewFactionAlpha,
+      color: parseCssColor(nextFactionColor),
+      removed: false,
+    };
+  }
+
+  if (currentFactionColor) {
+    return {
+      alpha: previewFactionAlpha * 0.7,
+      color: 0xffffff,
+      removed: true,
+    };
+  }
+
+  return null;
+}
+
 function fitTextureSizePreservingAspect(
   textureWidth: number,
   textureHeight: number,
@@ -195,11 +231,30 @@ function drawPreviewFog(
   return 1;
 }
 
+function isFogOnlyTileUpdate(
+  frame: PixiSceneRenderFrame,
+  tile: { q: number; r: number; terrain: string | null; hidden: boolean },
+): boolean {
+  if (tile.terrain === null) {
+    return false;
+  }
+
+  const current = frame.world.levels[SOURCE_LEVEL]?.get(hexKey(tile));
+
+  return Boolean(
+    current && current.type === tile.terrain && current.hidden !== tile.hidden,
+  );
+}
+
 function drawPreviewFeatureFog(
   graphics: Graphics,
   frame: PixiSceneRenderFrame,
-  operation: Extract<MapOperation, { type: "set_feature_hidden" }>,
+  operation: Extract<MapOperation, { type: "update_feature" }>,
 ): number {
+  if (typeof operation.patch.hidden !== "boolean") {
+    return 0;
+  }
+
   const feature = getFeatureById(
     frame.world,
     SOURCE_LEVEL,
@@ -223,12 +278,12 @@ function drawPreviewFeatureFog(
   graphics.circle(cell.worldCenter.x, cell.worldCenter.y, radius);
   graphics.fill({
     alpha: previewFogAlpha,
-    color: operation.hidden ? 0x000000 : 0xffffff,
+    color: operation.patch.hidden ? 0x000000 : 0xffffff,
   });
   graphics.circle(cell.worldCenter.x, cell.worldCenter.y, radius);
   graphics.stroke({
     alpha: 0.55,
-    color: operation.hidden ? 0xffffff : 0x000000,
+    color: operation.patch.hidden ? 0xffffff : 0x000000,
     width: scaleWorldLength(frame, 2),
   });
   return 1;
@@ -241,21 +296,38 @@ function drawPreviewFaction(
 ): number {
   const cell = getFrameCellForSourceAxial(frame, territoryUpdate);
 
-  if (!cell || territoryUpdate.factionId === null) {
+  if (!cell) {
     return 0;
   }
 
-  const faction = frame.world.factions.get(territoryUpdate.factionId);
+  const nextFactionColor =
+    territoryUpdate.factionId === null
+      ? null
+      : (frame.world.factions.get(territoryUpdate.factionId)?.color ?? null);
+  const overlay = getPreviewFactionOverlayStyle(
+    cell.factionColor,
+    nextFactionColor,
+  );
 
-  if (!faction) {
+  if (!overlay) {
     return 0;
   }
 
   pathPolygon(graphics, cell.worldCorners);
   graphics.fill({
-    alpha: previewFactionAlpha,
-    color: parseCssColor(faction.color),
+    alpha: overlay.alpha,
+    color: overlay.color,
   });
+
+  if (overlay.removed) {
+    pathPolygon(graphics, cell.worldCorners);
+    graphics.stroke({
+      alpha: 0.8,
+      color: 0xffffff,
+      width: scaleWorldLength(frame, 2),
+    });
+  }
+
   return 1;
 }
 
@@ -299,30 +371,24 @@ function drawPreviewRoad(
   frame: PixiSceneRenderFrame,
   operation: Extract<MapOperation, { type: "set_road_edges" }>,
 ): number {
-  if (operation.edges.length > 0) {
-    let count = 0;
-    for (const edge of operation.edges) {
-      count += drawRoadEdge(
-        graphics,
-        frame,
-        operation.cell,
-        edge as RoadEdgeIndex,
-        false,
-      );
-    }
-    return count;
-  }
-
   const cell = getFrameCellForSourceAxial(frame, operation.cell);
 
-  if (!cell || cell.roadEdges.size === 0) {
+  if (!cell) {
     return 0;
   }
 
+  const { added, removed } = getPreviewRoadEdgeChanges(
+    cell.roadEdges as Set<RoadEdgeIndex>,
+    operation.edges as RoadEdgeIndex[],
+  );
   let count = 0;
 
-  for (const edge of cell.roadEdges as Set<RoadEdgeIndex>) {
+  for (const edge of removed) {
     count += drawRoadEdge(graphics, frame, operation.cell, edge, true);
+  }
+
+  for (const edge of added) {
+    count += drawRoadEdge(graphics, frame, operation.cell, edge, false);
   }
 
   return count;
@@ -363,58 +429,26 @@ export function drawPixiPreviewLayer(
 
   for (const operation of operations) {
     switch (operation.type) {
-      case "paint_cells":
-        for (const cell of operation.cells) {
-          count += drawPreviewTerrain(
-            graphics,
-            parent,
-            frame,
-            assets,
-            pools,
-            visibleSpriteKeys,
-            {
-              q: cell.q,
-              r: cell.r,
-              terrain: operation.terrain,
-              hidden: operation.hidden,
-            },
-          );
-        }
-        break;
       case "set_tiles":
         for (const tile of operation.tiles) {
-          count += drawPreviewTerrain(
-            graphics,
-            parent,
-            frame,
-            assets,
-            pools,
-            visibleSpriteKeys,
-            {
-              q: tile.q,
-              r: tile.r,
-              terrain: tile.terrain,
-              hidden: tile.hidden,
-            },
-          );
-        }
-        break;
-      case "set_cells_hidden":
-        for (const cell of operation.cells) {
-          count += drawPreviewFog(graphics, frame, {
-            q: cell.q,
-            r: cell.r,
-            hidden: operation.hidden,
-          });
-        }
-        break;
-      case "assign_faction_cells":
-        for (const cell of operation.cells) {
-          count += drawPreviewFaction(graphics, frame, {
-            q: cell.q,
-            r: cell.r,
-            factionId: operation.factionId,
-          });
+          const previewTile = {
+            q: tile.q,
+            r: tile.r,
+            terrain: tile.terrain,
+            hidden: tile.hidden,
+          };
+
+          count += isFogOnlyTileUpdate(frame, previewTile)
+            ? drawPreviewFog(graphics, frame, previewTile)
+            : drawPreviewTerrain(
+                graphics,
+                parent,
+                frame,
+                assets,
+                pools,
+                visibleSpriteKeys,
+                previewTile,
+              );
         }
         break;
       case "set_faction_territories":
@@ -426,7 +460,7 @@ export function drawPixiPreviewLayer(
           });
         }
         break;
-      case "set_feature_hidden":
+      case "update_feature":
         count += drawPreviewFeatureFog(graphics, frame, operation);
         break;
       case "set_road_edges":

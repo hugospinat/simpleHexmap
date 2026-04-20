@@ -41,9 +41,8 @@ async function main() {
           clientId,
           operationId: operationId1,
           operation: {
-            type: "set_cells_hidden",
-            cells: [{ q: 0, r: 0 }],
-            hidden: true,
+            type: "set_tiles",
+            tiles: [{ q: 0, r: 0, terrain: "plain", hidden: true }],
           },
         }),
       );
@@ -53,9 +52,8 @@ async function main() {
           clientId,
           operationId: operationId2,
           operation: {
-            type: "set_cells_hidden",
-            cells: [{ q: 0, r: 0 }],
-            hidden: false,
+            type: "set_tiles",
+            tiles: [{ q: 0, r: 0, terrain: "plain", hidden: false }],
           },
         }),
       );

@@ -43,7 +43,7 @@ import { drawPixiTerrainLayer } from "./pixiTerrainLayer";
 import { drawPixiTokenLayer } from "./pixiTokenLayer";
 import type {
   MapInteractionOverlay,
-  MapTokenRecord,
+  MapTokenRenderable,
   PixiAssetCatalog,
   PixiCameraState,
   PixiLayerTimings,
@@ -149,7 +149,7 @@ export type PixiMapRenderer = {
   setPreviewOperations: (
     operations: readonly MapOperation[],
   ) => PixiRenderStats;
-  setTokens: (tokens: readonly MapTokenRecord[]) => PixiRenderStats;
+  setTokens: (tokens: readonly MapTokenRenderable[]) => PixiRenderStats;
   setWorld: (world: MapState, patch?: RenderWorldPatch) => PixiRenderStats;
 };
 
@@ -175,7 +175,7 @@ export function createPixiMapRenderer(): PixiMapRenderer {
   let roadCache: LayerCache | null = null;
   let featureCache: FeatureLayerCache | null = null;
   let tokenCache: LayerCache | null = null;
-  let mapTokens: readonly MapTokenRecord[] = [];
+  let mapTokens: readonly MapTokenRenderable[] = [];
   let backgroundKey = "";
   let renderFrameId: number | null = null;
 

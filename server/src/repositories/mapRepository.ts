@@ -1,158 +1,92 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "../db/client.js";
+import { maps, workspaces } from "../db/schema.js";
 import {
-  users,
-  workspaceMembers,
-  workspaces,
-  workspaceMemberTokens,
-  maps,
-} from "../db/schema.js";
-import {
-  materializeMapContent,
-  replaceMapContent,
+  materializeMapDocument,
+  materializeTokenPlacements,
+  replaceMapDocument,
 } from "./mapContentRepository.js";
 import {
   canOpenAsGm,
+  getWorkspaceRole,
+  listWorkspaceMembersForWorkspace,
   requireWorkspaceAndRole,
   toMapSummary,
-  toRole,
-  touchWorkspaceUpdatedAt,
-  getWorkspaceRole,
   type WorkspaceMapRecord,
-  type WorkspaceMapSummary,
 } from "./workspaceRepository.js";
-import type { SavedMapContent } from "../../../src/core/protocol/index.js";
-import {
-  defaultWorkspaceTokenColor,
-  type UserId,
-  type WorkspaceMemberRecord,
-  type WorkspaceRole,
-  type WorkspaceTokenMemberRecord,
+import type { MapDocument } from "../../../src/core/protocol/index.js";
+import type {
+  UserId,
+  WorkspaceRole,
 } from "../../../src/core/auth/authTypes.js";
 import { ForbiddenError, NotFoundError } from "../errors.js";
 
-function compareMembers(
-  left: WorkspaceMemberRecord,
-  right: WorkspaceMemberRecord,
-): number {
-  if (left.isOwner !== right.isOwner) {
-    return left.isOwner ? -1 : 1;
-  }
-
-  if (left.role !== right.role) {
-    if (left.role === "gm") return -1;
-    if (right.role === "gm") return 1;
-  }
-
-  return left.username.localeCompare(right.username);
-}
-
-async function getMapRowsForUser(mapId: string, userId: UserId) {
-  return db
-    .select({
-      map: maps,
-      workspace: workspaces,
-      role: workspaceMembers.role,
-    })
+async function getMapRowForUser(mapId: string, userId: UserId) {
+  const rows = await db
+    .select({ map: maps, workspaceName: workspaces.name })
     .from(maps)
     .innerJoin(workspaces, eq(maps.workspaceId, workspaces.id))
-    .innerJoin(
-      workspaceMembers,
-      and(
-        eq(workspaceMembers.workspaceId, workspaces.id),
-        eq(workspaceMembers.userId, userId),
-      ),
-    )
     .where(eq(maps.id, mapId))
     .limit(1);
-}
+  const row = rows[0];
+  const map = row?.map;
 
-async function listWorkspaceTokenMembers(
-  workspaceId: string,
-  ownerUserId: string,
-): Promise<WorkspaceTokenMemberRecord[]> {
-  const rows = await db
-    .select({
-      color: workspaceMemberTokens.color,
-      role: workspaceMembers.role,
-      userId: users.id,
-      username: users.username,
-    })
-    .from(workspaceMembers)
-    .innerJoin(users, eq(workspaceMembers.userId, users.id))
-    .leftJoin(
-      workspaceMemberTokens,
-      and(
-        eq(workspaceMemberTokens.workspaceId, workspaceMembers.workspaceId),
-        eq(workspaceMemberTokens.userId, workspaceMembers.userId),
-      ),
-    )
-    .where(eq(workspaceMembers.workspaceId, workspaceId))
-    .orderBy(asc(users.username));
+  if (!map) {
+    return null;
+  }
 
-  return rows
-    .map((row): WorkspaceTokenMemberRecord | null => {
-      const mappedRole = toRole(row.role);
+  const role = await getWorkspaceRole(map.workspaceId, userId);
 
-      if (!mappedRole) return null;
+  if (!role) {
+    return null;
+  }
 
-      const isOwner = row.userId === ownerUserId;
-
-      return {
-        color: row.color ?? defaultWorkspaceTokenColor,
-        isOwner,
-        role: isOwner ? "owner" : mappedRole,
-        userId: row.userId,
-        username: row.username,
-      };
-    })
-    .filter((member): member is WorkspaceTokenMemberRecord => member !== null)
-    .sort(compareMembers);
+  return { map, role, workspaceName: row.workspaceName };
 }
 
 export async function getMapRoleForUser(
   mapId: string,
   userId: UserId,
 ): Promise<WorkspaceRole | null> {
-  const rows = await getMapRowsForUser(mapId, userId);
-  return toRole(rows[0]?.role);
+  const row = await getMapRowForUser(mapId, userId);
+  return row?.role ?? null;
 }
 
 export async function getMapRecordForUser(
   mapId: string,
   userId: UserId,
 ): Promise<WorkspaceMapRecord | null> {
-  const rows = await getMapRowsForUser(mapId, userId);
-  const row = rows[0];
+  const row = await getMapRowForUser(mapId, userId);
 
-  if (!row) return null;
+  if (!row) {
+    return null;
+  }
 
-  const role = toRole(row.role);
-
-  if (!role) return null;
+  const [document, tokenPlacements, workspaceMembers] = await Promise.all([
+    materializeMapDocument(row.map.id),
+    materializeTokenPlacements(row.map.id),
+    listWorkspaceMembersForWorkspace(row.map.workspaceId),
+  ]);
 
   return {
     ...toMapSummary(row.map),
-    content: await materializeMapContent(row.map.id),
-    currentUserRole: role,
+    currentUserRole: row.role,
+    document,
     nextSequence: row.map.nextSequence,
-    ownerUserId: row.workspace.ownerUserId,
-    tokenMembers: await listWorkspaceTokenMembers(
-      row.workspace.id,
-      row.workspace.ownerUserId,
-    ),
-    workspaceName: row.workspace.name,
+    tokenPlacements,
+    workspaceMembers,
+    workspaceName: row.workspaceName,
   };
 }
 
 export async function createMapInWorkspace(input: {
   actorUserId: UserId;
-  content: SavedMapContent;
+  content: MapDocument;
   name: string;
   workspaceId: string;
 }): Promise<WorkspaceMapRecord> {
-  const { role, workspace } = await requireWorkspaceAndRole(
+  const { role } = await requireWorkspaceAndRole(
     input.workspaceId,
     input.actorUserId,
   );
@@ -168,19 +102,12 @@ export async function createMapInWorkspace(input: {
     await tx.insert(maps).values({
       createdAt: now,
       id: mapId,
-      legacyId: null,
       name: input.name,
       nextSequence: 1,
-      ownerUserId: workspace.ownerUserId,
-      settings: {},
       updatedAt: now,
       workspaceId: input.workspaceId,
     });
-    await replaceMapContent(mapId, input.content, tx);
-    await tx
-      .update(workspaces)
-      .set({ updatedAt: now })
-      .where(eq(workspaces.id, input.workspaceId));
+    await replaceMapDocument(mapId, input.content, tx);
   });
 
   const created = await getMapRecordForUser(mapId, input.actorUserId);
@@ -207,18 +134,10 @@ export async function renameWorkspaceMap(input: {
     throw new ForbiddenError("GM access denied.");
   }
 
-  const now = new Date();
-  await db.transaction(async (tx) => {
-    await tx
-      .update(maps)
-      .set({ name: input.name, updatedAt: now })
-      .where(eq(maps.id, input.mapId));
-
-    await tx
-      .update(workspaces)
-      .set({ updatedAt: now })
-      .where(eq(workspaces.id, map.workspaceId));
-  });
+  await db
+    .update(maps)
+    .set({ name: input.name, updatedAt: new Date() })
+    .where(eq(maps.id, input.mapId));
 
   const updated = await getMapRecordForUser(input.mapId, input.actorUserId);
 
@@ -243,22 +162,10 @@ export async function deleteWorkspaceMap(input: {
     throw new ForbiddenError("GM access denied.");
   }
 
-  const now = new Date();
-  const deleted = await db.transaction(async (tx) => {
-    const rows = await tx
-      .delete(maps)
-      .where(eq(maps.id, input.mapId))
-      .returning({ id: maps.id });
-
-    if (rows.length > 0) {
-      await tx
-        .update(workspaces)
-        .set({ updatedAt: now })
-        .where(eq(workspaces.id, map.workspaceId));
-    }
-
-    return rows;
-  });
+  const deleted = await db
+    .delete(maps)
+    .where(eq(maps.id, input.mapId))
+    .returning({ id: maps.id });
 
   return deleted.length > 0;
 }

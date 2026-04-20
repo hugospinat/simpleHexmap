@@ -2,7 +2,6 @@ import { and, eq, or } from "drizzle-orm";
 import { hexCells } from "../../db/schema.js";
 import { deleteFactionTerritoriesForCells } from "./factionMutations.js";
 import {
-  boolInt,
   chunkValues,
   mutationChunkSize,
   uniqueCells,
@@ -51,7 +50,7 @@ async function upsertHexCells(
   for (const chunk of chunkValues(tiles, mutationChunkSize)) {
     await tx.insert(hexCells).values(
       chunk.map((tile) => ({
-        hidden: boolInt(tile.hidden),
+        hidden: tile.hidden,
         q: tile.q,
         r: tile.r,
         terrain: tile.terrain,
@@ -61,74 +60,6 @@ async function upsertHexCells(
     );
   }
 }
-
-async function updateHiddenForCells(
-  tx: DbLike,
-  mapId: string,
-  cells: readonly Axial[],
-  hidden: boolean,
-  updatedAt: Date,
-): Promise<void> {
-  for (const chunk of chunkValues(uniqueCells([...cells]), mutationChunkSize)) {
-    const where = and(
-      eq(hexCells.mapId, mapId),
-      chunk.length === 1
-        ? and(eq(hexCells.q, chunk[0].q), eq(hexCells.r, chunk[0].r))
-        : or(
-            ...chunk.map((cell) =>
-              and(eq(hexCells.q, cell.q), eq(hexCells.r, cell.r)),
-            ),
-          ),
-    );
-
-    await tx
-      .update(hexCells)
-      .set({
-        hidden: boolInt(hidden),
-        updatedAt,
-      })
-      .where(where);
-  }
-}
-
-export const paintCells: IncrementalOperationHandler<"paint_cells"> = async (
-  tx,
-  mapId,
-  operation,
-  updatedAt,
-) => {
-  const cells = uniqueCells(operation.cells);
-
-  if (operation.terrain === null) {
-    await deleteHexCellsForCells(tx, mapId, cells);
-    await deleteFactionTerritoriesForCells(tx, mapId, cells);
-    return;
-  }
-
-  await upsertHexCells(
-    tx,
-    mapId,
-    cells.map((cell) => ({
-      q: cell.q,
-      r: cell.r,
-      terrain: operation.terrain,
-      hidden: operation.hidden,
-    })),
-    updatedAt,
-  );
-};
-
-export const setCellsHidden: IncrementalOperationHandler<
-  "set_cells_hidden"
-> = async (tx, mapId, operation, updatedAt) => {
-  await updateHiddenForCells(
-    tx,
-    mapId,
-    operation.cells,
-    operation.hidden,
-    updatedAt,
-  );
-};
 
 export const setTiles: IncrementalOperationHandler<"set_tiles"> = async (
   tx,

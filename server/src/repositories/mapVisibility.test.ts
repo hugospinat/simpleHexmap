@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { filterSavedMapContentForPlayer } from "./mapVisibility.js";
+import { filterMapDocumentForPlayer } from "./mapVisibility.js";
 
 describe("mapVisibility", () => {
   it("filters hidden content out of player snapshots", () => {
-    const filtered = filterSavedMapContentForPlayer({
+    const filtered = filterMapDocumentForPlayer({
       version: 1,
       tiles: [
         { q: 0, r: 0, terrain: "plain", hidden: false },
@@ -16,8 +16,7 @@ describe("mapVisibility", () => {
           kind: "city",
           q: 0,
           r: 0,
-          visibility: "visible",
-          overrideTerrainTile: false,
+          hidden: false,
           gmLabel: "GM only",
           playerLabel: "Town",
           labelRevealed: true,
@@ -27,8 +26,7 @@ describe("mapVisibility", () => {
           kind: "city",
           q: 0,
           r: 0,
-          visibility: "hidden",
-          overrideTerrainTile: false,
+          hidden: true,
           gmLabel: "Hidden",
           playerLabel: null,
           labelRevealed: false,
@@ -38,8 +36,7 @@ describe("mapVisibility", () => {
           kind: "ruin",
           q: 1,
           r: 0,
-          visibility: "visible",
-          overrideTerrainTile: false,
+          hidden: false,
           gmLabel: "Leak",
           playerLabel: "Leak",
           labelRevealed: true,
@@ -77,8 +74,7 @@ describe("mapVisibility", () => {
         kind: "city",
         q: 0,
         r: 0,
-        visibility: "visible",
-        overrideTerrainTile: false,
+        hidden: false,
         gmLabel: null,
         playerLabel: "Town",
         labelRevealed: true,
@@ -91,9 +87,6 @@ describe("mapVisibility", () => {
     ]);
     expect(filtered.factionTerritories).toEqual([
       { q: 0, r: 0, factionId: "visible-faction" },
-    ]);
-    expect(filtered.tokens).toEqual([
-      { userId: "visible-user", q: 0, r: 0, color: "#123456" },
     ]);
   });
 });

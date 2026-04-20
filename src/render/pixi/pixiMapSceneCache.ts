@@ -113,24 +113,9 @@ function addOperationDirtyHexes(
   operation: MapOperation,
 ): void {
   switch (operation.type) {
-    case "paint_cells":
-      for (const cell of operation.cells) {
-        addSourceHex(dirtySet, hexKey(cell), "terrainHexes");
-      }
-      return;
     case "set_tiles":
       for (const tile of operation.tiles) {
         addSourceHex(dirtySet, hexKey(tile), "terrainHexes");
-      }
-      return;
-    case "set_cells_hidden":
-      for (const cell of operation.cells) {
-        addSourceHex(dirtySet, hexKey(cell), "terrainHexes");
-      }
-      return;
-    case "assign_faction_cells":
-      for (const cell of operation.cells) {
-        addSourceHex(dirtySet, hexKey(cell), "factionHexes");
       }
       return;
     case "set_faction_territories":
@@ -162,9 +147,7 @@ function addOperationDirtyHexes(
     case "update_faction":
       return;
     case "remove_feature":
-    case "set_feature_hidden":
     case "update_feature":
-    case "rename_map":
       return;
   }
 }
@@ -255,14 +238,10 @@ function patchSourceScene(
 
 function hasUnpatchableSourceOperation(operation: MapOperation): boolean {
   switch (operation.type) {
-    case "paint_cells":
     case "set_tiles":
-    case "set_cells_hidden":
-    case "assign_faction_cells":
     case "set_faction_territories":
       return false;
     case "remove_feature":
-    case "set_feature_hidden":
     case "update_feature":
     case "add_faction":
     case "remove_faction":

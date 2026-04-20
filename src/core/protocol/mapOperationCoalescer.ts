@@ -1,34 +1,6 @@
 import type { MapOperation } from "./types.js";
 import { riverKey, roadKey } from "./recordHelpers.js";
 
-function sameTile(
-  left: { q: number; r: number },
-  right: { q: number; r: number },
-): boolean {
-  return left.q === right.q && left.r === right.r;
-}
-
-function mergeCellRefs(
-  left: Array<{ q: number; r: number }>,
-  right: Array<{ q: number; r: number }>,
-): Array<{ q: number; r: number }> {
-  const seen = new Set<string>();
-  const merged: Array<{ q: number; r: number }> = [];
-
-  for (const cell of [...left, ...right]) {
-    const key = `${cell.q},${cell.r}`;
-
-    if (seen.has(key)) {
-      continue;
-    }
-
-    seen.add(key);
-    merged.push(cell);
-  }
-
-  return merged;
-}
-
 function mergeTilesByLastWrite(
   left: Extract<MapOperation, { type: "set_tiles" }>["tiles"],
   right: Extract<MapOperation, { type: "set_tiles" }>["tiles"],
@@ -85,31 +57,6 @@ function coalesceAdjacentOperation(
   }
 
   switch (next.type) {
-    case "paint_cells":
-      return previous.type === "paint_cells" &&
-        previous.terrain === next.terrain &&
-        previous.hidden === next.hidden
-        ? {
-            ...next,
-            cells: mergeCellRefs(previous.cells, next.cells),
-          }
-        : null;
-    case "set_cells_hidden":
-      return previous.type === "set_cells_hidden" &&
-        previous.hidden === next.hidden
-        ? {
-            ...next,
-            cells: mergeCellRefs(previous.cells, next.cells),
-          }
-        : null;
-    case "assign_faction_cells":
-      return previous.type === "assign_faction_cells" &&
-        previous.factionId === next.factionId
-        ? {
-            ...next,
-            cells: mergeCellRefs(previous.cells, next.cells),
-          }
-        : null;
     case "set_tiles":
       return previous.type === "set_tiles"
         ? mergeTilesByLastWrite(previous.tiles, next.tiles)
@@ -117,11 +64,6 @@ function coalesceAdjacentOperation(
     case "set_faction_territories":
       return previous.type === "set_faction_territories"
         ? mergeTerritoriesByLastWrite(previous.territories, next.territories)
-        : null;
-    case "set_feature_hidden":
-      return previous.type === "set_feature_hidden" &&
-        previous.featureId === next.featureId
-        ? next
         : null;
     case "update_feature":
       return previous.type === "update_feature" &&
@@ -172,7 +114,6 @@ function coalesceAdjacentOperation(
         : null;
     case "add_feature":
     case "add_faction":
-    case "rename_map":
       return null;
     default: {
       const exhaustive: never = next;

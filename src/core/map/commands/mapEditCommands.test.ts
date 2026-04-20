@@ -12,6 +12,7 @@ import { applyMapOperationToWorld } from "@/core/map/worldOperationApplier";
 import {
   commandAddRoadConnection,
   commandAssignFaction,
+  commandRemoveRoadConnection,
   commandEraseTerrain,
   executeMapEditCommand,
   commandPaintTerrain,
@@ -26,16 +27,14 @@ function applyCommandOperations(
 }
 
 describe("map edit commands", () => {
-  it("paints terrain by emitting semantic paint_cells operations", () => {
+  it("paints terrain by emitting canonical set_tiles operations", () => {
     const world = createEmptyWorld();
     const result = commandPaintTerrain(world, 2, { q: 0, r: 0 }, "forest");
 
     expect(result.operations).toHaveLength(1);
     expect(result.operations[0]).toMatchObject({
-      type: "paint_cells",
-      terrain: "forest",
-      hidden: true,
-      cells: expect.any(Array),
+      type: "set_tiles",
+      tiles: expect.any(Array),
     });
     expect(
       serializeWorld(applyCommandOperations(world, result.operations)),
@@ -52,16 +51,14 @@ describe("map edit commands", () => {
 
     expect(result.operations).toEqual([
       {
-        type: "paint_cells",
-        cells: [{ q: 0, r: 0 }],
-        terrain: "plain",
-        hidden: true,
+        type: "set_tiles",
+        tiles: [{ q: 0, r: 0, terrain: "plain", hidden: true }],
       },
     ]);
     expect(getLevelMap(result.mapState, 3).get("0,0")?.type).toBe("plain");
   });
 
-  it("erases terrain with semantic paint_cells delete intent", () => {
+  it("erases terrain with canonical set_tiles delete intent", () => {
     const painted = commandPaintTerrain(
       createEmptyWorld(),
       2,
@@ -72,10 +69,8 @@ describe("map edit commands", () => {
 
     expect(result.operations).toHaveLength(1);
     expect(result.operations[0]).toMatchObject({
-      type: "paint_cells",
-      terrain: null,
-      hidden: false,
-      cells: expect.any(Array),
+      type: "set_tiles",
+      tiles: expect.any(Array),
     });
     expect(getLevelMap(result.mapState, 3).size).toBe(0);
   });
@@ -101,10 +96,18 @@ describe("map edit commands", () => {
       },
     ]);
 
-    const removed = commandRemoveRoadConnectionsAt(added.mapState, 3, {
-      q: 0,
-      r: 0,
-    });
+    const removed = commandRemoveRoadConnection(
+      added.mapState,
+      3,
+      {
+        q: 0,
+        r: 0,
+      },
+      {
+        q: 1,
+        r: 0,
+      },
+    );
 
     expect(removed.operations).toEqual([
       {
@@ -132,9 +135,8 @@ describe("map edit commands", () => {
 
     expect(result.operations).toEqual([
       {
-        type: "assign_faction_cells",
-        cells: [{ q: 0, r: 0 }],
-        factionId: "f-1",
+        type: "set_faction_territories",
+        territories: [{ q: 0, r: 0, factionId: "f-1" }],
       },
     ]);
   });
@@ -169,14 +171,13 @@ describe("map edit commands", () => {
     expect(getRoadLevelMap(withoutRoad, 3).size).toBe(0);
   });
 
-  it("falls back to set_tiles when paint targets need mixed hidden values", () => {
+  it("uses set_tiles for hidden-state updates", () => {
     let world = createEmptyWorld();
     world = addTile(world, 3, { q: 0, r: 0 }, "plain");
     world = addTile(world, 3, { q: 1, r: 0 }, "plain");
     world = applyMapOperationToWorld(world, {
-      type: "set_cells_hidden",
-      cells: [{ q: 1, r: 0 }],
-      hidden: false,
+      type: "set_tiles",
+      tiles: [{ q: 1, r: 0, terrain: "plain", hidden: false }],
     });
 
     const result = commandPaintTerrain(world, 2, { q: 0, r: 0 }, "forest");

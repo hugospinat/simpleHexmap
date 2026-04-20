@@ -13,8 +13,7 @@ export type MapFeatureRecord = {
   kind: string;
   q: number;
   r: number;
-  visibility: "visible" | "hidden";
-  overrideTerrainTile: boolean;
+  hidden: boolean;
   gmLabel: string | null;
   playerLabel: string | null;
   labelRevealed: boolean;
@@ -44,11 +43,10 @@ export type MapFactionTerritoryRecord = {
   factionId: string;
 };
 
-export type MapTokenRecord = {
+export type MapTokenPlacement = {
   userId: string;
   q: number;
   r: number;
-  color: string;
 };
 
 export type MapCellRef = {
@@ -65,7 +63,7 @@ export type MapFactionTerritoryUpdate = MapCellRef & {
   factionId: string | null;
 };
 
-export type SavedMapContent = {
+export type MapDocument = {
   version: number;
   tiles: MapTileRecord[];
   features: MapFeatureRecord[];
@@ -73,48 +71,34 @@ export type SavedMapContent = {
   roads: MapRoadRecord[];
   factions: MapFactionRecord[];
   factionTerritories: MapFactionTerritoryRecord[];
-  tokens: MapTokenRecord[];
+};
+
+export type MapView = {
+  document: MapDocument;
+  tokenPlacements: MapTokenPlacement[];
 };
 
 export type MapTokenOperation =
-  | { type: "set_map_token"; token: MapTokenRecord }
+  | { type: "set_map_token"; placement: MapTokenPlacement }
   | { type: "remove_map_token"; userId: string }
   | { type: "set_map_token_color"; userId: string; color: string };
 
 export type FeaturePatch = Partial<
   Pick<
     MapFeatureRecord,
-    | "gmLabel"
-    | "kind"
-    | "labelRevealed"
-    | "overrideTerrainTile"
-    | "playerLabel"
-    | "visibility"
+    "gmLabel" | "hidden" | "kind" | "labelRevealed" | "playerLabel"
   >
 >;
 
 export type FactionPatch = Partial<Pick<MapFactionRecord, "color" | "name">>;
 
 export type MapOperation =
-  | {
-      type: "paint_cells";
-      cells: MapCellRef[];
-      terrain: string | null;
-      hidden: boolean;
-    }
-  | { type: "set_cells_hidden"; cells: MapCellRef[]; hidden: boolean }
-  | {
-      type: "assign_faction_cells";
-      cells: MapCellRef[];
-      factionId: string | null;
-    }
   | { type: "set_tiles"; tiles: MapTileUpdate[] }
   | {
       type: "set_faction_territories";
       territories: MapFactionTerritoryUpdate[];
     }
   | { type: "add_feature"; feature: MapFeatureRecord }
-  | { type: "set_feature_hidden"; featureId: string; hidden: boolean }
   | { type: "update_feature"; featureId: string; patch: FeaturePatch }
   | { type: "remove_feature"; featureId: string }
   | { type: "add_river_data"; river: MapRiverRecord }
@@ -122,5 +106,4 @@ export type MapOperation =
   | { type: "set_road_edges"; cell: MapCellRef; edges: RoadEdgeIndex[] }
   | { type: "add_faction"; faction: MapFactionRecord }
   | { type: "update_faction"; factionId: string; patch: FactionPatch }
-  | { type: "remove_faction"; factionId: string }
-  | { type: "rename_map"; name: string };
+  | { type: "remove_faction"; factionId: string };

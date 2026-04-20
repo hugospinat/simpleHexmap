@@ -1,13 +1,13 @@
 import type {
   FactionPatch,
   FeaturePatch,
+  MapDocument,
   MapFactionRecord,
   MapFeatureRecord,
   MapRiverRecord,
   MapRoadRecord,
   MapTileRecord,
   RoadEdgeIndex,
-  SavedMapContent
 } from "./types.js";
 
 export type TileKey = `${number},${number}`;
@@ -19,7 +19,7 @@ const axialDirections = [
   { q: 0, r: 1 },
   { q: 0, r: -1 },
   { q: 1, r: -1 },
-  { q: -1, r: 1 }
+  { q: -1, r: 1 },
 ] as const;
 
 const roadEdgeToDirectionIndex: Record<RoadEdgeIndex, number> = {
@@ -28,7 +28,7 @@ const roadEdgeToDirectionIndex: Record<RoadEdgeIndex, number> = {
   2: 1,
   3: 3,
   4: 4,
-  5: 0
+  5: 0,
 };
 
 const axialDirectionIndexToRoadEdge: Record<number, RoadEdgeIndex> = {
@@ -37,7 +37,7 @@ const axialDirectionIndexToRoadEdge: Record<number, RoadEdgeIndex> = {
   2: 0,
   3: 3,
   4: 4,
-  5: 1
+  5: 1,
 };
 
 export function isObject(value: unknown): value is Record<string, unknown> {
@@ -72,20 +72,24 @@ export function normalizeRoad(road: MapRoadRecord): MapRoadRecord {
   return {
     q: road.q,
     r: road.r,
-    edges: Array.from(new Set(road.edges)).sort((left, right) => left - right)
+    edges: Array.from(new Set(road.edges)).sort((left, right) => left - right),
   };
 }
 
-export function getTileOperationTerrain(tile: { terrain: string | null }): string | null {
+export function getTileOperationTerrain(tile: {
+  terrain: string | null;
+}): string | null {
   return tile.terrain;
 }
 
 export function removeFactionTerritory(
-  territories: SavedMapContent["factionTerritories"],
+  territories: MapDocument["factionTerritories"],
   q: number,
-  r: number
-): SavedMapContent["factionTerritories"] {
-  return territories.filter((territory) => territory.q !== q || territory.r !== r);
+  r: number,
+): MapDocument["factionTerritories"] {
+  return territories.filter(
+    (territory) => territory.q !== q || territory.r !== r,
+  );
 }
 
 export function sanitizeFeaturePatch(patch: FeaturePatch): FeaturePatch {
@@ -94,11 +98,8 @@ export function sanitizeFeaturePatch(patch: FeaturePatch): FeaturePatch {
   if (typeof patch.kind === "string") {
     next.kind = patch.kind;
   }
-  if (patch.visibility === "visible" || patch.visibility === "hidden") {
-    next.visibility = patch.visibility;
-  }
-  if (typeof patch.overrideTerrainTile === "boolean") {
-    next.overrideTerrainTile = patch.overrideTerrainTile;
+  if (typeof patch.hidden === "boolean") {
+    next.hidden = patch.hidden;
   }
   if (typeof patch.gmLabel === "string" || patch.gmLabel === null) {
     next.gmLabel = patch.gmLabel;
@@ -126,34 +127,42 @@ export function sanitizeFactionPatch(patch: FactionPatch): FactionPatch {
   return next;
 }
 
-export function getRoadEdgeBetween(from: { q: number; r: number }, to: { q: number; r: number }): RoadEdgeIndex | null {
+export function getRoadEdgeBetween(
+  from: { q: number; r: number },
+  to: { q: number; r: number },
+): RoadEdgeIndex | null {
   const delta = {
     q: to.q - from.q,
-    r: to.r - from.r
+    r: to.r - from.r,
   };
-  const directionIndex = axialDirections.findIndex((direction) => (
-    direction.q === delta.q && direction.r === delta.r
-  ));
+  const directionIndex = axialDirections.findIndex(
+    (direction) => direction.q === delta.q && direction.r === delta.r,
+  );
 
-  return directionIndex >= 0 ? axialDirectionIndexToRoadEdge[directionIndex] : null;
+  return directionIndex >= 0
+    ? axialDirectionIndexToRoadEdge[directionIndex]
+    : null;
 }
 
 export function getOppositeRoadEdgeIndex(edge: RoadEdgeIndex): RoadEdgeIndex {
   return ((edge + 3) % 6) as RoadEdgeIndex;
 }
 
-export function getNeighborForRoadEdge(axial: { q: number; r: number }, edge: RoadEdgeIndex): { q: number; r: number } {
+export function getNeighborForRoadEdge(
+  axial: { q: number; r: number },
+  edge: RoadEdgeIndex,
+): { q: number; r: number } {
   const direction = axialDirections[roadEdgeToDirectionIndex[edge]];
   return {
     q: axial.q + direction.q,
-    r: axial.r + direction.r
+    r: axial.r + direction.r,
   };
 }
 
 export function addRoadConnectionToRecords(
   roads: MapRoadRecord[],
   from: { q: number; r: number },
-  to: { q: number; r: number }
+  to: { q: number; r: number },
 ): MapRoadRecord[] {
   const edge = getRoadEdgeBetween(from, to);
 
@@ -171,12 +180,16 @@ export function addRoadConnectionToRecords(
 
   fromEdges.add(edge);
   toEdges.add(reverseEdge);
-  return setRoadRecordEdges(setRoadRecordEdges(roads, from, fromEdges), to, toEdges);
+  return setRoadRecordEdges(
+    setRoadRecordEdges(roads, from, fromEdges),
+    to,
+    toEdges,
+  );
 }
 
 export function removeRoadConnectionsAtFromRecords(
   roads: MapRoadRecord[],
-  axial: { q: number; r: number }
+  axial: { q: number; r: number },
 ): MapRoadRecord[] {
   const edges = getRoadRecordEdges(roads, axial);
 
@@ -199,7 +212,7 @@ export function removeRoadConnectionsAtFromRecords(
 function setRoadRecordEdges(
   roads: MapRoadRecord[],
   axial: { q: number; r: number },
-  edges: Iterable<RoadEdgeIndex>
+  edges: Iterable<RoadEdgeIndex>,
 ): MapRoadRecord[] {
   const edgeSet = new Set(edges);
   const next = roads.filter((road) => roadKey(road) !== roadKey(axial));
@@ -208,15 +221,26 @@ function setRoadRecordEdges(
     next.push({
       q: axial.q,
       r: axial.r,
-      edges: Array.from(edgeSet).sort((left, right) => left - right)
+      edges: Array.from(edgeSet).sort((left, right) => left - right),
     });
   }
 
   return next;
 }
 
-function getRoadRecordEdges(roads: MapRoadRecord[], axial: { q: number; r: number }): Set<RoadEdgeIndex> {
-  return new Set(roads.find((road) => roadKey(road) === roadKey(axial))?.edges ?? []);
+function getRoadRecordEdges(
+  roads: MapRoadRecord[],
+  axial: { q: number; r: number },
+): Set<RoadEdgeIndex> {
+  return new Set(
+    roads.find((road) => roadKey(road) === roadKey(axial))?.edges ?? [],
+  );
 }
 
-export type { MapFactionRecord, MapFeatureRecord, MapRiverRecord, MapRoadRecord, MapTileRecord };
+export type {
+  MapFactionRecord,
+  MapFeatureRecord,
+  MapRiverRecord,
+  MapRoadRecord,
+  MapTileRecord,
+};

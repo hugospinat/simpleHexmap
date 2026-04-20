@@ -2,7 +2,7 @@ import type { Axial } from "@/core/geometry/hex";
 import type { EditGestureAction } from "@/editor/tools/editGesture";
 import type { EditorMode } from "@/editor/tools/editorTypes";
 import type { RiverEdgeRef, MapState } from "@/core/map/world";
-import type { MapOperation, MapTokenRecord } from "@/core/protocol";
+import type { MapOperation, MapTokenPlacement } from "@/core/protocol";
 import type { RenderWorldPatch } from "@/render/renderWorldPatch";
 
 export type MapCanvasProps = {
@@ -10,7 +10,7 @@ export type MapCanvasProps = {
   renderWorldPatch?: RenderWorldPatch;
   onRenderWorldPatchApplied?: (revision: number) => void;
   previewOperations: MapOperation[];
-  mapTokens: MapTokenRecord[];
+  tokenPlacements: MapTokenPlacement[];
   activeTokenUserId: string | null;
   canEdit: boolean;
   playerMode: boolean;

@@ -13,10 +13,7 @@ import {
   updateWorkspaceMemberRole,
 } from "../repositories/workspaceRepository.js";
 import { closeSession } from "../sessionStore.js";
-import {
-  readBody,
-  sendJson,
-} from "./httpHelpers.js";
+import { readBody, sendJson } from "./httpHelpers.js";
 import {
   addWorkspaceMemberBodySchema,
   createWorkspaceBodySchema,
@@ -25,9 +22,15 @@ import {
 } from "../validation/httpSchemas.js";
 
 const idPatternSource = "[a-zA-Z0-9_-]{1,80}";
-export const workspacePathPattern = new RegExp(`^/api/workspaces/(${idPatternSource})$`);
-export const workspaceMembersPathPattern = new RegExp(`^/api/workspaces/(${idPatternSource})/members$`);
-export const workspaceMemberPathPattern = new RegExp(`^/api/workspaces/(${idPatternSource})/members/(${idPatternSource})$`);
+export const workspacePathPattern = new RegExp(
+  `^/api/workspaces/(${idPatternSource})$`,
+);
+export const workspaceMembersPathPattern = new RegExp(
+  `^/api/workspaces/(${idPatternSource})/members$`,
+);
+export const workspaceMemberPathPattern = new RegExp(
+  `^/api/workspaces/(${idPatternSource})/members/(${idPatternSource})$`,
+);
 
 function sendMembersView(response, statusCode: number, view) {
   sendJson(response, statusCode, {
@@ -36,13 +39,16 @@ function sendMembersView(response, statusCode: number, view) {
       currentUserRole: view.currentUserRole,
       id: view.workspaceId,
       name: view.workspaceName,
-      ownerUserId: view.ownerUserId,
       updatedAt: view.updatedAt,
     },
   });
 }
 
-export async function handleWorkspaceCollectionRequest(request, response, url): Promise<boolean> {
+export async function handleWorkspaceCollectionRequest(
+  request,
+  response,
+  url,
+): Promise<boolean> {
   if (url.pathname !== "/api/workspaces") {
     return false;
   }
@@ -50,15 +56,17 @@ export async function handleWorkspaceCollectionRequest(request, response, url): 
   const auth = await requireAuth(request);
 
   if (request.method === "GET") {
-    sendJson(response, 200, { workspaces: await listWorkspacesForUser(auth.user.id) });
+    sendJson(response, 200, {
+      workspaces: await listWorkspacesForUser(auth.user.id),
+    });
     return true;
   }
 
   if (request.method === "POST") {
     const body = createWorkspaceBodySchema.parse(await readBody(request));
     const workspace = await createWorkspace({
+      creatorUserId: auth.user.id,
       name: body.name ?? "Untitled workspace",
-      ownerUserId: auth.user.id,
     });
     sendJson(response, 201, { workspace });
     return true;
@@ -67,7 +75,11 @@ export async function handleWorkspaceCollectionRequest(request, response, url): 
   return false;
 }
 
-export async function handleWorkspaceResourceRequest(request, response, match): Promise<boolean> {
+export async function handleWorkspaceResourceRequest(
+  request,
+  response,
+  match,
+): Promise<boolean> {
   const auth = await requireAuth(request);
   const workspaceId = match[1];
 
@@ -118,19 +130,30 @@ export async function handleWorkspaceResourceRequest(request, response, match): 
       }
     }
 
-    sendJson(response, deleted ? 200 : 404, deleted ? { deleted: true } : { error: "Workspace not found." });
+    sendJson(
+      response,
+      deleted ? 200 : 404,
+      deleted ? { deleted: true } : { error: "Workspace not found." },
+    );
     return true;
   }
 
   return false;
 }
 
-export async function handleWorkspaceMembersCollectionRequest(request, response, match): Promise<boolean> {
+export async function handleWorkspaceMembersCollectionRequest(
+  request,
+  response,
+  match,
+): Promise<boolean> {
   const auth = await requireAuth(request);
   const workspaceId = match[1];
 
   if (request.method === "GET") {
-    const view = await listWorkspaceMembers({ actorUserId: auth.user.id, workspaceId });
+    const view = await listWorkspaceMembers({
+      actorUserId: auth.user.id,
+      workspaceId,
+    });
     sendMembersView(response, 200, view);
     return true;
   }
@@ -144,7 +167,10 @@ export async function handleWorkspaceMembersCollectionRequest(request, response,
       username: body.username,
       workspaceId,
     });
-    const view = await listWorkspaceMembers({ actorUserId: auth.user.id, workspaceId });
+    const view = await listWorkspaceMembers({
+      actorUserId: auth.user.id,
+      workspaceId,
+    });
     sendMembersView(response, 201, view);
     return true;
   }
@@ -152,13 +178,19 @@ export async function handleWorkspaceMembersCollectionRequest(request, response,
   return false;
 }
 
-export async function handleWorkspaceMemberResourceRequest(request, response, match): Promise<boolean> {
+export async function handleWorkspaceMemberResourceRequest(
+  request,
+  response,
+  match,
+): Promise<boolean> {
   const auth = await requireAuth(request);
   const workspaceId = match[1];
   const targetUserId = match[2];
 
   if (request.method === "PATCH") {
-    const body = updateWorkspaceMemberRoleBodySchema.parse(await readBody(request));
+    const body = updateWorkspaceMemberRoleBodySchema.parse(
+      await readBody(request),
+    );
 
     await updateWorkspaceMemberRole({
       actorUserId: auth.user.id,
@@ -166,7 +198,10 @@ export async function handleWorkspaceMemberResourceRequest(request, response, ma
       targetUserId,
       workspaceId,
     });
-    const view = await listWorkspaceMembers({ actorUserId: auth.user.id, workspaceId });
+    const view = await listWorkspaceMembers({
+      actorUserId: auth.user.id,
+      workspaceId,
+    });
     sendMembersView(response, 200, view);
     return true;
   }
@@ -177,7 +212,10 @@ export async function handleWorkspaceMemberResourceRequest(request, response, ma
       targetUserId,
       workspaceId,
     });
-    const view = await listWorkspaceMembers({ actorUserId: auth.user.id, workspaceId });
+    const view = await listWorkspaceMembers({
+      actorUserId: auth.user.id,
+      workspaceId,
+    });
     sendMembersView(response, 200, view);
     return true;
   }

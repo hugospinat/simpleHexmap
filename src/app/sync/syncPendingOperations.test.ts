@@ -4,14 +4,17 @@ import {
   acknowledgePendingOperation,
   getUnsentOperationBatches,
   markAllPendingOperationsUnsent,
-  markPendingOperationsSent
+  markPendingOperationsSent,
 } from "@/app/sync/syncPendingOperations";
 
 function envelope(operationId: string, sent = false): PendingOperationEnvelope {
   return {
     operationId,
-    operation: { type: "rename_map", name: operationId },
-    sent
+    operation: {
+      type: "add_faction",
+      faction: { id: operationId, name: operationId, color: "#112233" },
+    },
+    sent,
   };
 }
 
@@ -29,12 +32,14 @@ describe("syncPendingOperations", () => {
 
     expect(markAllPendingOperationsUnsent(queue)).toEqual([
       envelope("op-a", false),
-      envelope("op-b", false)
+      envelope("op-b", false),
     ]);
   });
 
   it("returns only unsent operations split by batch size", () => {
-    const queue = Array.from({ length: 1001 }, (_, index) => envelope(`op-${index}`, index % 250 === 0));
+    const queue = Array.from({ length: 1001 }, (_, index) =>
+      envelope(`op-${index}`, index % 250 === 0),
+    );
     const batches = getUnsentOperationBatches(queue, 500);
 
     expect(batches.map((batch) => batch.length)).toEqual([500, 496]);

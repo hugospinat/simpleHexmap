@@ -7,10 +7,12 @@ import {
 } from "@/core/geometry/hex";
 import { SOURCE_LEVEL } from "@/core/map/mapRules";
 import type {
-  MapTokenRecord,
+  MapTokenRenderable,
   PixiSceneCellRecord,
   PixiSceneRenderFrame,
 } from "./pixiTypes";
+
+const defaultTokenColor = "#d94f4f";
 
 function parseHexColor(value: string): number {
   return Number.parseInt(value.slice(1), 16);
@@ -34,12 +36,12 @@ function getTokenOffset(
   };
 }
 
-function tokenSourceAxial(token: MapTokenRecord): Axial {
+function tokenSourceAxial(token: MapTokenRenderable): Axial {
   return { q: token.q, r: token.r };
 }
 
 function tokenFrameHexId(
-  token: MapTokenRecord,
+  token: MapTokenRenderable,
   frame: PixiSceneRenderFrame,
 ): HexId {
   const sourceAxial = tokenSourceAxial(token);
@@ -53,14 +55,14 @@ function tokenFrameHexId(
 export function drawPixiTokenLayer(
   graphics: Graphics,
   frame: PixiSceneRenderFrame,
-  tokens: readonly MapTokenRecord[],
+  tokens: readonly MapTokenRenderable[],
 ): number {
   graphics.clear();
 
   const cellsByKey = new Map(
     frame.visibleTerrainCells.map((cell) => [cell.key, cell]),
   );
-  const tokensByHex = new Map<string, MapTokenRecord[]>();
+  const tokensByHex = new Map<string, MapTokenRenderable[]>();
 
   for (const token of tokens) {
     const sourceKey = hexKey(tokenSourceAxial(token));
@@ -110,7 +112,10 @@ export function drawPixiTokenLayer(
       const x = cell.worldCenter.x + offset.x;
       const y = cell.worldCenter.y + offset.y;
       graphics.circle(x, y, radius);
-      graphics.fill({ color: parseHexColor(token.color), alpha: 0.95 });
+      graphics.fill({
+        color: parseHexColor(token.color ?? defaultTokenColor),
+        alpha: 0.95,
+      });
       graphics.circle(x, y, radius);
       graphics.stroke({
         color: 0x000000,

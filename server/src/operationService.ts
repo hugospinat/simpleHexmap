@@ -9,12 +9,8 @@ import {
 import {
   getMapRecordForUser,
   getMapRoleForUser,
-  getWorkspaceIdForMap,
 } from "./repositories/mapRepository.js";
-import {
-  canOpenAsGm,
-  touchWorkspaceUpdatedAt,
-} from "./repositories/workspaceRepository.js";
+import { canOpenAsGm } from "./repositories/workspaceRepository.js";
 import { getOrCreateSession } from "./sessionStore.js";
 import { broadcastRoleAwareSessionPayloads } from "./sessionDelivery.js";
 import { sendSyncSnapshot } from "./syncSnapshotService.js";
@@ -53,14 +49,15 @@ async function getWorkspaceRecordForActor(
   }
 
   return {
-    content: map.content,
+    document: map.document,
     currentUserRole: map.currentUserRole,
     id: map.id,
     name: map.name,
-    ownerUserId: map.ownerUserId,
-    tokenMembers: map.tokenMembers,
+    nextSequence: map.nextSequence,
+    tokenPlacements: map.tokenPlacements,
     updatedAt: map.updatedAt,
     workspaceId: map.workspaceId,
+    workspaceMembers: map.workspaceMembers,
   };
 }
 
@@ -193,20 +190,12 @@ export async function applyOperationBatchToSession(
     }
 
     const newMessages: AppliedOperationMessage[] = [];
-    const hasContentMutation = newEnvelopes.some(
-      (envelope) => envelope.operation.type !== "rename_map",
-    );
-    let nextName = map.name;
+    const hasContentMutation = newEnvelopes.length > 0;
     let nextSequence = map.nextSequence;
     const updatedAt = new Date();
     const opLogRows: Array<typeof opLog.$inferInsert> = [];
 
     for (const envelope of newEnvelopes) {
-      if (envelope.operation.type === "rename_map") {
-        nextName =
-          envelope.operation.name.trim().slice(0, 120) || "Untitled map";
-      }
-
       const message: AppliedOperationMessage = {
         type: "map_operation_applied",
         operation: envelope.operation,
@@ -236,9 +225,7 @@ export async function applyOperationBatchToSession(
 
     if (hasContentMutation) {
       const hasUnsupportedIncrementalOperation = newEnvelopes.some(
-        (envelope) =>
-          envelope.operation.type !== "rename_map" &&
-          !isIncrementalContentOperation(envelope.operation),
+        (envelope) => !isIncrementalContentOperation(envelope.operation),
       );
 
       if (hasUnsupportedIncrementalOperation) {
@@ -256,7 +243,6 @@ export async function applyOperationBatchToSession(
     await tx
       .update(maps)
       .set({
-        name: nextName,
         nextSequence,
         updatedAt,
       })
@@ -268,15 +254,6 @@ export async function applyOperationBatchToSession(
       updatedAt,
     };
   });
-
-  if (result.newMessages.length > 0) {
-    const workspaceId = await getWorkspaceIdForMap(mapId);
-
-    if (workspaceId) {
-      await touchWorkspaceUpdatedAt(workspaceId);
-    }
-  }
-
   if (result.newMessages.length > 0) {
     await broadcastRoleAwareSessionPayloads(
       getOrCreateSession(mapId),

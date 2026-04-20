@@ -7,25 +7,25 @@ import { Sidebar } from "@/ui/components/Sidebar/Sidebar";
 import { useEditorController } from "@/editor/hooks/useEditorController";
 import { MapAssetsProvider } from "@/editor/context/MapAssetsContext";
 import type { MapState } from "@/core/map/world";
-import type { MapOpenMode, UserRecord, WorkspaceTokenMemberRecord } from "@/core/auth/authTypes";
+import type { MapOpenMode, UserRecord, WorkspaceMember } from "@/core/auth/authTypes";
 
 type EditorScreenProps = {
   initialWorld: MapState;
   mapId: string;
   mapName: string;
-  tokenMembers: WorkspaceTokenMemberRecord[];
+  workspaceMembers: WorkspaceMember[];
   user: UserRecord;
   role: MapOpenMode;
   onBackToMaps: () => void;
 };
 
-export function EditorScreen({ initialWorld, mapId, mapName, tokenMembers, user, role, onBackToMaps }: EditorScreenProps) {
+export function EditorScreen({ initialWorld, mapId, mapName, workspaceMembers, user, role, onBackToMaps }: EditorScreenProps) {
   const editor = useEditorController({
     initialWorld,
     mapId,
     profile: user,
     role,
-    tokenMembers
+    workspaceMembers
   });
 
   if (role === "player") {
@@ -53,8 +53,8 @@ export function EditorScreen({ initialWorld, mapId, mapName, tokenMembers, user,
           activeTokenUserId={editor.activeTokenUserId}
           activeType={editor.activeType}
           factions={editor.factions}
-          tokenMembers={editor.tokenMembers}
-          mapTokens={editor.mapTokens}
+          workspaceMembers={editor.workspaceMembers}
+          tokenPlacements={editor.tokenPlacements}
           mapName={mapName}
           onBackToMaps={onBackToMaps}
           onCreateFaction={editor.createFaction}
@@ -66,7 +66,7 @@ export function EditorScreen({ initialWorld, mapId, mapName, tokenMembers, user,
           onRenameFaction={editor.renameFaction}
           onSelectFaction={editor.selectFaction}
           onClearMapTokenSelection={editor.clearMapTokenSelection}
-          onSelectMapToken={editor.selectMapTokenMember}
+          onSelectMapToken={editor.selectWorkspaceMember}
           onTileTypeChange={editor.setActiveType}
           onUndo={editor.undoLastOperationBatch}
         />

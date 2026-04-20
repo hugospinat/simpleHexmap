@@ -1,6 +1,5 @@
 import { and, eq, or } from "drizzle-orm";
 import { factionTerritories, factions } from "../../db/schema.js";
-import { toMapScopedId } from "../mapContentRepository.js";
 import { sanitizeFactionPatch } from "../../../../src/core/protocol/index.js";
 import {
   chunkValues,
@@ -56,7 +55,7 @@ async function upsertFactionTerritories(
   for (const chunk of chunkValues(territories, mutationChunkSize)) {
     await tx.insert(factionTerritories).values(
       chunk.map((territory) => ({
-        factionId: toMapScopedId(mapId, territory.factionId),
+        factionId: territory.factionId,
         q: territory.q,
         r: territory.r,
         mapId,
@@ -64,27 +63,6 @@ async function upsertFactionTerritories(
     );
   }
 }
-
-export const assignFactionCells: IncrementalOperationHandler<
-  "assign_faction_cells"
-> = async (tx, mapId, operation) => {
-  const cells = uniqueCells(operation.cells);
-  await deleteFactionTerritoriesForCells(tx, mapId, cells);
-
-  if (operation.factionId === null) {
-    return;
-  }
-
-  await upsertFactionTerritories(
-    tx,
-    mapId,
-    cells.map((cell) => ({
-      q: cell.q,
-      r: cell.r,
-      factionId: operation.factionId,
-    })),
-  );
-};
 
 export const setFactionTerritories: IncrementalOperationHandler<
   "set_faction_territories"
@@ -115,7 +93,7 @@ export const addFaction: IncrementalOperationHandler<"add_faction"> = async (
     .insert(factions)
     .values({
       color: operation.faction.color,
-      id: toMapScopedId(mapId, operation.faction.id),
+      id: operation.faction.id,
       name: operation.faction.name,
       mapId,
     })
@@ -142,7 +120,9 @@ export const updateFaction: IncrementalOperationHandler<
   await tx
     .update(factions)
     .set(set)
-    .where(eq(factions.id, toMapScopedId(mapId, operation.factionId)));
+    .where(
+      and(eq(factions.mapId, mapId), eq(factions.id, operation.factionId)),
+    );
 };
 
 export const removeFaction: IncrementalOperationHandler<
@@ -150,5 +130,7 @@ export const removeFaction: IncrementalOperationHandler<
 > = async (tx, mapId, operation) => {
   await tx
     .delete(factions)
-    .where(eq(factions.id, toMapScopedId(mapId, operation.factionId)));
+    .where(
+      and(eq(factions.mapId, mapId), eq(factions.id, operation.factionId)),
+    );
 };

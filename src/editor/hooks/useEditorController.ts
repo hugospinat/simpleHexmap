@@ -67,7 +67,7 @@ import type { MapOperation } from "@/core/protocol";
 import type {
   MapOpenMode,
   UserRecord,
-  WorkspaceTokenMemberRecord,
+  WorkspaceMember,
 } from "@/core/auth/authTypes";
 
 type UseEditorControllerOptions = {
@@ -75,7 +75,7 @@ type UseEditorControllerOptions = {
   mapId: string;
   profile: UserRecord;
   role: MapOpenMode;
-  tokenMembers: WorkspaceTokenMemberRecord[];
+  workspaceMembers: WorkspaceMember[];
 };
 
 type ActiveEditorGesture =
@@ -90,7 +90,7 @@ export function useEditorController({
   mapId,
   profile,
   role,
-  tokenMembers: initialTokenMembers,
+  workspaceMembers: initialWorkspaceMembers,
 }: UseEditorControllerOptions) {
   const maxLevels = editorConfig.maxLevels;
   const appRef = useRef<HTMLElement | null>(null);
@@ -141,11 +141,11 @@ export function useEditorController({
   const {
     acknowledgeRenderWorldPatch,
     commitLocalOperations,
-    mapTokens,
+    tokenPlacements,
     renderWorldPatch,
     sendTokenOperation,
     syncStatus,
-    tokenMembers,
+    workspaceMembers,
     visibleWorld,
   } = useMapSocketSync({
     clearPreview: clearToolPreview,
@@ -154,7 +154,7 @@ export function useEditorController({
     onAuthoritativeResync: handleAuthoritativeResync,
     onRemoteOperationsApplied: clearUndoRedoHistory,
     userId: profile.id,
-    initialTokenMembers,
+    initialWorkspaceMembers,
   });
   const {
     activeTokenUserId,
@@ -163,12 +163,12 @@ export function useEditorController({
     placeSelectedMapToken,
     playerTokenColor,
     removeMapToken,
-    selectMapTokenMember,
+    selectWorkspaceMember,
     setPlayerTokenColor,
   } = useTokenControls({
     canEdit: role === "gm",
     mapId,
-    mapTokens,
+    mapTokens: tokenPlacements,
     userId: profile.id,
     role,
     sendTokenOperation,
@@ -442,12 +442,19 @@ export function useEditorController({
       }
 
       if (activeMode === "fog") {
+        const initialAxial = axials[0];
+
+        if (!initialAxial) {
+          return;
+        }
+
         activeGestureRef.current = {
           kind: "fog",
           gesture: createFogGesture(
             action === "paint" ? "paint" : "erase",
             visibleWorld,
             view.level,
+            initialAxial,
           ),
           worldBefore: visibleWorld,
         };
@@ -567,14 +574,7 @@ export function useEditorController({
   }, []);
 
   const updateSelectedFeatureLabels = useCallback(
-    (
-      updates: Partial<
-        Pick<
-          Feature,
-          "gmLabel" | "hidden" | "overrideTerrainTile" | "playerLabel"
-        >
-      >,
-    ) => {
+    (updates: Partial<Pick<Feature, "gmLabel" | "hidden" | "playerLabel">>) => {
       if (!canEdit || !selectedFeatureId) {
         return;
       }
@@ -680,7 +680,7 @@ export function useEditorController({
     level: view.level,
     onRenderWorldPatchApplied: acknowledgeRenderWorldPatch,
     previewOperations: toolPreviewOperations,
-    mapTokens,
+    tokenPlacements,
     onToolStep: canEdit ? changeToolByDelta : undefined,
     role,
     renderWorldPatch,
@@ -704,8 +704,8 @@ export function useEditorController({
     activeType,
     factions,
     hoveredHex,
-    mapTokens,
-    tokenMembers,
+    tokenPlacements,
+    workspaceMembers,
     playerTokenColor,
     selectedFeature,
     appRef,
@@ -720,7 +720,7 @@ export function useEditorController({
     recolorFaction,
     selectFaction: setActiveFactionId,
     clearMapTokenSelection,
-    selectMapTokenMember,
+    selectWorkspaceMember,
     setPlayerTokenColor,
     setActiveMode: changeMode,
     setActiveType,

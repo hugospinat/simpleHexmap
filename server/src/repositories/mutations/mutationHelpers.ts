@@ -2,10 +2,7 @@ import type { MapOperation } from "../../../../src/core/protocol/index.js";
 
 export type DbLike = any;
 export type Axial = { q: number; r: number };
-export type IncrementalContentOperation = Exclude<
-  MapOperation,
-  { type: "rename_map" }
->;
+export type IncrementalContentOperation = MapOperation;
 
 export type IncrementalOperationHandler<
   K extends IncrementalContentOperation["type"],

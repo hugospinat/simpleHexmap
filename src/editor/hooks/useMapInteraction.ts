@@ -25,7 +25,7 @@ import {
 import type { EditGestureAction } from "@/editor/tools/editGesture";
 import type { EditorMode } from "@/editor/tools/editorTypes";
 import type { RiverEdgeRef, MapState } from "@/core/map/world";
-import type { MapTokenRecord } from "@/core/protocol";
+import type { MapTokenPlacement } from "@/core/protocol";
 import { useLatestRef } from "./useLatestRef";
 import {
   getPointerAction,
@@ -54,7 +54,7 @@ type UseMapInteractionOptions = {
   onGmTokenPlace: (axial: Axial) => void;
   onGmTokenRemove: (userId: string) => void;
   onPlayerTokenPlace: (axial: Axial) => void;
-  mapTokens: readonly MapTokenRecord[];
+  mapTokens: readonly MapTokenPlacement[];
   playerMode: boolean;
   viewport: Viewport;
   visualZoom: number;
@@ -394,11 +394,17 @@ export function useMapInteraction({
       }
 
       if (
-        editModeRef.current === "fog" &&
-        activeTokenUserIdRef.current &&
+        editModeRef.current === "token" &&
         (event.button === 0 || event.button === 2)
       ) {
         if (event.button === 0) {
+          if (!activeTokenUserIdRef.current) {
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }
+            return;
+          }
+
           const axial = pointToAxial(point);
           setHoveredHexIfChanged(axial);
           onGmTokenPlaceRef.current(axial);

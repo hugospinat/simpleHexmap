@@ -1,12 +1,10 @@
 import { hexKey, type Axial } from "@/core/geometry/hex";
 import type { MapState } from "@/core/map/world";
-import {
-  executeMapEditCommand
-} from "@/core/map/commands/mapEditCommands";
+import { executeMapEditCommand } from "@/core/map/commands/mapEditCommands";
 import {
   applyGestureUpdate,
   createGestureSession,
-  type GestureSession
+  type GestureSession,
 } from "@/editor/tools/gestureSession";
 
 export type RoadGestureAction = "add" | "remove";
@@ -18,7 +16,7 @@ export type RoadGesture = GestureSession<RoadGestureAction> & {
 export function createRoadGesture(
   action: RoadGestureAction,
   world: MapState,
-  level: number
+  level: number,
 ): RoadGesture {
   return {
     ...createGestureSession(action, world, level),
@@ -26,33 +24,17 @@ export function createRoadGesture(
   };
 }
 
-export function applyRoadGestureCells(gesture: RoadGesture, axials: Axial[]): MapState {
+export function applyRoadGestureCells(
+  gesture: RoadGesture,
+  axials: Axial[],
+): MapState {
   for (const axial of axials) {
-    const key = hexKey(axial);
-
-    if (gesture.action === "remove") {
-      if (gesture.touchedKeys.has(key)) {
-        continue;
-      }
-
-      gesture.touchedKeys.add(key);
-      applyGestureUpdate(
-        gesture,
-        executeMapEditCommand(gesture.world, {
-          type: "removeRoadConnectionsAt",
-          level: gesture.level,
-          axial
-        })
-      );
-
-      gesture.lastAxial = axial;
-      continue;
-    }
-
     if (!gesture.lastAxial) {
       gesture.lastAxial = axial;
       continue;
     }
+
+    const key = hexKey(axial);
 
     if (hexKey(gesture.lastAxial) === key) {
       continue;
@@ -61,11 +43,14 @@ export function applyRoadGestureCells(gesture: RoadGesture, axials: Axial[]): Ma
     applyGestureUpdate(
       gesture,
       executeMapEditCommand(gesture.world, {
-        type: "addRoadConnection",
+        type:
+          gesture.action === "add"
+            ? "addRoadConnection"
+            : "removeRoadConnection",
         level: gesture.level,
         from: gesture.lastAxial,
-        to: axial
-      })
+        to: axial,
+      }),
     );
 
     gesture.lastAxial = axial;
@@ -73,4 +58,3 @@ export function applyRoadGestureCells(gesture: RoadGesture, axials: Axial[]): Ma
 
   return gesture.world;
 }
-

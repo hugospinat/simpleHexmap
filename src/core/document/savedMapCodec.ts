@@ -1,12 +1,11 @@
 import {
+  type MapDocument,
   type MapFactionRecord,
   type MapFactionTerritoryRecord,
   type MapFeatureRecord,
   type MapRiverRecord,
   type MapRoadRecord,
   type MapTileRecord,
-  type MapTokenRecord,
-  type SavedMapContent,
 } from "../protocol/index.js";
 
 export const mapFileVersion = 1;
@@ -64,7 +63,7 @@ function isHexColor(value: string): boolean {
   return /^#[0-9a-fA-F]{6}$/.test(value);
 }
 
-export function parseSavedMapContent(raw: unknown): SavedMapContent {
+export function parseMapDocument(raw: unknown): MapDocument {
   if (!isObject(raw)) {
     throw new Error("Invalid map file format.");
   }
@@ -79,8 +78,7 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
     !Array.isArray(raw.rivers) ||
     !Array.isArray(raw.roads) ||
     !Array.isArray(raw.factions) ||
-    !Array.isArray(raw.factionTerritories) ||
-    !Array.isArray(raw.tokens)
+    !Array.isArray(raw.factionTerritories)
   ) {
     throw new Error("Map file is missing required arrays.");
   }
@@ -126,12 +124,8 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
       );
     }
 
-    if (feature.visibility !== "visible" && feature.visibility !== "hidden") {
-      throw new Error(`Invalid feature visibility at index ${index}.`);
-    }
-
-    if (typeof feature.overrideTerrainTile !== "boolean") {
-      throw new Error(`Invalid overrideTerrainTile at index ${index}.`);
+    if (typeof feature.hidden !== "boolean") {
+      throw new Error(`Invalid feature hidden flag at index ${index}.`);
     }
 
     if (!isStringOrNull(feature.gmLabel)) {
@@ -151,8 +145,7 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
       kind: feature.kind,
       q: feature.q,
       r: feature.r,
-      visibility: feature.visibility,
-      overrideTerrainTile: feature.overrideTerrainTile,
+      hidden: feature.hidden,
       gmLabel: feature.gmLabel,
       playerLabel: feature.playerLabel,
       labelRevealed: feature.labelRevealed,
@@ -247,27 +240,6 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
     },
   );
 
-  const tokens = raw.tokens.map((token, index): MapTokenRecord => {
-    if (
-      !isObject(token) ||
-      typeof token.userId !== "string" ||
-      !token.userId.trim() ||
-      !isInteger(token.q) ||
-      !isInteger(token.r) ||
-      typeof token.color !== "string" ||
-      !isHexColor(token.color)
-    ) {
-      throw new Error(`Invalid token entry at index ${index}.`);
-    }
-
-    return {
-      userId: token.userId,
-      q: token.q,
-      r: token.r,
-      color: token.color,
-    };
-  });
-
   return {
     version: mapFileVersion,
     tiles,
@@ -276,10 +248,9 @@ export function parseSavedMapContent(raw: unknown): SavedMapContent {
     roads,
     factions,
     factionTerritories,
-    tokens,
   };
 }
 
-export function parseSavedMapContentText(text: string): SavedMapContent {
-  return parseSavedMapContent(JSON.parse(text) as unknown);
+export function parseMapDocumentText(text: string): MapDocument {
+  return parseMapDocument(JSON.parse(text) as unknown);
 }

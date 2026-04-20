@@ -23,17 +23,27 @@ export function toUserRecord(user: DbUser): UserRecord {
     id: user.id,
     username: user.username,
     createdAt: user.createdAt.toISOString(),
-    updatedAt: user.updatedAt.toISOString()
+    updatedAt: user.updatedAt.toISOString(),
   };
 }
 
 export async function findUserById(userId: string): Promise<DbUser | null> {
-  const rows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  const rows = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
   return rows[0] ?? null;
 }
 
-export async function findUserByNormalizedUsername(usernameNormalized: string): Promise<DbUser | null> {
-  const rows = await db.select().from(users).where(eq(users.usernameNormalized, usernameNormalized)).limit(1);
+export async function findUserByNormalizedUsername(
+  usernameNormalized: string,
+): Promise<DbUser | null> {
+  const rows = await db
+    .select()
+    .from(users)
+    .where(eq(users.usernameNormalized, usernameNormalized))
+    .limit(1);
   return rows[0] ?? null;
 }
 
@@ -42,15 +52,17 @@ export async function createUser(input: {
   username: string;
 }): Promise<DbUser> {
   const now = new Date();
-  const rows = await db.insert(users).values({
-    id: randomUUID(),
-    legacyId: null,
-    username: input.username,
-    usernameNormalized: normalizeUsername(input.username),
-    passwordHash: input.passwordHash,
-    createdAt: now,
-    updatedAt: now
-  }).returning();
+  const rows = await db
+    .insert(users)
+    .values({
+      id: randomUUID(),
+      username: input.username,
+      usernameNormalized: normalizeUsername(input.username),
+      passwordHash: input.passwordHash,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning();
 
   return rows[0];
 }

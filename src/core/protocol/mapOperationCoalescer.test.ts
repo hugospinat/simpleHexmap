@@ -67,23 +67,40 @@ describe("coalesceMapOperations", () => {
     ]);
   });
 
-  it("does not cross intervening operations that could change semantics", () => {
+  it("coalesces adjacent set_tiles writes with last-write-wins semantics", () => {
     const operations: MapOperation[] = [
-      { type: "set_cells_hidden", cells: [{ q: 0, r: 0 }], hidden: true },
+      {
+        type: "set_tiles",
+        tiles: [{ q: 0, r: 0, terrain: "plain", hidden: true }],
+      },
       {
         type: "set_tiles",
         tiles: [{ q: 0, r: 0, terrain: "plain", hidden: false }],
       },
-      { type: "set_cells_hidden", cells: [{ q: 0, r: 0 }], hidden: true },
+      {
+        type: "set_tiles",
+        tiles: [{ q: 0, r: 0, terrain: "plain", hidden: true }],
+      },
     ];
 
-    expect(coalesceMapOperations(operations)).toEqual(operations);
+    expect(coalesceMapOperations(operations)).toEqual([
+      {
+        type: "set_tiles",
+        tiles: [{ q: 0, r: 0, terrain: "plain", hidden: true }],
+      },
+    ]);
   });
 
-  it("does not coalesce rename operations so sync acknowledgements stay one-to-one", () => {
+  it("does not coalesce non-mergeable operations so sync acknowledgements stay one-to-one", () => {
     const operations: MapOperation[] = [
-      { type: "rename_map", name: "A" },
-      { type: "rename_map", name: "B" },
+      {
+        type: "add_faction",
+        faction: { id: "f-1", name: "A", color: "#112233" },
+      },
+      {
+        type: "add_faction",
+        faction: { id: "f-2", name: "B", color: "#223344" },
+      },
     ];
 
     expect(coalesceMapOperations(operations)).toEqual(operations);

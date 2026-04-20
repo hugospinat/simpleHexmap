@@ -17,14 +17,12 @@ export type ParsedMapSyncMessage =
   | { type: "map_token_updated"; payload: MapTokenUpdatedMessage };
 
 // Structural schemas. Domain payloads (MapOperation, MapTokenOperation,
-// SavedMapContent) are intentionally accepted as `unknown` / passthrough here
+// MapDocument) are intentionally accepted as `unknown` / passthrough here
 // because their content is validated by dedicated domain validators before
 // being applied to the session. The goal of this module is only to enforce
 // that the transport envelope has the right shape and types, so we never cast
 // an unrelated message into a domain type.
-const operationPayloadSchema = z
-  .object({ type: z.string() })
-  .passthrough();
+const operationPayloadSchema = z.object({ type: z.string() }).passthrough();
 
 const syncErrorSchema = z
   .object({ type: z.literal("sync_error") })
@@ -34,9 +32,10 @@ const syncSnapshotSchema = z
   .object({
     type: z.literal("sync_snapshot"),
     lastSequence: z.number().int().nonnegative(),
-    tokenMembers: z.array(z.unknown()),
+    workspaceMembers: z.array(z.unknown()),
     updatedAt: z.string(),
-    content: z.object({}).passthrough(),
+    document: z.object({}).passthrough(),
+    tokenPlacements: z.array(z.unknown()),
   })
   .passthrough();
 

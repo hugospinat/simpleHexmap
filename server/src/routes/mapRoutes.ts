@@ -114,7 +114,7 @@ export async function handleMapExportRequest(
   const visibleMap = filterMapRecordForVisibilityMode(map, visibilityMode);
 
   sendJson(response, 200, {
-    content: visibleMap.content,
+    document: visibleMap.document,
     name: visibleMap.name,
   });
   return true;

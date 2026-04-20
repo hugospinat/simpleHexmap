@@ -45,9 +45,8 @@ async function main() {
       sender: "B",
       operationId: `${clientBId}-${now}-2`,
       operation: {
-        type: "set_cells_hidden",
-        cells: [{ q: tileQ, r: tileR }],
-        hidden: true,
+        type: "set_tiles",
+        tiles: [{ q: tileQ, r: tileR, terrain: "plain", hidden: true }],
       },
     },
     {
@@ -60,7 +59,7 @@ async function main() {
           kind: "city",
           q: tileQ,
           r: tileR,
-          visibility: "visible",
+          hidden: false,
           overrideTerrainTile: true,
           gmLabel: "Stress City",
           playerLabel: "Unknown City",
@@ -72,9 +71,9 @@ async function main() {
       sender: "A",
       operationId: `${clientAId}-${now}-4`,
       operation: {
-        type: "set_feature_hidden",
+        type: "update_feature",
         featureId,
-        hidden: true,
+        patch: { hidden: true },
       },
     },
     {
@@ -93,18 +92,16 @@ async function main() {
       sender: "B",
       operationId: `${clientBId}-${now}-6`,
       operation: {
-        type: "assign_faction_cells",
-        cells: [{ q: tileQ, r: tileR }],
-        factionId,
+        type: "set_faction_territories",
+        territories: [{ q: tileQ, r: tileR, factionId }],
       },
     },
     {
       sender: "B",
       operationId: `${clientBId}-${now}-7`,
       operation: {
-        type: "set_cells_hidden",
-        cells: [{ q: tileQ, r: tileR }],
-        hidden: false,
+        type: "set_tiles",
+        tiles: [{ q: tileQ, r: tileR, terrain: "plain", hidden: false }],
       },
     },
   ];
@@ -150,18 +147,18 @@ async function main() {
     await sleep(1200);
 
     const afterPayload = await loadMap(base, account.cookie, map.id, "gm");
-    const content = afterPayload?.content;
-    const tile = Array.isArray(content?.tiles)
-      ? content.tiles.find((entry) => entry.q === tileQ && entry.r === tileR)
+    const document = afterPayload?.document;
+    const tile = Array.isArray(document?.tiles)
+      ? document.tiles.find((entry) => entry.q === tileQ && entry.r === tileR)
       : null;
-    const feature = Array.isArray(content?.features)
-      ? content.features.find((entry) => entry.id === featureId)
+    const feature = Array.isArray(document?.features)
+      ? document.features.find((entry) => entry.id === featureId)
       : null;
-    const faction = Array.isArray(content?.factions)
-      ? content.factions.find((entry) => entry.id === factionId)
+    const faction = Array.isArray(document?.factions)
+      ? document.factions.find((entry) => entry.id === factionId)
       : null;
-    const territory = Array.isArray(content?.factionTerritories)
-      ? content.factionTerritories.find((entry) => entry.q === tileQ && entry.r === tileR)
+    const territory = Array.isArray(document?.factionTerritories)
+      ? document.factionTerritories.find((entry) => entry.q === tileQ && entry.r === tileR)
       : null;
 
     const operationEventCounts = Object.fromEntries(
@@ -176,7 +173,7 @@ async function main() {
       tileExists: Boolean(tile),
       tileHiddenFalseAtEnd: tile?.hidden === false,
       featureExists: Boolean(feature),
-      featureHiddenTrue: feature?.visibility === "hidden",
+      featureHiddenTrue: feature?.hidden === true,
       factionExists: Boolean(faction),
       territoryAssigned: territory?.factionId === factionId,
       eventCounts: operationEventCounts,

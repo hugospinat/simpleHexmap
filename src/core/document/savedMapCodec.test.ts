@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { parseSavedMapContent } from "./savedMapCodec.js";
+import { parseMapDocument } from "./savedMapCodec.js";
 
 const baseValidInput = {
   version: 1,
@@ -9,12 +9,11 @@ const baseValidInput = {
   roads: [],
   factions: [],
   factionTerritories: [],
-  tokens: [],
 };
 
 describe("saved map codec", () => {
   test("accepts a fully-populated canonical document", () => {
-    const parsed = parseSavedMapContent({
+    const parsed = parseMapDocument({
       ...baseValidInput,
       tiles: [{ q: 0, r: 0, terrain: "plain", hidden: false }],
       features: [
@@ -23,8 +22,7 @@ describe("saved map codec", () => {
           kind: "city",
           q: 0,
           r: 0,
-          visibility: "visible",
-          overrideTerrainTile: false,
+          hidden: false,
           gmLabel: null,
           playerLabel: null,
           labelRevealed: false,
@@ -39,28 +37,21 @@ describe("saved map codec", () => {
   });
 
   test("rejects payload missing required arrays", () => {
-    expect(() => parseSavedMapContent({ version: 1 })).toThrow(
-      "Map file is missing required arrays.",
-    );
-  });
-
-  test("rejects payload missing the tokens array", () => {
-    const { tokens: _tokens, ...withoutTokens } = baseValidInput;
-    expect(() => parseSavedMapContent(withoutTokens)).toThrow(
+    expect(() => parseMapDocument({ version: 1 })).toThrow(
       "Map file is missing required arrays.",
     );
   });
 
   test("rejects payload missing the roads array", () => {
     const { roads: _roads, ...withoutRoads } = baseValidInput;
-    expect(() => parseSavedMapContent(withoutRoads)).toThrow(
+    expect(() => parseMapDocument(withoutRoads)).toThrow(
       "Map file is missing required arrays.",
     );
   });
 
   test("rejects legacy tileId tiles (requires canonical terrain)", () => {
     expect(() =>
-      parseSavedMapContent({
+      parseMapDocument({
         ...baseValidInput,
         tiles: [{ q: 0, r: 0, tileId: "plain", hidden: false }],
       }),
@@ -69,7 +60,7 @@ describe("saved map codec", () => {
 
   test("rejects tiles missing the boolean hidden flag", () => {
     expect(() =>
-      parseSavedMapContent({
+      parseMapDocument({
         ...baseValidInput,
         tiles: [{ q: 0, r: 0, terrain: "plain" }],
       }),
@@ -78,7 +69,7 @@ describe("saved map codec", () => {
 
   test("rejects legacy feature.type (requires canonical kind)", () => {
     expect(() =>
-      parseSavedMapContent({
+      parseMapDocument({
         ...baseValidInput,
         features: [
           {
@@ -86,8 +77,7 @@ describe("saved map codec", () => {
             type: "city",
             q: 0,
             r: 0,
-            visibility: "visible",
-            overrideTerrainTile: false,
+            hidden: false,
             gmLabel: null,
             playerLabel: null,
             labelRevealed: false,
@@ -99,15 +89,14 @@ describe("saved map codec", () => {
 
   test("rejects features without a stable id", () => {
     expect(() =>
-      parseSavedMapContent({
+      parseMapDocument({
         ...baseValidInput,
         features: [
           {
             kind: "city",
             q: 0,
             r: 0,
-            visibility: "visible",
-            overrideTerrainTile: false,
+            hidden: false,
             gmLabel: null,
             playerLabel: null,
             labelRevealed: false,
@@ -119,7 +108,7 @@ describe("saved map codec", () => {
 
   test("rejects invalid faction colors", () => {
     expect(() =>
-      parseSavedMapContent({
+      parseMapDocument({
         ...baseValidInput,
         factions: [{ id: "f-1", name: "Faction", color: "blue" }],
       }),

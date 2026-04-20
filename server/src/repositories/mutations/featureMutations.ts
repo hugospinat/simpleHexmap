@@ -1,9 +1,7 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { features } from "../../db/schema.js";
-import { toMapScopedId } from "../mapContentRepository.js";
 import { sanitizeFeaturePatch } from "../../../../src/core/protocol/index.js";
 import {
-  boolInt,
   type DbLike,
   type IncrementalOperationHandler,
 } from "./mutationHelpers.js";
@@ -19,30 +17,17 @@ export const addFeature: IncrementalOperationHandler<"add_feature"> = async (
     .values({
       createdAt: updatedAt,
       gmLabel: operation.feature.gmLabel,
-      id: toMapScopedId(mapId, operation.feature.id),
+      hidden: operation.feature.hidden,
+      id: operation.feature.id,
       kind: operation.feature.kind,
-      labelRevealed: boolInt(operation.feature.labelRevealed),
-      overrideTerrainTile: boolInt(operation.feature.overrideTerrainTile),
+      labelRevealed: operation.feature.labelRevealed,
       playerLabel: operation.feature.playerLabel,
       q: operation.feature.q,
       r: operation.feature.r,
       updatedAt,
-      visibility: operation.feature.visibility,
       mapId,
     })
     .onConflictDoNothing();
-};
-
-export const setFeatureHidden: IncrementalOperationHandler<
-  "set_feature_hidden"
-> = async (tx, mapId, operation, updatedAt) => {
-  await tx
-    .update(features)
-    .set({
-      updatedAt,
-      visibility: operation.hidden ? "hidden" : "visible",
-    })
-    .where(eq(features.id, toMapScopedId(mapId, operation.featureId)));
 };
 
 export const updateFeature: IncrementalOperationHandler<
@@ -54,17 +39,8 @@ export const updateFeature: IncrementalOperationHandler<
   if ("kind" in patch && typeof patch.kind === "string") {
     set.kind = patch.kind;
   }
-  if (
-    "visibility" in patch &&
-    (patch.visibility === "hidden" || patch.visibility === "visible")
-  ) {
-    set.visibility = patch.visibility;
-  }
-  if (
-    "overrideTerrainTile" in patch &&
-    typeof patch.overrideTerrainTile === "boolean"
-  ) {
-    set.overrideTerrainTile = boolInt(patch.overrideTerrainTile);
+  if ("hidden" in patch && typeof patch.hidden === "boolean") {
+    set.hidden = patch.hidden;
   }
   if (
     "gmLabel" in patch &&
@@ -79,7 +55,7 @@ export const updateFeature: IncrementalOperationHandler<
     set.playerLabel = patch.playerLabel;
   }
   if ("labelRevealed" in patch && typeof patch.labelRevealed === "boolean") {
-    set.labelRevealed = boolInt(patch.labelRevealed);
+    set.labelRevealed = patch.labelRevealed;
   }
 
   if (Object.keys(set).length === 1) {
@@ -89,7 +65,9 @@ export const updateFeature: IncrementalOperationHandler<
   await tx
     .update(features)
     .set(set)
-    .where(eq(features.id, toMapScopedId(mapId, operation.featureId)));
+    .where(
+      and(eq(features.mapId, mapId), eq(features.id, operation.featureId)),
+    );
 };
 
 export const removeFeature: IncrementalOperationHandler<
@@ -97,5 +75,7 @@ export const removeFeature: IncrementalOperationHandler<
 > = async (tx, mapId, operation) => {
   await tx
     .delete(features)
-    .where(eq(features.id, toMapScopedId(mapId, operation.featureId)));
+    .where(
+      and(eq(features.mapId, mapId), eq(features.id, operation.featureId)),
+    );
 };

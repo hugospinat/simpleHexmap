@@ -31,7 +31,7 @@ function expectUndoRestoresWorld(
 }
 
 describe("map operation history", () => {
-  it("inverts semantic paint_cells operations", () => {
+  it("inverts set_tiles operations", () => {
     const worldBefore = addTile(
       createEmptyWorld(),
       SOURCE_LEVEL,
@@ -41,18 +41,16 @@ describe("map operation history", () => {
 
     expectUndoRestoresWorld(worldBefore, [
       {
-        type: "paint_cells",
-        cells: [
-          { q: 0, r: 0 },
-          { q: 1, r: 0 },
+        type: "set_tiles",
+        tiles: [
+          { q: 0, r: 0, terrain: "forest", hidden: false },
+          { q: 1, r: 0, terrain: "forest", hidden: false },
         ],
-        terrain: "forest",
-        hidden: false,
       },
     ]);
   });
 
-  it("inverts semantic assign_faction_cells operations", () => {
+  it("inverts set_faction_territories operations", () => {
     const withTiles = addTile(
       addTile(createEmptyWorld(), SOURCE_LEVEL, { q: 0, r: 0 }, "plain"),
       SOURCE_LEVEL,
@@ -73,12 +71,11 @@ describe("map operation history", () => {
 
     expectUndoRestoresWorld(worldBefore, [
       {
-        type: "assign_faction_cells",
-        cells: [
-          { q: 0, r: 0 },
-          { q: 1, r: 0 },
+        type: "set_faction_territories",
+        territories: [
+          { q: 0, r: 0, factionId: null },
+          { q: 1, r: 0, factionId: null },
         ],
-        factionId: null,
       },
     ]);
   });
@@ -116,7 +113,6 @@ describe("map operation history", () => {
       kind: "city",
       hexId: "0,0",
       hidden: true,
-      overrideTerrainTile: true,
       gmLabel: "GM",
       playerLabel: "Player",
       labelRevealed: true,
@@ -194,7 +190,6 @@ describe("map operation history", () => {
       kind: "city",
       hexId: "0,0",
       hidden: false,
-      overrideTerrainTile: true,
     });
     const operations: MapOperation[] = [
       {
@@ -202,7 +197,7 @@ describe("map operation history", () => {
         featureId: "feature-1",
         patch: {
           gmLabel: "New label",
-          visibility: "hidden",
+          hidden: true,
         },
       },
       {
@@ -210,9 +205,8 @@ describe("map operation history", () => {
         featureId: "feature-1",
       },
       {
-        type: "set_cells_hidden",
-        cells: [{ q: 0, r: 0 }],
-        hidden: true,
+        type: "set_tiles",
+        tiles: [{ q: 0, r: 0, terrain: "plain", hidden: true }],
       },
     ];
 

@@ -5,17 +5,23 @@ import {
   createSyncReceiveQueue,
   enqueueReceivedOperation,
   resetSyncReceiveQueueFromSnapshot,
-  takeReadyReceivedOperations
+  takeReadyReceivedOperations,
 } from "@/app/sync/syncReceiveQueue";
 
-function message(sequence: number, operationId = `op-${sequence}`): MapOperationMessage {
+function message(
+  sequence: number,
+  operationId = `op-${sequence}`,
+): MapOperationMessage {
   return {
     type: "map_operation_applied",
     sequence,
     operationId,
-    operation: { type: "rename_map", name: "Ignored by world reducer" },
+    operation: {
+      type: "add_faction",
+      faction: { id: operationId, name: operationId, color: "#112233" },
+    },
     sourceClientId: "client-a",
-    updatedAt: "2026-04-17T00:00:00.000Z"
+    updatedAt: "2026-04-17T00:00:00.000Z",
   };
 }
 
@@ -23,7 +29,9 @@ describe("syncReceiveQueue", () => {
   it("waits for a snapshot before accepting operations", () => {
     const queue = createSyncReceiveQueue();
 
-    expect(enqueueReceivedOperation(queue, message(1))).toEqual({ status: "waiting_for_snapshot" });
+    expect(enqueueReceivedOperation(queue, message(1))).toEqual({
+      status: "waiting_for_snapshot",
+    });
     expect(takeReadyReceivedOperations(queue)).toEqual([]);
   });
 
@@ -34,11 +42,14 @@ describe("syncReceiveQueue", () => {
     expect(enqueueReceivedOperation(queue, message(4))).toMatchObject({
       status: "gap",
       expectedSequence: 3,
-      receivedSequence: 4
+      receivedSequence: 4,
     });
     expect(takeReadyReceivedOperations(queue)).toEqual([]);
 
-    expect(enqueueReceivedOperation(queue, message(3))).toEqual({ status: "queued", expectedSequence: 3 });
+    expect(enqueueReceivedOperation(queue, message(3))).toEqual({
+      status: "queued",
+      expectedSequence: 3,
+    });
 
     const ready = takeReadyReceivedOperations(queue);
     expect(ready.map((entry) => entry.sequence)).toEqual([3, 4]);
@@ -50,17 +61,28 @@ describe("syncReceiveQueue", () => {
     const queue = createSyncReceiveQueue();
     resetSyncReceiveQueueFromSnapshot(queue, 0);
 
-    expect(enqueueReceivedOperation(queue, message(2))).toMatchObject({ status: "gap" });
-    expect(enqueueReceivedOperation(queue, message(2, "op-2-duplicate"))).toEqual({
+    expect(enqueueReceivedOperation(queue, message(2))).toMatchObject({
+      status: "gap",
+    });
+    expect(
+      enqueueReceivedOperation(queue, message(2, "op-2-duplicate")),
+    ).toEqual({
       status: "duplicate",
-      expectedSequence: 1
+      expectedSequence: 1,
     });
 
-    expect(enqueueReceivedOperation(queue, message(1))).toEqual({ status: "queued", expectedSequence: 1 });
-    expect(takeReadyReceivedOperations(queue).map((entry) => entry.sequence)).toEqual([1, 2]);
-    expect(enqueueReceivedOperation(queue, message(1, "op-1-replayed"))).toEqual({
+    expect(enqueueReceivedOperation(queue, message(1))).toEqual({
+      status: "queued",
+      expectedSequence: 1,
+    });
+    expect(
+      takeReadyReceivedOperations(queue).map((entry) => entry.sequence),
+    ).toEqual([1, 2]);
+    expect(
+      enqueueReceivedOperation(queue, message(1, "op-1-replayed")),
+    ).toEqual({
       status: "past_sequence",
-      expectedSequence: 3
+      expectedSequence: 3,
     });
   });
 

@@ -1,5 +1,5 @@
 {
-  "id": "884bdcf1-273e-4d9e-bf2e-f10217a3d6b9",
+  "id": "2ea3b94d-b827-4d59-ba6b-ba468b018d68",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -34,9 +34,15 @@
         }
       },
       "indexes": {
-        "faction_territories_faction_id_idx": {
-          "name": "faction_territories_faction_id_idx",
+        "faction_territories_faction_idx": {
+          "name": "faction_territories_faction_idx",
           "columns": [
+            {
+              "expression": "map_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
             {
               "expression": "faction_id",
               "isExpression": false,
@@ -64,14 +70,16 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "faction_territories_faction_id_factions_id_fk": {
-          "name": "faction_territories_faction_id_factions_id_fk",
+        "faction_territories_map_faction_fk": {
+          "name": "faction_territories_map_faction_fk",
           "tableFrom": "faction_territories",
           "tableTo": "factions",
           "columnsFrom": [
+            "map_id",
             "faction_id"
           ],
           "columnsTo": [
+            "map_id",
             "id"
           ],
           "onDelete": "cascade",
@@ -97,15 +105,15 @@
       "name": "factions",
       "schema": "",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
         "map_id": {
           "name": "map_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -154,7 +162,15 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "factions_map_id_id_pk": {
+          "name": "factions_map_id_id_pk",
+          "columns": [
+            "map_id",
+            "id"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -164,15 +180,15 @@
       "name": "features",
       "schema": "",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
         "map_id": {
           "name": "map_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -194,15 +210,9 @@
           "primaryKey": false,
           "notNull": true
         },
-        "visibility": {
-          "name": "visibility",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "override_terrain_tile": {
-          "name": "override_terrain_tile",
-          "type": "integer",
+        "hidden": {
+          "name": "hidden",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true
         },
@@ -220,7 +230,7 @@
         },
         "label_revealed": {
           "name": "label_revealed",
-          "type": "integer",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true
         },
@@ -264,21 +274,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "features_map_id_idx": {
-          "name": "features_map_id_idx",
-          "columns": [
-            {
-              "expression": "map_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -296,7 +291,15 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "features_map_id_id_pk": {
+          "name": "features_map_id_id_pk",
+          "columns": [
+            "map_id",
+            "id"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -332,7 +335,7 @@
         },
         "hidden": {
           "name": "hidden",
-          "type": "integer",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true
         },
@@ -394,88 +397,6 @@
             "map_id",
             "q",
             "r"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.map_members": {
-      "name": "map_members",
-      "schema": "",
-      "columns": {
-        "map_id": {
-          "name": "map_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "role": {
-          "name": "role",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "map_members_user_id_idx": {
-          "name": "map_members_user_id_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "map_members_map_id_maps_id_fk": {
-          "name": "map_members_map_id_maps_id_fk",
-          "tableFrom": "map_members",
-          "tableTo": "maps",
-          "columnsFrom": [
-            "map_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "map_members_user_id_users_id_fk": {
-          "name": "map_members_user_id_users_id_fk",
-          "tableFrom": "map_members",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "map_members_map_id_user_id_pk": {
-          "name": "map_members_map_id_user_id_pk",
-          "columns": [
-            "map_id",
-            "user_id"
           ]
         }
       },
@@ -586,29 +507,11 @@
           "name": "workspace_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
-        },
-        "legacy_id": {
-          "name": "legacy_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "owner_user_id": {
-          "name": "owner_user_id",
-          "type": "uuid",
-          "primaryKey": false,
           "notNull": true
         },
         "name": {
           "name": "name",
           "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "settings": {
-          "name": "settings",
-          "type": "jsonb",
           "primaryKey": false,
           "notNull": true
         },
@@ -632,36 +535,6 @@
         }
       },
       "indexes": {
-        "maps_legacy_id_unique": {
-          "name": "maps_legacy_id_unique",
-          "columns": [
-            {
-              "expression": "legacy_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "maps_owner_user_id_idx": {
-          "name": "maps_owner_user_id_idx",
-          "columns": [
-            {
-              "expression": "owner_user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "maps_workspace_id_idx": {
           "name": "maps_workspace_id_idx",
           "columns": [
@@ -690,19 +563,6 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "maps_owner_user_id_users_id_fk": {
-          "name": "maps_owner_user_id_users_id_fk",
-          "tableFrom": "maps",
-          "tableTo": "users",
-          "columnsFrom": [
-            "owner_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
@@ -1132,12 +992,6 @@
           "primaryKey": true,
           "notNull": true
         },
-        "legacy_id": {
-          "name": "legacy_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "username": {
           "name": "username",
           "type": "text",
@@ -1184,113 +1038,10 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "users_legacy_id_unique": {
-          "name": "users_legacy_id_unique",
-          "columns": [
-            {
-              "expression": "legacy_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.workspace_member_tokens": {
-      "name": "workspace_member_tokens",
-      "schema": "",
-      "columns": {
-        "workspace_id": {
-          "name": "workspace_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "color": {
-          "name": "color",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "workspace_member_tokens_user_id_idx": {
-          "name": "workspace_member_tokens_user_id_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "workspace_member_tokens_workspace_id_workspaces_id_fk": {
-          "name": "workspace_member_tokens_workspace_id_workspaces_id_fk",
-          "tableFrom": "workspace_member_tokens",
-          "tableTo": "workspaces",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "workspace_member_tokens_user_id_users_id_fk": {
-          "name": "workspace_member_tokens_user_id_users_id_fk",
-          "tableFrom": "workspace_member_tokens",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "workspace_member_tokens_workspace_id_user_id_pk": {
-          "name": "workspace_member_tokens_workspace_id_user_id_pk",
-          "columns": [
-            "workspace_id",
-            "user_id"
-          ]
-        }
-      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -1314,7 +1065,26 @@
         },
         "role": {
           "name": "role",
+          "type": "workspace_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_color": {
+          "name": "token_color",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
         }
@@ -1388,12 +1158,6 @@
           "primaryKey": true,
           "notNull": true
         },
-        "owner_user_id": {
-          "name": "owner_user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
         "name": {
           "name": "name",
           "type": "text",
@@ -1413,38 +1177,8 @@
           "notNull": true
         }
       },
-      "indexes": {
-        "workspaces_owner_user_id_idx": {
-          "name": "workspaces_owner_user_id_idx",
-          "columns": [
-            {
-              "expression": "owner_user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "workspaces_owner_user_id_users_id_fk": {
-          "name": "workspaces_owner_user_id_users_id_fk",
-          "tableFrom": "workspaces",
-          "tableTo": "users",
-          "columnsFrom": [
-            "owner_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -1452,7 +1186,17 @@
       "isRLSEnabled": false
     }
   },
-  "enums": {},
+  "enums": {
+    "public.workspace_role": {
+      "name": "workspace_role",
+      "schema": "public",
+      "values": [
+        "owner",
+        "gm",
+        "player"
+      ]
+    }
+  },
   "schemas": {},
   "sequences": {},
   "roles": {},

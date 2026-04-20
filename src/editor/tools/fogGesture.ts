@@ -6,17 +6,44 @@ import {
   createGestureSession,
   finishGestureSession,
   type GestureCommit,
-  type GestureSession
+  type GestureSession,
 } from "@/editor/tools/gestureSession";
 
 export type FogGestureAction = "paint" | "erase";
-export type FogGesture = GestureSession<FogGestureAction>;
+export type FogGesture = GestureSession<FogGestureAction> & {
+  targetHidden: boolean | null;
+};
 
-export function createFogGesture(action: FogGestureAction, world: MapState, level: number): FogGesture {
-  return createGestureSession(action, world, level);
+export function createFogGesture(
+  action: FogGestureAction,
+  world: MapState,
+  level: number,
+  initialAxial: Axial,
+): FogGesture {
+  const cell = getLevelMap(world, level).get(hexKey(initialAxial));
+  const feature = getFeatureAt(world, level, initialAxial);
+
+  return {
+    ...createGestureSession(action, world, level),
+    targetHidden:
+      action === "paint"
+        ? cell
+          ? !cell.hidden
+          : null
+        : feature
+          ? !feature.hidden
+          : null,
+  };
 }
 
-export function applyFogGestureCells(gesture: FogGesture, axials: Axial[]): MapState {
+export function applyFogGestureCells(
+  gesture: FogGesture,
+  axials: Axial[],
+): MapState {
+  if (gesture.targetHidden === null) {
+    return gesture.world;
+  }
+
   for (const axial of axials) {
     const key = hexKey(axial);
 
@@ -29,53 +56,28 @@ export function applyFogGestureCells(gesture: FogGesture, axials: Axial[]): MapS
     const feature = getFeatureAt(gesture.world, gesture.level, axial);
 
     if (gesture.action === "paint") {
-      if (feature && !feature.hidden) {
-        applyGestureUpdate(
-          gesture,
-          executeMapEditCommand(gesture.world, {
-            type: "setFeatureHidden",
-            featureId: feature.id,
-            hidden: true
-          })
-        );
-        continue;
-      }
-
-      if (cell && !cell.hidden) {
+      if (cell && cell.hidden !== gesture.targetHidden) {
         applyGestureUpdate(
           gesture,
           executeMapEditCommand(gesture.world, {
             type: "setCellHidden",
             level: gesture.level,
             axial,
-            hidden: true
-          })
+            hidden: gesture.targetHidden,
+          }),
         );
       }
       continue;
     }
 
-    if (cell?.hidden) {
-      applyGestureUpdate(
-        gesture,
-        executeMapEditCommand(gesture.world, {
-          type: "setCellHidden",
-          level: gesture.level,
-          axial,
-          hidden: false
-        })
-      );
-      continue;
-    }
-
-    if (feature?.hidden) {
+    if (feature && feature.hidden !== gesture.targetHidden) {
       applyGestureUpdate(
         gesture,
         executeMapEditCommand(gesture.world, {
           type: "setFeatureHidden",
           featureId: feature.id,
-          hidden: false
-        })
+          hidden: gesture.targetHidden,
+        }),
       );
     }
   }

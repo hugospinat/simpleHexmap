@@ -33,10 +33,9 @@ import {
   canOpenWorkspaceAsGM,
   type MapOpenMode,
   type UserRecord,
-  type WorkspaceMemberRecord,
-  type WorkspaceTokenMemberRecord
+  type WorkspaceMember
 } from "@/core/auth/authTypes";
-import { parseSavedMapContent } from "@/core/document/savedMapCodec";
+import { parseMapDocument } from "@/core/document/savedMapCodec";
 import { serializeWorld } from "@/app/document/worldMapCodec";
 import { deserializeWorld } from "@/app/document/worldMapCodec";
 
@@ -44,7 +43,8 @@ type OpenMapState = {
   id: string;
   name: string;
   role: MapOpenMode;
-  tokenMembers: WorkspaceTokenMemberRecord[];
+  workspaceMembers: WorkspaceMember[];
+  tokenPlacements: { userId: string; q: number; r: number }[];
   updatedAt: string;
   workspaceId: string;
   world: MapState;
@@ -94,7 +94,7 @@ export default function App() {
   const [busyMessage, setBusyMessage] = useState<string | null>("Checking account...");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [managedWorkspaceId, setManagedWorkspaceId] = useState<string | null>(null);
-  const [managedWorkspaceMembers, setManagedWorkspaceMembers] = useState<WorkspaceMemberRecord[]>([]);
+  const [managedWorkspaceMembers, setManagedWorkspaceMembers] = useState<WorkspaceMember[]>([]);
   const [managedWorkspaceMaps, setManagedWorkspaceMaps] = useState<WorkspaceMapSummary[]>([]);
   const [openMap, setOpenMap] = useState<OpenMapState | null>(null);
   const [user, setUser] = useState<UserRecord | null>(null);
@@ -341,7 +341,7 @@ export default function App() {
         throw new Error("Invalid JSON map file.");
       }
 
-      const content = parseSavedMapContent(raw);
+      const content = parseMapDocument(raw);
       const normalizedName = file.name.replace(/\.json$/i, "").trim();
 
       await importWorkspaceMapById(workspaceId, {
@@ -361,7 +361,7 @@ export default function App() {
     await withBusyState("Exporting map...", async () => {
       const payload = await exportMapById(mapId);
       const fileName = payload.name.trim().replace(/\s+/g, "-").toLowerCase() || "map-export";
-      triggerJsonDownload(fileName, payload.content);
+      triggerJsonDownload(fileName, payload.document);
     });
   }, [user, withBusyState]);
 
@@ -393,10 +393,11 @@ export default function App() {
         id: loadedMap.id,
         name: loadedMap.name,
         role: mode,
-        tokenMembers: loadedMap.tokenMembers,
+        workspaceMembers: loadedMap.workspaceMembers,
+        tokenPlacements: loadedMap.tokenPlacements,
         updatedAt: loadedMap.updatedAt,
         workspaceId: loadedMap.workspaceId,
-        world: deserializeWorld(loadedMap.content)
+        world: deserializeWorld(loadedMap.document)
       });
       setSelectedWorkspaceId(loadedMap.workspaceId);
       setManagedWorkspaceId(loadedMap.workspaceId);
@@ -433,7 +434,7 @@ export default function App() {
         initialWorld={openMap.world}
         mapId={openMap.id}
         mapName={openMap.name}
-        tokenMembers={openMap.tokenMembers}
+        workspaceMembers={openMap.workspaceMembers}
         user={user}
         role={openMap.role}
         onBackToMaps={closeEditor}

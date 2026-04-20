@@ -3,17 +3,14 @@ import { hexKey, type Axial } from "@/core/geometry/hex";
 import { SOURCE_LEVEL } from "@/core/map/mapRules";
 import { getLevelMap } from "@/core/map/world";
 import type { MapState } from "@/core/map/world";
-import type {
-  MapOpenMode,
-  WorkspaceTokenMemberRecord,
-} from "@/core/auth/authTypes";
+import type { MapOpenMode, WorkspaceMember } from "@/core/auth/authTypes";
 import { defaultWorkspaceTokenColor } from "@/core/auth/authTypes";
-import type { MapTokenOperation, MapTokenRecord } from "@/core/protocol";
+import type { MapTokenOperation, MapTokenPlacement } from "@/core/protocol";
 
 type UseTokenControlsOptions = {
   canEdit: boolean;
   mapId: string;
-  mapTokens: readonly MapTokenRecord[];
+  mapTokens: readonly MapTokenPlacement[];
   role: MapOpenMode;
   userId: string;
   sendTokenOperation: (operation: MapTokenOperation) => void;
@@ -28,7 +25,7 @@ type UseTokenControlsResult = {
   placeSelectedMapToken: (axial: Axial) => void;
   playerTokenColor: string;
   removeMapToken: (userId: string) => void;
-  selectMapTokenMember: (member: WorkspaceTokenMemberRecord) => void;
+  selectWorkspaceMember: (member: WorkspaceMember) => void;
   setPlayerTokenColor: (color: string) => void;
 };
 
@@ -96,11 +93,10 @@ export function useTokenControls({
 
       sendTokenOperation({
         type: "set_map_token",
-        token: {
+        placement: {
           userId,
           q: axial.q,
           r: axial.r,
-          color: playerTokenColor,
         },
       });
     },
@@ -114,8 +110,8 @@ export function useTokenControls({
     ],
   );
 
-  const selectMapTokenMember = useCallback(
-    (member: WorkspaceTokenMemberRecord) => {
+  const selectWorkspaceMember = useCallback(
+    (member: WorkspaceMember) => {
       if (!canEdit) {
         return;
       }
@@ -126,7 +122,7 @@ export function useTokenControls({
       }
 
       setActiveTokenUserId(member.userId);
-      setActiveTokenColor(member.color);
+      setActiveTokenColor(member.tokenColor);
     },
     [activeTokenUserId, canEdit],
   );
@@ -157,11 +153,10 @@ export function useTokenControls({
 
       sendTokenOperation({
         type: "set_map_token",
-        token: {
+        placement: {
           userId: activeTokenUserId,
           q: axial.q,
           r: axial.r,
-          color: activeTokenColor,
         },
       });
     },
@@ -187,7 +182,6 @@ export function useTokenControls({
 
       if (token) {
         setActiveTokenUserId(token.userId);
-        setActiveTokenColor(token.color);
       }
 
       sendTokenOperation({
@@ -210,7 +204,7 @@ export function useTokenControls({
     placeSelectedMapToken,
     playerTokenColor,
     removeMapToken,
-    selectMapTokenMember,
+    selectWorkspaceMember,
     setPlayerTokenColor,
   };
 }

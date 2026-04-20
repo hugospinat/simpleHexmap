@@ -1,4 +1,7 @@
-import type { SavedMapContent } from "../../../src/core/protocol/index.js";
+import type {
+  MapDocument,
+  MapTokenPlacement,
+} from "../../../src/core/protocol/index.js";
 import { canOpenAsGm, type WorkspaceMapRecord } from "./workspaceRepository.js";
 
 export type MapVisibilityMode = "gm" | "player";
@@ -40,12 +43,10 @@ export function getVisibilityModeForMapRole(
   return canOpenAsGm(map.currentUserRole) ? "gm" : "player";
 }
 
-export function filterSavedMapContentForPlayer(
-  content: SavedMapContent,
-): SavedMapContent {
-  const tiles = content.tiles.filter((tile) => !tile.hidden);
+export function filterMapDocumentForPlayer(document: MapDocument): MapDocument {
+  const tiles = document.tiles.filter((tile) => !tile.hidden);
   const visibleCellKeys = new Set(tiles.map((tile) => cellKey(tile)));
-  const factionTerritories = content.factionTerritories.filter((territory) =>
+  const factionTerritories = document.factionTerritories.filter((territory) =>
     visibleCellKeys.has(cellKey(territory)),
   );
   const visibleFactionIds = new Set(
@@ -53,19 +54,18 @@ export function filterSavedMapContentForPlayer(
   );
 
   return {
-    ...content,
+    ...document,
     tiles,
-    features: content.features
+    features: document.features
       .filter(
         (feature) =>
-          visibleCellKeys.has(cellKey(feature)) &&
-          feature.visibility === "visible",
+          visibleCellKeys.has(cellKey(feature)) && feature.hidden === false,
       )
       .map((feature) => ({
         ...feature,
         gmLabel: null,
       })),
-    rivers: content.rivers.filter((river) => {
+    rivers: document.rivers.filter((river) => {
       if (!visibleCellKeys.has(cellKey(river))) {
         return false;
       }
@@ -73,7 +73,7 @@ export function filterSavedMapContentForPlayer(
       const neighbor = getNeighborForRiverEdge(river, river.edge);
       return visibleCellKeys.has(cellKey(neighbor));
     }),
-    roads: content.roads
+    roads: document.roads
       .filter((road) => visibleCellKeys.has(cellKey(road)))
       .map((road) => ({
         ...road,
@@ -83,14 +83,24 @@ export function filterSavedMapContentForPlayer(
         }),
       }))
       .filter((road) => road.edges.length > 0),
-    factions: content.factions.filter((faction) =>
+    factions: document.factions.filter((faction) =>
       visibleFactionIds.has(faction.id),
     ),
     factionTerritories,
-    tokens: content.tokens.filter((token) =>
-      visibleCellKeys.has(cellKey(token)),
-    ),
   };
+}
+
+function filterTokenPlacementsForPlayer(
+  tokenPlacements: MapTokenPlacement[],
+  document: MapDocument,
+): MapTokenPlacement[] {
+  const visibleCellKeys = new Set(
+    document.tiles.filter((tile) => !tile.hidden).map((tile) => cellKey(tile)),
+  );
+
+  return tokenPlacements.filter((placement) =>
+    visibleCellKeys.has(cellKey(placement)),
+  );
 }
 
 export function filterMapRecordForVisibilityMode(
@@ -101,8 +111,14 @@ export function filterMapRecordForVisibilityMode(
     return map;
   }
 
+  const document = filterMapDocumentForPlayer(map.document);
+
   return {
     ...map,
-    content: filterSavedMapContentForPlayer(map.content),
+    document,
+    tokenPlacements: filterTokenPlacementsForPlayer(
+      map.tokenPlacements,
+      document,
+    ),
   };
 }

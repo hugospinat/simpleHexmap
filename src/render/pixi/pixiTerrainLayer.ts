@@ -3,7 +3,12 @@ import { getLevelRotation } from "@/core/geometry/hex";
 import { tileColors } from "@/core/map/world";
 import { canFeatureOverrideTerrain } from "@/assets/featureAssets";
 import { parseCssColor, pathPolygon } from "./pixiLayers";
-import type { PixiAssetCatalog, PixiObjectPools, PixiSceneCellRecord, PixiSceneRenderFrame } from "./pixiTypes";
+import type {
+  PixiAssetCatalog,
+  PixiObjectPools,
+  PixiSceneCellRecord,
+  PixiSceneRenderFrame,
+} from "./pixiTypes";
 
 export type PixiTerrainLayerStats = {
   labels: number;
@@ -14,28 +19,36 @@ export type PixiTerrainLayerStats = {
 const coordinateTextStyle = new TextStyle({
   fill: "#777777",
   fontFamily: "Georgia, Times New Roman, serif",
-  fontSize: 10
+  fontSize: 10,
 });
 
-function fitTextureSizePreservingAspect(texture: Texture, maxWidth: number, maxHeight: number): { height: number; width: number } {
+function fitTextureSizePreservingAspect(
+  texture: Texture,
+  maxWidth: number,
+  maxHeight: number,
+): { height: number; width: number } {
   const sourceWidth = Math.max(1, texture.width);
   const sourceHeight = Math.max(1, texture.height);
   const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight);
 
   return {
     height: sourceHeight * scale,
-    width: sourceWidth * scale
+    width: sourceWidth * scale,
   };
 }
 
-function textureForCell(cell: PixiSceneCellRecord, assets: PixiAssetCatalog): Texture | null {
+function textureForCell(
+  cell: PixiSceneCellRecord,
+  assets: PixiAssetCatalog,
+): Texture | null {
   if (
     cell.feature &&
     !cell.feature.hidden &&
-    cell.feature.overrideTerrainTile &&
     canFeatureOverrideTerrain(cell.feature.kind)
   ) {
-    const overrideTexture = assets.featureTerrainOverrideTextures.get(cell.feature.kind);
+    const overrideTexture = assets.featureTerrainOverrideTextures.get(
+      cell.feature.kind,
+    );
 
     if (overrideTexture) {
       return overrideTexture;
@@ -45,12 +58,17 @@ function textureForCell(cell: PixiSceneCellRecord, assets: PixiAssetCatalog): Te
   return assets.terrainTextures.get(cell.cell.type) ?? null;
 }
 
-function drawFallbackTerrain(graphics: Graphics, cells: PixiSceneCellRecord[]): void {
+function drawFallbackTerrain(
+  graphics: Graphics,
+  cells: PixiSceneCellRecord[],
+): void {
   if (cells.length === 0) {
     return;
   }
 
-  for (const terrainType of Object.keys(tileColors) as Array<keyof typeof tileColors>) {
+  for (const terrainType of Object.keys(tileColors) as Array<
+    keyof typeof tileColors
+  >) {
     const color = parseCssColor(tileColors[terrainType]);
     let hasTerrain = false;
 
@@ -73,7 +91,7 @@ function drawCoordinateLabels(
   frame: PixiSceneRenderFrame,
   pools: PixiObjectPools,
   parent: Container,
-  showCoordinates: boolean
+  showCoordinates: boolean,
 ): number {
   const visibleKeys = new Set<string>();
 
@@ -111,7 +129,7 @@ export function drawPixiTerrainLayer(
   frame: PixiSceneRenderFrame,
   assets: PixiAssetCatalog,
   pools: PixiObjectPools,
-  showCoordinates: boolean
+  showCoordinates: boolean,
 ): PixiTerrainLayerStats {
   void showCoordinates;
   terrainGraphics.clear();
@@ -125,9 +143,8 @@ export function drawPixiTerrainLayer(
     const isTerrainOverride = Boolean(
       cell.feature &&
       !cell.feature.hidden &&
-      cell.feature.overrideTerrainTile &&
       canFeatureOverrideTerrain(cell.feature.kind) &&
-      assets.featureTerrainOverrideTextures.get(cell.feature.kind) === texture
+      assets.featureTerrainOverrideTextures.get(cell.feature.kind) === texture,
     );
 
     if (!texture) {
@@ -146,7 +163,11 @@ export function drawPixiTerrainLayer(
     sprite.texture = texture;
     sprite.anchor.set(0.5);
     sprite.position.set(cell.worldCenter.x, cell.worldCenter.y);
-    const fitted = fitTextureSizePreservingAspect(texture, cell.boundsWidth * 0.92, cell.boundsHeight * 0.92);
+    const fitted = fitTextureSizePreservingAspect(
+      texture,
+      cell.boundsWidth * 0.92,
+      cell.boundsHeight * 0.92,
+    );
     sprite.width = fitted.width;
     sprite.height = fitted.height;
     sprite.rotation = 0;
@@ -159,11 +180,16 @@ export function drawPixiTerrainLayer(
 
   drawFallbackTerrain(terrainGraphics, fallbackCells);
   pools.terrainSprites.releaseUnused(visibleSpriteKeys);
-  const labels = drawCoordinateLabels(frame, pools, terrainSpriteParent, showCoordinates);
+  const labels = drawCoordinateLabels(
+    frame,
+    pools,
+    terrainSpriteParent,
+    showCoordinates,
+  );
 
   return {
     labels,
     terrainOverriddenHexes,
-    tiles: frame.visibleTerrainCells.length
+    tiles: frame.visibleTerrainCells.length,
   };
 }

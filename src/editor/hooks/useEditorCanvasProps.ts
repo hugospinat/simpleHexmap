@@ -6,7 +6,14 @@ import type { EditGestureAction } from "@/editor/tools/editGesture";
 import type { EditorMode } from "@/editor/tools/editorTypes";
 import type { MapCanvasProps } from "@/ui/components/MapCanvas/types";
 import type { RenderWorldPatch } from "@/render/renderWorldPatch";
-import type { MapOperation, MapTokenRecord } from "@/core/protocol";
+import type { MapOperation, MapTokenPlacement } from "@/core/protocol";
+
+export function shouldShowFogVisibilityOverlay(
+  activeMode: EditorMode,
+  role: "gm" | "player",
+): boolean {
+  return role === "gm" && (activeMode === "fog" || activeMode === "token");
+}
 
 type UseEditorCanvasPropsOptions = {
   activeMode: EditorMode;
@@ -23,7 +30,7 @@ type UseEditorCanvasPropsOptions = {
   level: number;
   onRenderWorldPatchApplied?: (revision: number) => void;
   previewOperations: MapOperation[];
-  mapTokens: MapTokenRecord[];
+  tokenPlacements: MapTokenPlacement[];
   onToolStep?: (delta: 1 | -1) => void;
   role: "gm" | "player";
   renderWorldPatch?: RenderWorldPatch;
@@ -54,7 +61,7 @@ export function useEditorCanvasProps({
   level,
   onRenderWorldPatchApplied,
   previewOperations,
-  mapTokens,
+  tokenPlacements,
   onToolStep,
   role,
   renderWorldPatch,
@@ -77,7 +84,7 @@ export function useEditorCanvasProps({
       playerMode: role === "player",
       editMode: activeMode,
       featureVisibilityMode,
-      fogEditingActive: role === "gm" && activeMode === "fog",
+      fogEditingActive: shouldShowFogVisibilityOverlay(activeMode, role),
       interactionLabel,
       level,
       onCenterChange: setCenter,
@@ -95,7 +102,7 @@ export function useEditorCanvasProps({
       onRenderWorldPatchApplied,
       onVisualZoomChange: changeVisualZoom,
       previewOperations,
-      mapTokens,
+      tokenPlacements,
       renderWorldPatch,
       hoveredHex,
       showCoordinates,
@@ -121,7 +128,7 @@ export function useEditorCanvasProps({
       onPlayerTokenPlace,
       onToolStep,
       previewOperations,
-      mapTokens,
+      tokenPlacements,
       role,
       renderWorldPatch,
       setCenter,

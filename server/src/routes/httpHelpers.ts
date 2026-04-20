@@ -1,6 +1,6 @@
 import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
-import { parseSavedMapContent } from "../../../src/core/document/savedMapCodec.js";
+import { parseMapDocument } from "../../../src/core/document/savedMapCodec.js";
 
 const maxRequestBodySizeBytes = 50 * 1024 * 1024;
 
@@ -24,14 +24,16 @@ export const defaultMapContent = {
   roads: [],
   factions: [],
   factionTerritories: [],
-  tokens: [],
 };
 
 export function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-export function sanitizeName(value: unknown, fallback = "Untitled map"): string {
+export function sanitizeName(
+  value: unknown,
+  fallback = "Untitled map",
+): string {
   if (typeof value !== "string") {
     return fallback;
   }
@@ -42,9 +44,15 @@ export function sanitizeName(value: unknown, fallback = "Untitled map"): string 
 
 export function setCors(request, response): void {
   const origin = request.headers.origin;
-  response.setHeader("Access-Control-Allow-Origin", typeof origin === "string" ? origin : "*");
+  response.setHeader(
+    "Access-Control-Allow-Origin",
+    typeof origin === "string" ? origin : "*",
+  );
   response.setHeader("Access-Control-Allow-Credentials", "true");
-  response.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
+  response.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET,POST,PATCH,DELETE,OPTIONS",
+  );
   response.setHeader("Access-Control-Allow-Headers", "Content-Type");
   response.setHeader("Vary", "Origin");
 }
@@ -69,7 +77,11 @@ export async function readBody(request): Promise<any> {
 
       if (data.length > maxRequestBodySizeBytes) {
         rejected = true;
-        reject(Object.assign(new Error("Request body too large."), { statusCode: 413 }));
+        reject(
+          Object.assign(new Error("Request body too large."), {
+            statusCode: 413,
+          }),
+        );
       }
     });
 
@@ -86,7 +98,9 @@ export async function readBody(request): Promise<any> {
       try {
         resolve(JSON.parse(data));
       } catch {
-        reject(Object.assign(new Error("Invalid JSON body."), { statusCode: 400 }));
+        reject(
+          Object.assign(new Error("Invalid JSON body."), { statusCode: 400 }),
+        );
       }
     });
 
@@ -99,10 +113,12 @@ export async function readBody(request): Promise<any> {
 }
 
 export function parseContentInput(value: unknown) {
-  return parseSavedMapContent(value);
+  return parseMapDocument(value);
 }
 
-export function parseWorkspaceMemberRole(value: unknown): "gm" | "player" | null {
+export function parseWorkspaceMemberRole(
+  value: unknown,
+): "gm" | "player" | null {
   if (value === "gm" || value === "player") {
     return value;
   }
@@ -113,7 +129,10 @@ export function parseWorkspaceMemberRole(value: unknown): "gm" | "player" | null
 function sendStaticFile(response, filePath: string, method: string): void {
   const extension = path.extname(filePath).toLowerCase();
   response.statusCode = 200;
-  response.setHeader("Content-Type", staticContentTypes.get(extension) ?? "application/octet-stream");
+  response.setHeader(
+    "Content-Type",
+    staticContentTypes.get(extension) ?? "application/octet-stream",
+  );
 
   if (extension !== ".html") {
     response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
@@ -131,7 +150,8 @@ function sendStaticFile(response, filePath: string, method: string): void {
 
 async function resolveStaticFile(pathname: string): Promise<string | null> {
   const decodedPathname = decodeURIComponent(pathname);
-  const normalizedPathname = decodedPathname === "/" ? "/index.html" : decodedPathname;
+  const normalizedPathname =
+    decodedPathname === "/" ? "/index.html" : decodedPathname;
   const candidate = path.resolve(staticRoot, `.${normalizedPathname}`);
 
   if (candidate.startsWith(staticRoot)) {
@@ -156,7 +176,11 @@ async function resolveStaticFile(pathname: string): Promise<string | null> {
   }
 }
 
-export async function handleStaticRequest(request, response, url): Promise<boolean> {
+export async function handleStaticRequest(
+  request,
+  response,
+  url,
+): Promise<boolean> {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return false;
   }

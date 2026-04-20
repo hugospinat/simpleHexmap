@@ -1,29 +1,31 @@
 import type { WebSocket } from "ws";
 import type {
+  MapDocument,
   MapOperation,
   MapTokenOperation,
-  SavedMapContent,
+  MapTokenPlacement,
 } from "../../src/core/protocol/index.js";
 import type {
   UserRecord,
+  WorkspaceMember,
   WorkspaceRole,
-  WorkspaceTokenMemberRecord,
 } from "../../src/core/auth/authTypes.js";
 
 export type MapRecord = {
   currentUserRole: WorkspaceRole;
+  document: MapDocument;
   id: string;
   name: string;
-  ownerUserId: string;
-  tokenMembers: WorkspaceTokenMemberRecord[];
+  nextSequence: number;
+  tokenPlacements: MapTokenPlacement[];
   updatedAt: string;
   workspaceId: string;
-  content: SavedMapContent;
+  workspaceMembers: WorkspaceMember[];
 };
 
 export type MapSummary = Pick<
   MapRecord,
-  "currentUserRole" | "id" | "name" | "ownerUserId" | "updatedAt"
+  "currentUserRole" | "id" | "name" | "updatedAt"
 >;
 
 export type AppliedOperationMessage = {

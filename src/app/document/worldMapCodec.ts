@@ -12,13 +12,13 @@ import { SOURCE_LEVEL } from "@/core/map/mapRules";
 import { createInitialMapStateVersions } from "@/core/map/worldTypes";
 import { mapFileVersion } from "@/core/document/savedMapCodec";
 import type {
+  MapDocument,
   MapFactionRecord,
   MapFactionTerritoryRecord,
   MapFeatureRecord,
   MapRiverRecord,
   MapRoadRecord,
   MapTileRecord,
-  SavedMapContent,
 } from "@/core/protocol";
 import type {
   Feature,
@@ -63,8 +63,7 @@ function serializeFeatures(world: MapState): MapFeatureRecord[] {
         kind: feature.kind,
         q: axial.q,
         r: axial.r,
-        visibility: feature.hidden ? ("hidden" as const) : ("visible" as const),
-        overrideTerrainTile: feature.overrideTerrainTile,
+        hidden: feature.hidden,
         gmLabel: feature.gmLabel ?? null,
         playerLabel: feature.playerLabel ?? null,
         labelRevealed: feature.labelRevealed ?? false,
@@ -155,7 +154,7 @@ function serializeFactionTerritories(
     );
 }
 
-export function deserializeWorld(savedMap: SavedMapContent): MapState {
+export function deserializeWorld(savedMap: MapDocument): MapState {
   const sourceLevel = new Map<string, { hidden: boolean; type: TerrainType }>();
 
   for (const tile of savedMap.tiles) {
@@ -186,8 +185,7 @@ export function deserializeWorld(savedMap: SavedMapContent): MapState {
       id: feature.id,
       kind: feature.kind as FeatureKind,
       hexId,
-      hidden: feature.visibility === "hidden",
-      overrideTerrainTile: feature.overrideTerrainTile,
+      hidden: feature.hidden,
       gmLabel: feature.gmLabel ?? undefined,
       playerLabel: feature.playerLabel ?? undefined,
       labelRevealed: feature.labelRevealed,
@@ -265,7 +263,7 @@ export function deserializeWorld(savedMap: SavedMapContent): MapState {
   };
 }
 
-export function serializeWorld(world: MapState): SavedMapContent {
+export function serializeWorld(world: MapState): MapDocument {
   return {
     version: mapFileVersion,
     tiles: serializeTiles(world),
@@ -274,6 +272,5 @@ export function serializeWorld(world: MapState): SavedMapContent {
     roads: serializeRoads(world),
     factions: serializeFactions(world),
     factionTerritories: serializeFactionTerritories(world),
-    tokens: [],
   };
 }

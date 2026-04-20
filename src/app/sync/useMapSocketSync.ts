@@ -10,7 +10,7 @@ import {
   applyMapTokenOperation,
   type MapOperation,
   type MapTokenOperation,
-  type MapTokenRecord,
+  type MapTokenPlacement,
 } from "@/core/protocol";
 import type { MapState } from "@/core/map/world";
 import {
@@ -40,14 +40,14 @@ import {
   type RenderWorldPatchInput,
 } from "@/app/sync/renderWorldPatchState";
 import type { RenderWorldPatch } from "@/render/renderWorldPatch";
-import type { WorkspaceTokenMemberRecord } from "@/core/auth/authTypes";
+import type { WorkspaceMember } from "@/core/auth/authTypes";
 
 export type MapSyncStatus = MapSyncSessionStatus;
 
 type UseMapSyncOptions = {
   clearPreview: () => void;
   initialWorld: MapState;
-  initialTokenMembers: WorkspaceTokenMemberRecord[];
+  initialWorkspaceMembers: WorkspaceMember[];
   mapId: string;
   onAuthoritativeResync?: () => void;
   onRemoteOperationsApplied?: (count: number) => void;
@@ -58,11 +58,11 @@ export type UseMapSocketSyncResult = {
   acknowledgeRenderWorldPatch: (revision: number) => void;
   commitLocalOperations: (operations: MapOperation[]) => void;
   confirmedWorld: MapState;
-  mapTokens: MapTokenRecord[];
+  tokenPlacements: MapTokenPlacement[];
   renderWorldPatch: RenderWorldPatch;
   sendTokenOperation: (operation: MapTokenOperation) => void;
   syncStatus: MapSyncStatus;
-  tokenMembers: WorkspaceTokenMemberRecord[];
+  workspaceMembers: WorkspaceMember[];
   visibleWorld: MapState;
 };
 
@@ -94,32 +94,24 @@ function logMapSync(event: string, payload: Record<string, unknown>): void {
 }
 
 function applyTokenOperationToTokenMembers(
-  tokenMembers: readonly WorkspaceTokenMemberRecord[],
+  workspaceMembers: readonly WorkspaceMember[],
   operation: MapTokenOperation,
-): WorkspaceTokenMemberRecord[] {
-  if (operation.type === "set_map_token") {
-    return tokenMembers.map((member) =>
-      member.userId === operation.token.userId
-        ? { ...member, color: operation.token.color }
-        : member,
-    );
-  }
-
+): WorkspaceMember[] {
   if (operation.type === "set_map_token_color") {
-    return tokenMembers.map((member) =>
+    return workspaceMembers.map((member) =>
       member.userId === operation.userId
-        ? { ...member, color: operation.color }
+        ? { ...member, tokenColor: operation.color }
         : member,
     );
   }
 
-  return [...tokenMembers];
+  return [...workspaceMembers];
 }
 
 export function useMapSocketSync({
   clearPreview,
   initialWorld,
-  initialTokenMembers,
+  initialWorkspaceMembers,
   mapId,
   onAuthoritativeResync,
   onRemoteOperationsApplied,
@@ -138,12 +130,16 @@ export function useMapSocketSync({
     type: "snapshot",
   });
   const [visibleWorld, setVisibleWorld] = useState(initialWorld);
-  const [mapTokens, setMapTokens] = useState<MapTokenRecord[]>([]);
-  const confirmedMapTokensRef = useRef<MapTokenRecord[]>([]);
-  const [tokenMembers, setTokenMembers] =
-    useState<WorkspaceTokenMemberRecord[]>(initialTokenMembers);
-  const confirmedTokenMembersRef =
-    useRef<WorkspaceTokenMemberRecord[]>(initialTokenMembers);
+  const [tokenPlacements, setTokenPlacements] = useState<MapTokenPlacement[]>(
+    [],
+  );
+  const confirmedTokenPlacementsRef = useRef<MapTokenPlacement[]>([]);
+  const [workspaceMembers, setWorkspaceMembers] = useState<WorkspaceMember[]>(
+    initialWorkspaceMembers,
+  );
+  const confirmedWorkspaceMembersRef = useRef<WorkspaceMember[]>(
+    initialWorkspaceMembers,
+  );
   const [syncStatus, setSyncStatus] = useState<MapSyncStatus>("connecting");
 
   const publishRenderWorldPatch = useCallback(
@@ -268,23 +264,8 @@ export function useMapSocketSync({
   );
 
   const sendTokenOperation = useCallback((operation: MapTokenOperation) => {
-    setMapTokens(
-      (current) =>
-        applyMapTokenOperation(
-          {
-            version: 1,
-            tiles: [],
-            features: [],
-            rivers: [],
-            roads: [],
-            factions: [],
-            factionTerritories: [],
-            tokens: current,
-          },
-          operation,
-        ).tokens,
-    );
-    setTokenMembers((current) =>
+    setTokenPlacements((current) => applyMapTokenOperation(current, operation));
+    setWorkspaceMembers((current) =>
       applyTokenOperationToTokenMembers(current, operation),
     );
 
@@ -477,16 +458,16 @@ export function useMapSocketSync({
           }
 
           try {
-            const snapshotWorld = deserializeWorld(payload.content);
+            const snapshotWorld = deserializeWorld(payload.document);
             resetSessionFromSnapshot(
               sessionRef.current,
               snapshotWorld,
               payload.lastSequence,
             );
-            confirmedMapTokensRef.current = payload.content.tokens;
-            confirmedTokenMembersRef.current = payload.tokenMembers;
-            setMapTokens(payload.content.tokens);
-            setTokenMembers(payload.tokenMembers);
+            confirmedTokenPlacementsRef.current = payload.tokenPlacements;
+            confirmedWorkspaceMembersRef.current = payload.workspaceMembers;
+            setTokenPlacements(payload.tokenPlacements);
+            setWorkspaceMembers(payload.workspaceMembers);
             publishRenderWorldPatch({ type: "snapshot" });
             clearPreview();
             onAuthoritativeResync?.();
@@ -506,34 +487,25 @@ export function useMapSocketSync({
         }
 
         if (parsed.type === "map_token_updated") {
-          const nextTokens = applyMapTokenOperation(
-            {
-              version: 1,
-              tiles: [],
-              features: [],
-              rivers: [],
-              roads: [],
-              factions: [],
-              factionTerritories: [],
-              tokens: confirmedMapTokensRef.current,
-            },
-            parsed.payload.operation,
-          ).tokens;
-          confirmedMapTokensRef.current = nextTokens;
-          const nextMembers = applyTokenOperationToTokenMembers(
-            confirmedTokenMembersRef.current,
+          const nextPlacements = applyMapTokenOperation(
+            confirmedTokenPlacementsRef.current,
             parsed.payload.operation,
           );
-          confirmedTokenMembersRef.current = nextMembers;
-          setMapTokens(nextTokens);
-          setTokenMembers(nextMembers);
+          confirmedTokenPlacementsRef.current = nextPlacements;
+          const nextMembers = applyTokenOperationToTokenMembers(
+            confirmedWorkspaceMembersRef.current,
+            parsed.payload.operation,
+          );
+          confirmedWorkspaceMembersRef.current = nextMembers;
+          setTokenPlacements(nextPlacements);
+          setWorkspaceMembers(nextMembers);
           return;
         }
 
         if (parsed.type === "map_token_error") {
           console.warn("[MapSync] token_error", parsed.payload);
-          setMapTokens(confirmedMapTokensRef.current);
-          setTokenMembers(confirmedTokenMembersRef.current);
+          setTokenPlacements(confirmedTokenPlacementsRef.current);
+          setWorkspaceMembers(confirmedWorkspaceMembersRef.current);
           return;
         }
 
@@ -622,11 +594,11 @@ export function useMapSocketSync({
     acknowledgeRenderWorldPatch,
     commitLocalOperations,
     confirmedWorld,
-    mapTokens,
+    tokenPlacements,
     renderWorldPatch,
     sendTokenOperation,
     syncStatus,
-    tokenMembers,
+    workspaceMembers,
     visibleWorld,
   };
 }

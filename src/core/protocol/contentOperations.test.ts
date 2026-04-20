@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyMapOperation as applyOperationToContent,
+  applyMapDocumentOperation as applyOperationToContent,
   validateMapOperation,
 } from "./index.js";
 
@@ -13,7 +13,6 @@ function createContent() {
     roads: [],
     factions: [],
     factionTerritories: [],
-    tokens: [],
   };
 }
 

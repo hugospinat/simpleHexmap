@@ -1,21 +1,11 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "./db/client.js";
-import {
-  hexCells,
-  mapTokens,
-  workspaceMembers,
-  workspaceMemberTokens,
-  maps,
-} from "./db/schema.js";
+import { hexCells, mapTokens, workspaceMembers, maps } from "./db/schema.js";
 import {
   getMapRecordForUser,
   getMapRoleForUser,
-  getWorkspaceIdForMap,
 } from "./repositories/mapRepository.js";
-import {
-  canOpenAsGm,
-  touchWorkspaceUpdatedAt,
-} from "./repositories/workspaceRepository.js";
+import { canOpenAsGm } from "./repositories/workspaceRepository.js";
 import { getOrCreateSession } from "./sessionStore.js";
 import { broadcastRoleAwareSessionPayloads } from "./sessionDelivery.js";
 import { sendSyncSnapshot } from "./syncSnapshotService.js";
@@ -36,14 +26,15 @@ async function getWorkspaceRecordForActor(
   }
 
   return {
-    content: map.content,
+    document: map.document,
     currentUserRole: map.currentUserRole,
     id: map.id,
     name: map.name,
-    ownerUserId: map.ownerUserId,
-    tokenMembers: map.tokenMembers,
+    nextSequence: map.nextSequence,
+    tokenPlacements: map.tokenPlacements,
     updatedAt: map.updatedAt,
     workspaceId: map.workspaceId,
+    workspaceMembers: map.workspaceMembers,
   };
 }
 
@@ -67,7 +58,7 @@ export async function applyTokenOperationToSession(
   const canManageOtherUserTokens = canOpenAsGm(role);
   const targetUserId =
     operation.type === "set_map_token"
-      ? operation.token.userId
+      ? operation.placement.userId
       : operation.userId;
 
   if (targetUserId !== sourceUserId && !canManageOtherUserTokens) {
@@ -121,49 +112,30 @@ export async function applyTokenOperationToSession(
         .where(
           and(
             eq(hexCells.mapId, mapId),
-            eq(hexCells.q, operation.token.q),
-            eq(hexCells.r, operation.token.r),
+            eq(hexCells.q, operation.placement.q),
+            eq(hexCells.r, operation.placement.r),
           ),
         )
         .limit(1);
       const tile = tileRows[0];
 
-      if (!tile || tile.hidden === 1) {
+      if (!tile || tile.hidden) {
         throw new Error("Token can only be placed on visible terrain.");
       }
 
       await tx
-        .insert(workspaceMemberTokens)
-        .values({
-          color: operation.token.color,
-          updatedAt: now,
-          userId: operation.token.userId,
-          workspaceId,
-        })
-        .onConflictDoUpdate({
-          target: [
-            workspaceMemberTokens.workspaceId,
-            workspaceMemberTokens.userId,
-          ],
-          set: {
-            color: operation.token.color,
-            updatedAt: now,
-          },
-        });
-
-      await tx
         .insert(mapTokens)
         .values({
-          q: operation.token.q,
-          r: operation.token.r,
-          userId: operation.token.userId,
+          q: operation.placement.q,
+          r: operation.placement.r,
+          userId: operation.placement.userId,
           mapId,
         })
         .onConflictDoUpdate({
           target: [mapTokens.mapId, mapTokens.userId],
           set: {
-            q: operation.token.q,
-            r: operation.token.r,
+            q: operation.placement.q,
+            r: operation.placement.r,
           },
         });
     } else if (operation.type === "remove_map_token") {
@@ -177,33 +149,18 @@ export async function applyTokenOperationToSession(
         );
     } else {
       await tx
-        .insert(workspaceMemberTokens)
-        .values({
-          color: operation.color,
-          updatedAt: now,
-          userId: operation.userId,
-          workspaceId,
-        })
-        .onConflictDoUpdate({
-          target: [
-            workspaceMemberTokens.workspaceId,
-            workspaceMemberTokens.userId,
-          ],
-          set: {
-            color: operation.color,
-            updatedAt: now,
-          },
-        });
+        .update(workspaceMembers)
+        .set({ tokenColor: operation.color, updatedAt: now })
+        .where(
+          and(
+            eq(workspaceMembers.workspaceId, workspaceId),
+            eq(workspaceMembers.userId, operation.userId),
+          ),
+        );
     }
 
     await tx.update(maps).set({ updatedAt: now }).where(eq(maps.id, mapId));
   });
-
-  const workspaceId = await getWorkspaceIdForMap(mapId);
-
-  if (workspaceId) {
-    await touchWorkspaceUpdatedAt(workspaceId);
-  }
 
   const updated = await getWorkspaceRecordForActor(mapId, sourceUserId);
   const message: MapTokenUpdatedMessage = {

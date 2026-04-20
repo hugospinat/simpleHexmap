@@ -4,9 +4,9 @@ import {
   addRoadConnection,
   getRoadEdgeBetween,
   getRoadEdgesAt,
-  removeRoadConnectionsAt,
   getNeighborForRoadEdge,
-  getOppositeRoadEdgeIndex,
+  removeRoadConnectionsAt,
+  removeRoadConnection,
   type MapState,
   type RoadEdgeIndex,
 } from "@/core/map/world";
@@ -83,5 +83,31 @@ export function commandRemoveRoadConnectionsAt(
     changed: true,
     mapState: nextWorld,
     operations,
+  };
+}
+
+export function commandRemoveRoadConnection(
+  world: MapState,
+  level: number,
+  from: Axial,
+  to: Axial,
+): MapEditCommandResult {
+  if (level !== SOURCE_LEVEL || getRoadEdgeBetween(from, to) === null) {
+    return emptyCommandResult(world);
+  }
+
+  const nextWorld = removeRoadConnection(world, level, from, to);
+
+  if (nextWorld === world) {
+    return emptyCommandResult(world);
+  }
+
+  return {
+    changed: true,
+    mapState: nextWorld,
+    operations: [
+      roadEdgesOperation(from, getRoadEdgesAt(nextWorld, level, from)),
+      roadEdgesOperation(to, getRoadEdgesAt(nextWorld, level, to)),
+    ],
   };
 }

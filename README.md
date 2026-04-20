@@ -1,16 +1,16 @@
 # hexmap_editor
 
-Technical architecture guide for the repository. This file is the source of truth for system structure, subsystem boundaries, runtime workflow, and technical decisions. Repository coding discipline belongs in `.github/copilot-instructions.md`; architecture belongs here.
+Technical architecture guide for the repository. This file is the source of truth for runtime structure, persistence workflow, wire contracts, and system boundaries. Repository coding discipline belongs in `.github/copilot-instructions.md`; repository architecture belongs here.
 
 ## Documentation contract
 
-- Update this README whenever architecture, runtime setup, persistence workflow, security boundaries, or major refactor direction changes.
-- Keep `.github/copilot-instructions.md` architecture-independent. It should point here for system-specific guidance.
-- If this README and the code disagree, treat that as documentation drift and fix it in the same change.
+- Update this README in the same change whenever architecture, persistence shape, transport contracts, runtime flow, or migration workflow changes.
+- Keep `.github/copilot-instructions.md` architecture-independent.
+- If the README and code disagree, the README is stale and must be rewritten immediately.
 
 ## Product summary
 
-`hexmap_editor` is a collaborative hex-map editor for tabletop and strategy workflows.
+`hexmap_editor` is a collaborative hex-map editor for tabletop and strategy workflows with authoritative multiplayer sync.
 
 Core capabilities:
 
@@ -19,94 +19,157 @@ Core capabilities:
 - features and labels
 - roads and rivers
 - factions and territories
-- token placement and per-member token color
+- per-user token placement
+- per-workspace-member token color
 - GM and player visibility modes
-- authoritative live sync over WebSocket
-- persisted maps stored in PostgreSQL through Drizzle
+- PostgreSQL persistence through Drizzle
+- authoritative ordered updates over WebSocket
 
-## Architectural goals
+## Non-negotiable model
 
-The repository is moving toward a strict domain-first design.
+The rewrite is intentionally breaking. The codebase now has one canonical persisted document model and one explicit overlay view model.
 
-Non-negotiable goals:
+Canonical representations:
 
-- authoritative server sequencing
-- strict ordered operation application
-- no GM data leakage into player payloads
-- explicit boundaries between domain, transport, persistence, UI, and rendering
-- command-first editor writes
-- generated SQL migrations as the persistence workflow
-- derived render views instead of implicit business logic in Pixi layers
+- `MapState`: runtime editor world used by tools, reducers, and rendering
+- `MapDocument`: canonical persisted document used for import/export and SQL materialization
+- `MapView`: `{ document, tokenPlacements }`, the explicit server and client snapshot shape
+- `MapOperation`: semantic document mutation contract
+- `MapTokenOperation`: semantic token overlay mutation contract
 
-## System invariants
+Hard rules:
 
-- `MapState` is the runtime editing model, not the persisted document.
-- `SavedMapContent` is the persisted document shape, not the editor state.
-- `MapOperation` is the mutation and transport contract, not a UI command.
-- the server owns authoritative operation sequence numbers.
-- remote operations must never be re-emitted as local intent.
-- player-visible snapshots must be filtered on the server before transport.
-- hidden tiles, features, roads, rivers, faction overlays, and tokens must not leak through player payloads.
-- large files must be decomposed before they regrow into mixed-responsibility modules.
+- `MapState` is not persisted directly.
+- `MapDocument` does not contain tokens.
+- token placement lives only in `tokenPlacements`.
+- token color lives only on `WorkspaceMember.tokenColor`.
+- there are no compatibility shims for the removed legacy document model.
+- player-visible state is filtered on the server before transport.
+- the server owns sequence numbers and authoritative ordering.
 
-## Core representations
+## Canonical data model
 
-The application intentionally keeps separate representations for the same map.
+### Document
 
-- `MapState`: pure runtime world used by editor logic and rendering
-- `SavedMapContent`: serialized document used for import/export and SQL materialization
-- `MapOperation`: semantic mutation contract used across client, server, sync, history, and persistence
+`MapDocument` is the only persisted map content shape.
 
-These representations must not be collapsed into one another.
+It contains:
 
-## Operation model
+- `version`
+- `tiles`
+- `features`
+- `rivers`
+- `roads`
+- `factions`
+- `factionTerritories`
 
-The live protocol now uses semantic operations instead of older storage-shaped diffs.
+Important document rules:
 
-Canonical operation families:
+- tiles carry both `terrain` and `hidden`
+- features carry `hidden: boolean`; there is no feature `visibility` string anymore
+- terrain override is derived from visible feature kind; there is no persisted per-feature `overrideTerrainTile` boolean
+- factions are map-local records identified by `(mapId, id)` in persistence
+- document JSON is the import/export contract
 
-- terrain: `paint_cells`, `set_tiles`, `set_cells_hidden`
-- factions: `assign_faction_cells`, `set_faction_territories`, `add_faction`, `update_faction`, `remove_faction`
-- features: `add_feature`, `set_feature_hidden`, `update_feature`, `remove_feature`
+### Overlay view
+
+`MapView` is the authoritative snapshot shape used across HTTP and WebSocket reads.
+
+```ts
+type MapView = {
+  document: MapDocument;
+  tokenPlacements: MapTokenPlacement[];
+};
+```
+
+Token rules:
+
+- `MapTokenPlacement` contains only `userId`, `q`, and `r`
+- token color is resolved from workspace membership, not token rows
+- player snapshots include only placements on visible cells
+
+### Workspace membership
+
+Workspace membership is now the single authority for access and token presentation.
+
+`WorkspaceMember` contains:
+
+- `userId`
+- `username`
+- `role`
+- `tokenColor`
+
+There is no `ownerUserId` field in workspace summaries, map summaries, or map snapshots. Ownership is represented by the membership role `owner`.
+
+## Operation surface
+
+The live protocol is intentionally smaller than before. Removed operation families are not supported.
+
+Canonical document operations:
+
+- terrain: `set_tiles`
+- factions: `set_faction_territories`, `add_faction`, `update_faction`, `remove_faction`
+- features: `add_feature`, `update_feature`, `remove_feature`
 - rivers: `add_river_data`, `remove_river_data`
 - roads: `set_road_edges`
-- map metadata: `rename_map`
-- tokens: `set_map_token`, `remove_map_token`, `set_map_token_color`
+
+Canonical token operations:
+
+- `set_map_token`
+- `remove_map_token`
+- `set_map_token_color`
+
+Removed operations:
+
+- `paint_cells`
+- `set_cells_hidden`
+- `assign_faction_cells`
+- `set_feature_hidden`
+- `rename_map`
 
 Current design choices:
 
-- editor commands emit semantic operations
-- `MapState` reducers and `SavedMapContent` reducers both apply the same operation contract
-- history inverts semantic batches instead of snapshot diffs
-- sync sends one `map_operation` message per operation; the client no longer emits `map_operation_batch`
+- editor commands emit only canonical operations
+- runtime reducers and document reducers apply the same document operation contract
+- token placement is reduced separately from document content
+- history inverts semantic batches rather than persistence-shaped diffs
+
+## Editor interaction rules
+
+- GM fog editing and GM token placement are separate tool tabs
+- fog left drag edits terrain hidden state only
+- fog right drag edits feature hidden state only
+- the first valid fog target in a drag locks the whole gesture to hide or reveal
+- road add and road remove both work by dragging between neighboring hexes; removal clears only the traversed connections
+- visible feature kinds that support terrain override always replace terrain art; hidden features never do
 
 ## End-to-end flow
 
-Normal GM edit flow:
+GM edit flow:
 
 ```text
 User gesture
 -> editor tool / gesture state
 -> domain command
--> MapOperation[]
--> local optimistic session state
+-> MapOperation[] or MapTokenOperation
+-> optimistic client session state
 -> WebSocket send
 -> server validation and authorization
 -> transactional persistence
 -> authoritative ordered broadcast
--> client authoritative apply or resync snapshot
--> Pixi render from derived frame data
+-> client authoritative apply or snapshot replace
+-> render from MapState plus token overlay
 ```
 
-Normal player view flow:
+Player view flow:
 
 ```text
 HTTP or WebSocket request
 -> server role lookup
 -> server visibility filtering
--> filtered snapshot payload
+-> filtered MapView snapshot
 -> client session replace
--> render only visible terrain-derived content
+-> render only visible state
 ```
 
 ## Repository structure
@@ -115,42 +178,40 @@ HTTP or WebSocket request
 src/
   app/
     api/          browser HTTP request helpers and response parsing
-    document/     browser import/export and runtime-document conversion
-    sync/         pure sync session state plus socket orchestration
+    document/     import/export and runtime-document conversion
+    sync/         pure sync session state and socket orchestration
   core/
-    auth/         shared auth and role types
-    document/     persisted document codecs and types
-    geometry/     pure hex math and edge detection
-    map/          world model, commands, history, derived views, reducers
-    protocol/     semantic map and token operation contracts
+    auth/         shared auth, membership, and role types
+    document/     MapDocument codecs and normalization
+    geometry/     pure hex math
+    map/          MapState, commands, history, views, and reducers
+    protocol/     document and token operation contracts
   editor/
     context/      editor-scoped React context
-    hooks/        editor orchestration hooks
-    presentation/ labels and editor-facing text helpers
+    hooks/        orchestration hooks
+    presentation/ editor-facing text helpers
     tools/        gesture state and edit-intent builders
     tokens/       token hit-testing and token UI helpers
   render/
-    pixi/         Pixi stage, scene cache, render window, and layer drawing
+    pixi/         Pixi stage, scene cache, and draw layers
   ui/
     components/   presentation components
 
 server/
   src/
-    db/           Drizzle client, schema, and migrations
-    repositories/ storage mapping and visibility filtering
-    routes/       thin HTTP route handlers
-    services/     auth and higher-level server logic
-    validation/   HTTP and WebSocket message schemas
+    db/           Drizzle schema and generated migrations
+    repositories/ persistence mapping and visibility filtering
+    routes/       thin HTTP handlers
+    services/     auth and server orchestration helpers
+    validation/   HTTP and WebSocket schemas
     wsRoutes.ts   WebSocket entrypoint
     index.ts      server bootstrap
 
 scripts/
-  authenticated smoke scripts for WebSocket and sync behavior
+  authenticated smoke scripts for sync behavior
 ```
 
 ## Dependency direction
-
-Dependency flow must stay explicit.
 
 ```text
 ui -> editor/app/render -> core
@@ -159,99 +220,14 @@ server -> core
 
 Rules:
 
-- `src/core` must stay pure and independent from React, DOM, Pixi, HTTP, WebSocket, and database APIs.
-- `src/editor` may orchestrate React state and domain calls, but should not become the domain itself.
-- `src/render` must consume derived world data, not own business rules.
-- `server/src` may orchestrate validation, auth, persistence, and broadcast, but should not duplicate shared domain rules already defined in `src/core`.
+- `src/core` stays pure and independent from React, DOM, Pixi, HTTP, WebSocket, and database APIs.
+- `src/editor` orchestrates interaction but does not define the domain model.
+- `src/render` consumes derived world data and never owns business rules.
+- `server/src` owns transport, authorization, persistence, visibility filtering, and broadcast.
 
-## Current subsystem responsibilities
+## Server and transport
 
-### Core
-
-`src/core` contains pure logic and shared contracts.
-
-Key areas:
-
-- `geometry`: axial coordinates, hex keys, line walking, pointer math helpers
-- `document`: persisted document types and codec normalization
-- `map`: world model, commands, history, level views, and reducers
-- `protocol`: semantic operation types, validation, coalescing, content-level application, token operations
-
-Current design choices:
-
-- semantic operations are preferred over low-level storage-shaped mutations
-- operation appliers exist both for `MapState` and `SavedMapContent`
-- history inverts semantic batches, not full snapshots
-
-### App
-
-`src/app` owns browser integration boundaries.
-
-Key areas:
-
-- `api`: authenticated HTTP contracts and client-side response parsing
-- `document`: browser import/export and runtime-document conversion
-- `sync`: pure sync session state plus WebSocket orchestration
-
-Current design choices:
-
-- `mapSyncSession.ts` is the pure sync session model
-- `useMapSocketSync.ts` is an integration hook that now manages authoritative resync, render patch publication, and token member sync
-- workspace and map CRUD flows live in `workspaceApi.ts`; map wire-message types remain shared with sync
-
-### Editor
-
-`src/editor` owns interaction orchestration.
-
-Key areas:
-
-- tool gestures build user intent incrementally
-- hooks coordinate camera, keyboard, pointer lifecycle, sync integration, selection state, and preview state
-- editor writes are command-first and operation-first, not persistence-first
-
-Current design choices:
-
-- token behavior is isolated in `useTokenControls.ts`
-- `useEditorController.ts` remains an orchestration hotspot and should continue shrinking
-- `useMapInteraction.ts` remains a pointer-routing hotspot and should continue moving toward smaller intent and gesture modules
-
-### Render
-
-`src/render/pixi` owns Pixi-specific projection and layer drawing.
-
-Render pipeline:
-
-```text
-MapState
--> MapLevelView / scene derivation
--> PixiMapSceneCache
--> PixiActiveRenderWindow
--> PixiSceneRenderFrame
--> layer-specific draw functions
-```
-
-Current design choices:
-
-- scene data is cached by level
-- the active render window limits the rendered working set
-- render frame derivation is separate from layer drawing
-- renderer resource management is split out of `pixiMapRenderer.ts`
-
-### Server
-
-`server/src` owns transport, authorization, persistence, and authoritative broadcast.
-
-Current design choices:
-
-- HTTP routes are thin and live under `server/src/routes`
-- auth is cookie/session-based
-- map payload visibility filtering is applied at the server boundary
-- GM WebSocket clients receive ordered operation messages
-- player WebSocket clients receive filtered `sync_snapshot` refreshes instead of raw hidden-capable operations
-
-## HTTP and WebSocket contract
-
-### HTTP
+### HTTP contract
 
 Authentication endpoints:
 
@@ -282,7 +258,16 @@ Map endpoints:
 - `DELETE /api/maps/:mapId`
 - `GET /api/maps/:mapId/export`
 
-### WebSocket
+Map reads return a map record whose content surface is:
+
+- `document`
+- `tokenPlacements`
+- `workspaceMembers`
+- `currentUserRole`
+
+Exports return `{ name, document }`.
+
+### WebSocket contract
 
 Socket endpoint:
 
@@ -294,8 +279,8 @@ Socket lifecycle:
 2. server sends `sync_snapshot`
 3. client sends `map_operation` or `map_token_update`
 4. server validates, authorizes, persists, and sequences
-5. GM clients receive `map_operation_applied` and `map_token_updated`
-6. player clients receive filtered snapshot refreshes when authoritative state changes
+5. GM clients receive ordered `map_operation_applied` and `map_token_updated`
+6. player clients receive filtered `sync_snapshot` refreshes instead of hidden-capable operations
 
 Important messages:
 
@@ -307,17 +292,85 @@ Important messages:
 - `map_token_error`
 - `sync_error`
 
-Deprecated runtime assumptions that no longer apply:
+`sync_snapshot` contains:
 
-- no unauthenticated map listing for smoke scripts
-- no client-emitted `map_operation_batch`
-- no server-emitted `map_operation_batch_applied`
+- `lastSequence`
+- `updatedAt`
+- `workspaceMembers`
+- `document`
+- `tokenPlacements`
 
-## Security and visibility model
+## Persistence model
+
+Persistence is fully aligned to the canonical model.
+
+Key schema decisions:
+
+- `workspaces` only stores workspace metadata
+- `workspace_members` stores role and `token_color`
+- `maps.workspace_id` is required
+- `map_tokens` stores token placement only
+- `hex_cells.hidden`, `features.hidden`, and `features.label_revealed` are booleans
+- `features` and `factions` use composite primary keys `(map_id, id)`
+- `faction_territories` references factions through `(map_id, faction_id)`
+
+Explicit removals:
+
+- `map_members`
+- `workspace_member_tokens`
+- `legacy_id`
+- `owner_user_id`
+- `maps.settings`
+
+## Visibility and security
 
 - auth is cookie/session-based
 - every HTTP and WebSocket request is role-checked on the server
-- player snapshots are visibility-filtered before serialization
+- player payloads are filtered before serialization
+- hidden tiles, hidden features, hidden-overlay roads, rivers, faction territories, and hidden-cell tokens do not leak to player payloads
+- GM-only labels are stripped from player-facing features
+
+Primary implementation seam:
+
+- `server/src/repositories/mapVisibility.ts`
+
+## Migration workflow
+
+Schema changes use generated Drizzle SQL, then manual review.
+
+Workflow:
+
+1. Update `server/src/db/schema.ts`
+2. Run `npm run db:generate`
+3. Review the generated SQL under `server/src/db/migrations/`
+4. If migration history is intentionally reset, regenerate a single fresh `0000` baseline from the current schema and discard older migration files
+5. Apply the reviewed migration set only after review
+
+Current repository state:
+
+- migration history is reset to a single baseline generated from the current canonical schema
+- the baseline already reflects the post-rewrite model, so there is no retained legacy upgrade chain in-repo
+
+When the migration history is reset like this, treat the generated `0000` as the new canonical starting point for fresh databases.
+
+## Verification workflow
+
+Primary checks:
+
+- `npm run typecheck`
+- `npm run build:server`
+- `npm test`
+- `npm run db:generate`
+
+Smoke scripts live under `scripts/` and are expected to speak the canonical operation and snapshot contract.
+
+## Practical boundaries
+
+- Fix problems at the representation boundary where they originate.
+- Keep document logic in document reducers and codecs.
+- Keep token overlay logic separate from document persistence.
+- Keep visibility filtering strictly server-side.
+- Do not reintroduce owner fields, legacy IDs, or compatibility adapters into the transport layer.
 - GM-only labels and hidden content must not be hidden only by rendering tricks
 - player token, terrain, feature, road, river, and faction visibility all derive from filtered server payloads
 

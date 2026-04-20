@@ -65,8 +65,7 @@ function applyFeatureRecordToWorld(
     id: feature.id,
     kind: feature.kind as FeatureKind,
     hexId: hexKey({ q: feature.q, r: feature.r }),
-    hidden: feature.visibility === "hidden",
-    overrideTerrainTile: feature.overrideTerrainTile,
+    hidden: feature.hidden,
     gmLabel: feature.gmLabel ?? undefined,
     playerLabel: feature.playerLabel ?? undefined,
     labelRevealed: feature.labelRevealed,
@@ -284,11 +283,8 @@ function applyFeaturePatchToWorld(
   if (typeof sanitized.kind === "string") {
     updates.kind = sanitized.kind as FeatureKind;
   }
-  if (sanitized.visibility === "hidden" || sanitized.visibility === "visible") {
-    updates.hidden = sanitized.visibility === "hidden";
-  }
-  if (typeof sanitized.overrideTerrainTile === "boolean") {
-    updates.overrideTerrainTile = sanitized.overrideTerrainTile;
+  if (typeof sanitized.hidden === "boolean") {
+    updates.hidden = sanitized.hidden;
   }
   if (typeof sanitized.gmLabel === "string" || sanitized.gmLabel === null) {
     updates.gmLabel = sanitized.gmLabel ?? undefined;
@@ -328,15 +324,6 @@ export function applyOperationToWorld(
   operation: MapOperation,
 ): MapState {
   switch (operation.type) {
-    case "paint_cells": {
-      const tileMutations: TileMutation[] = operation.cells.map((cell) => ({
-        q: cell.q,
-        r: cell.r,
-        terrain: operation.terrain,
-        hidden: operation.hidden,
-      }));
-      return applySetTileOperationsToWorld(world, tileMutations);
-    }
     case "set_tiles":
       return applySetTileOperationsToWorld(
         world,
@@ -345,24 +332,6 @@ export function applyOperationToWorld(
           r: tile.r,
           terrain: tile.terrain,
           hidden: tile.hidden,
-        })),
-      );
-    case "set_cells_hidden":
-      return applyCellHiddenOperationsToWorld(
-        world,
-        operation.cells.map((cell) => ({
-          q: cell.q,
-          r: cell.r,
-          hidden: operation.hidden,
-        })),
-      );
-    case "assign_faction_cells":
-      return applyFactionTerritoryOperationsToWorld(
-        world,
-        operation.cells.map((cell) => ({
-          q: cell.q,
-          r: cell.r,
-          factionId: operation.factionId,
         })),
       );
     case "set_faction_territories":
@@ -376,10 +345,6 @@ export function applyOperationToWorld(
       );
     case "add_feature":
       return applyFeatureRecordToWorld(world, operation.feature);
-    case "set_feature_hidden":
-      return updateFeature(world, SOURCE_LEVEL, operation.featureId, {
-        hidden: operation.hidden,
-      });
     case "update_feature":
       return applyFeaturePatchToWorld(
         world,
@@ -417,8 +382,6 @@ export function applyOperationToWorld(
     }
     case "remove_faction":
       return removeFaction(world, operation.factionId);
-    case "rename_map":
-      return world;
     default: {
       const exhaustive: never = operation;
       void exhaustive;
@@ -429,14 +392,10 @@ export function applyOperationToWorld(
 
 function operationBatchKind(
   operation: MapOperation,
-): "tile" | "hidden" | "territory" | "other" {
+): "tile" | "territory" | "other" {
   switch (operation.type) {
-    case "paint_cells":
     case "set_tiles":
       return "tile";
-    case "set_cells_hidden":
-      return "hidden";
-    case "assign_faction_cells":
     case "set_faction_territories":
       return "territory";
     default:
@@ -465,16 +424,6 @@ export function applyOperationsToWorld(
         const current = operations[index];
 
         switch (current.type) {
-          case "paint_cells":
-            for (const cell of current.cells) {
-              batch.push({
-                q: cell.q,
-                r: cell.r,
-                terrain: current.terrain,
-                hidden: current.hidden,
-              });
-            }
-            break;
           case "set_tiles":
             for (const tile of current.tiles) {
               batch.push({
@@ -496,36 +445,6 @@ export function applyOperationsToWorld(
       continue;
     }
 
-    if (batchKind === "hidden") {
-      const batch: HiddenMutation[] = [];
-
-      while (
-        index < operations.length &&
-        operationBatchKind(operations[index]) === "hidden"
-      ) {
-        const current = operations[index];
-
-        switch (current.type) {
-          case "set_cells_hidden":
-            for (const cell of current.cells) {
-              batch.push({
-                q: cell.q,
-                r: cell.r,
-                hidden: current.hidden,
-              });
-            }
-            break;
-          default:
-            break;
-        }
-
-        index += 1;
-      }
-
-      nextWorld = applyCellHiddenOperationsToWorld(nextWorld, batch);
-      continue;
-    }
-
     if (batchKind === "territory") {
       const batch: TerritoryMutation[] = [];
 
@@ -536,15 +455,6 @@ export function applyOperationsToWorld(
         const current = operations[index];
 
         switch (current.type) {
-          case "assign_faction_cells":
-            for (const cell of current.cells) {
-              batch.push({
-                q: cell.q,
-                r: cell.r,
-                factionId: current.factionId,
-              });
-            }
-            break;
           case "set_faction_territories":
             for (const territory of current.territories) {
               batch.push({

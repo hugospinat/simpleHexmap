@@ -50,8 +50,7 @@ function featureToRecord(feature: Feature): MapFeatureRecord {
     kind: feature.kind,
     q: axial.q,
     r: axial.r,
-    visibility: feature.hidden ? "hidden" : "visible",
-    overrideTerrainTile: feature.overrideTerrainTile,
+    hidden: feature.hidden,
     gmLabel: feature.gmLabel ?? null,
     playerLabel: feature.playerLabel ?? null,
     labelRevealed: feature.labelRevealed ?? false,
@@ -131,14 +130,11 @@ function featurePatchForPreviousValues(
 ): FeaturePatch {
   const inverse: FeaturePatch = {};
 
-  if ("kind" in patch || "type" in patch) {
+  if ("kind" in patch) {
     inverse.kind = feature.kind;
   }
-  if ("visibility" in patch) {
-    inverse.visibility = feature.hidden ? "hidden" : "visible";
-  }
-  if ("overrideTerrainTile" in patch) {
-    inverse.overrideTerrainTile = feature.overrideTerrainTile;
+  if ("hidden" in patch) {
+    inverse.hidden = feature.hidden;
   }
   if ("gmLabel" in patch) {
     inverse.gmLabel = feature.gmLabel ?? null;
@@ -183,36 +179,6 @@ function inverseForOperation(
   const sourceFactions = getFactionLevelMap(worldBefore, SOURCE_LEVEL);
 
   switch (operation.type) {
-    case "paint_cells": {
-      const tiles = operation.cells.map((cell) => {
-        const previousTile = sourceMap.get(hexKey(cell));
-
-        return {
-          q: cell.q,
-          r: cell.r,
-          terrain: previousTile?.type ?? null,
-          hidden: previousTile?.hidden ?? false,
-        };
-      });
-      const factionTerritories = operation.cells
-        .map((cell) => ({
-          q: cell.q,
-          r: cell.r,
-          factionId: sourceFactions.get(hexKey(cell)) ?? null,
-        }))
-        .filter((entry) => entry.factionId !== null);
-      const inverse: MapOperation[] = [{ type: "set_tiles", tiles }];
-
-      if (factionTerritories.length > 0) {
-        inverse.push({
-          type: "set_faction_territories",
-          territories: factionTerritories,
-        });
-      }
-
-      return inverse;
-    }
-
     case "set_tiles": {
       const tiles = operation.tiles.map((tile) => {
         const previousTile = sourceMap.get(hexKey(tile));
@@ -243,58 +209,6 @@ function inverseForOperation(
       return inverse;
     }
 
-    case "set_cells_hidden": {
-      const hiddenTrueCells: Array<{ q: number; r: number }> = [];
-      const hiddenFalseCells: Array<{ q: number; r: number }> = [];
-
-      for (const cell of operation.cells) {
-        const previousTile = sourceMap.get(hexKey(cell));
-
-        if (!previousTile) {
-          continue;
-        }
-
-        if (previousTile.hidden) {
-          hiddenTrueCells.push({ q: cell.q, r: cell.r });
-        } else {
-          hiddenFalseCells.push({ q: cell.q, r: cell.r });
-        }
-      }
-
-      const inverse: MapOperation[] = [];
-
-      if (hiddenTrueCells.length > 0) {
-        inverse.push({
-          type: "set_cells_hidden",
-          cells: hiddenTrueCells,
-          hidden: true,
-        });
-      }
-      if (hiddenFalseCells.length > 0) {
-        inverse.push({
-          type: "set_cells_hidden",
-          cells: hiddenFalseCells,
-          hidden: false,
-        });
-      }
-
-      return inverse;
-    }
-
-    case "assign_faction_cells": {
-      const territories = operation.cells
-        .filter((cell) => sourceMap.has(hexKey(cell)))
-        .map((cell) => ({
-          q: cell.q,
-          r: cell.r,
-          factionId: sourceFactions.get(hexKey(cell)) ?? null,
-        }));
-
-      return territories.length > 0
-        ? [{ type: "set_faction_territories", territories }]
-        : [];
-    }
-
     case "set_faction_territories": {
       const territories = operation.territories
         .filter((territory) => sourceMap.has(hexKey(territory)))
@@ -313,23 +227,6 @@ function inverseForOperation(
       return getFeatureById(worldBefore, SOURCE_LEVEL, operation.feature.id)
         ? []
         : [{ type: "remove_feature", featureId: operation.feature.id }];
-
-    case "set_feature_hidden": {
-      const feature = getFeatureById(
-        worldBefore,
-        SOURCE_LEVEL,
-        operation.featureId,
-      );
-      return feature
-        ? [
-            {
-              type: "set_feature_hidden",
-              featureId: operation.featureId,
-              hidden: feature.hidden,
-            },
-          ]
-        : [];
-    }
 
     case "update_feature": {
       const feature = getFeatureById(
@@ -430,9 +327,6 @@ function inverseForOperation(
 
       return inverse;
     }
-
-    case "rename_map":
-      return [];
 
     default: {
       const exhaustive: never = operation;
