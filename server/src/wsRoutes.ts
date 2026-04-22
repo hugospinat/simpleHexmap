@@ -1,3 +1,4 @@
+import type { Socket } from "node:net";
 import { WebSocket, WebSocketServer } from "ws";
 import { applyOperationToSession } from "./operationService.js";
 import { applyTokenOperationToSession } from "./tokenOperationService.js";
@@ -52,7 +53,7 @@ export function resolveWebSocketUpgradeRejection(input: {
 }
 
 function rejectUpgrade(
-  socket,
+  socket: Socket,
   statusCode: number,
   reason: string,
 ): void {
