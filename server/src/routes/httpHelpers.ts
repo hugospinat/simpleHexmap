@@ -1,8 +1,7 @@
 import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
 import { parseMapDocument } from "../../../src/core/document/savedMapCodec.js";
-
-const maxRequestBodySizeBytes = 50 * 1024 * 1024;
+import { serverLimits } from "../serverConfig.js";
 
 const staticRoot = path.resolve(process.cwd(), "dist");
 const staticContentTypes = new Map([
@@ -63,26 +62,48 @@ export function sendJson(response, statusCode: number, payload: unknown): void {
   response.end(`${JSON.stringify(payload)}\n`);
 }
 
+function createPayloadTooLargeError(): Error & { statusCode: number } {
+  return Object.assign(new Error("Request body too large."), {
+    statusCode: 413,
+  });
+}
+
 export async function readBody(request): Promise<any> {
   return new Promise((resolve, reject) => {
     let data = "";
+    let sizeBytes = 0;
     let rejected = false;
+    const contentLengthHeader = request.headers["content-length"];
+    const declaredSizeBytes =
+      typeof contentLengthHeader === "string"
+        ? Number.parseInt(contentLengthHeader, 10)
+        : Number.NaN;
+
+    if (
+      Number.isFinite(declaredSizeBytes) &&
+      declaredSizeBytes > serverLimits.maxHttpBodySizeBytes
+    ) {
+      reject(createPayloadTooLargeError());
+      return;
+    }
 
     request.on("data", (chunk) => {
       if (rejected) {
         return;
       }
 
-      data += chunk;
+      sizeBytes += Buffer.isBuffer(chunk)
+        ? chunk.length
+        : Buffer.byteLength(String(chunk));
 
-      if (data.length > maxRequestBodySizeBytes) {
+      if (sizeBytes > serverLimits.maxHttpBodySizeBytes) {
         rejected = true;
-        reject(
-          Object.assign(new Error("Request body too large."), {
-            statusCode: 413,
-          }),
-        );
+        request.destroy?.();
+        reject(createPayloadTooLargeError());
+        return;
       }
+
+      data += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
     });
 
     request.on("end", () => {

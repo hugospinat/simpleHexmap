@@ -22,6 +22,20 @@ export function getSession(mapId: string): MapSession | null {
   return sessionsByMapId.get(mapId) ?? null;
 }
 
+export function removeClientFromSession(mapId: string, client: WebSocket): void {
+  const session = sessionsByMapId.get(mapId);
+
+  if (!session) {
+    return;
+  }
+
+  session.clients.delete(client);
+
+  if (session.clients.size === 0) {
+    sessionsByMapId.delete(mapId);
+  }
+}
+
 export function closeSession(mapId: string): void {
   const session = sessionsByMapId.get(mapId);
 
