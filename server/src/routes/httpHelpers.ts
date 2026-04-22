@@ -1,4 +1,5 @@
 import { createReadStream, promises as fs } from "node:fs";
+import type { IncomingMessage } from "node:http";
 import path from "node:path";
 import { parseMapDocument } from "../../../src/core/document/savedMapCodec.js";
 import { serverLimits } from "../serverConfig.js";
@@ -68,7 +69,7 @@ function createPayloadTooLargeError(): Error & { statusCode: number } {
   });
 }
 
-export async function readBody(request): Promise<any> {
+export async function readBody(request: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let data = "";
     let sizeBytes = 0;
@@ -98,7 +99,7 @@ export async function readBody(request): Promise<any> {
 
       if (sizeBytes > serverLimits.maxHttpBodySizeBytes) {
         rejected = true;
-        request.destroy?.();
+        request.destroy();
         reject(createPayloadTooLargeError());
         return;
       }
