@@ -16,12 +16,10 @@ export const addFeature: IncrementalOperationHandler<"add_feature"> = async (
     .insert(features)
     .values({
       createdAt: updatedAt,
-      gmLabel: operation.feature.gmLabel,
+      featureLevel: operation.feature.featureLevel,
       hidden: operation.feature.hidden,
       id: operation.feature.id,
       kind: operation.feature.kind,
-      labelRevealed: operation.feature.labelRevealed,
-      playerLabel: operation.feature.playerLabel,
       q: operation.feature.q,
       r: operation.feature.r,
       updatedAt,
@@ -36,26 +34,8 @@ export const updateFeature: IncrementalOperationHandler<
   const patch = sanitizeFeaturePatch(operation.patch);
   const set: Record<string, unknown> = { updatedAt };
 
-  if ("kind" in patch && typeof patch.kind === "string") {
-    set.kind = patch.kind;
-  }
   if ("hidden" in patch && typeof patch.hidden === "boolean") {
     set.hidden = patch.hidden;
-  }
-  if (
-    "gmLabel" in patch &&
-    (typeof patch.gmLabel === "string" || patch.gmLabel === null)
-  ) {
-    set.gmLabel = patch.gmLabel;
-  }
-  if (
-    "playerLabel" in patch &&
-    (typeof patch.playerLabel === "string" || patch.playerLabel === null)
-  ) {
-    set.playerLabel = patch.playerLabel;
-  }
-  if ("labelRevealed" in patch && typeof patch.labelRevealed === "boolean") {
-    set.labelRevealed = patch.labelRevealed;
   }
 
   if (Object.keys(set).length === 1) {

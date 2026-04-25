@@ -19,13 +19,14 @@ import type {
   MapTileRecord,
   MapTokenPlacement,
 } from "../../../src/core/protocol/index.js";
+import { mapFileVersion } from "../../../src/core/document/savedMapCodec.js";
 
 type DbLike = any;
 
 const INSERT_BATCH_SIZE = 500;
 
 export const emptyMapDocument: MapDocument = {
-  version: 1,
+  version: mapFileVersion,
   tiles: [],
   features: [],
   rivers: [],
@@ -67,7 +68,7 @@ export async function materializeMapDocument(
   ]);
 
   return {
-    version: 1,
+    version: mapFileVersion,
     tiles: tileRows.map(
       (tile): MapTileRecord => ({
         hidden: tile.hidden,
@@ -78,12 +79,10 @@ export async function materializeMapDocument(
     ),
     features: featureRows.map(
       (feature): MapFeatureRecord => ({
-        gmLabel: feature.gmLabel,
+        featureLevel: feature.featureLevel as MapFeatureRecord["featureLevel"],
         hidden: feature.hidden,
         id: feature.id,
         kind: feature.kind,
-        labelRevealed: feature.labelRevealed,
-        playerLabel: feature.playerLabel,
         q: feature.q,
         r: feature.r,
       }),
@@ -173,13 +172,11 @@ export async function replaceMapDocument(
     await insertInBatches(
       document.features.map((feature) => ({
         createdAt: now,
-        gmLabel: feature.gmLabel,
+        featureLevel: feature.featureLevel,
         hidden: feature.hidden,
         id: feature.id,
         kind: feature.kind,
-        labelRevealed: feature.labelRevealed,
         mapId,
-        playerLabel: feature.playerLabel,
         q: feature.q,
         r: feature.r,
         updatedAt: now,

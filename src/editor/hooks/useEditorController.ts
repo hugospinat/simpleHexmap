@@ -31,8 +31,6 @@ import {
 import {
   createFeature,
   getFeatureAt,
-  getFeatureById,
-  type Feature,
   type FeatureKind,
 } from "@/core/map/features";
 import {
@@ -54,7 +52,6 @@ import { getInteractionLabel } from "@/editor/presentation/interactionLabels";
 import {
   commandAddFeature,
   commandRemoveFeature,
-  commandUpdateFeature,
 } from "@/core/map/commands/mapEditCommands";
 import {
   clearOperationHistory,
@@ -104,9 +101,6 @@ export function useEditorController({
   const [activeFeatureKind, setActiveFeatureKind] =
     useState<FeatureKind>("city");
   const [activeFactionId, setActiveFactionId] = useState<string | null>(null);
-  const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(
-    null,
-  );
   const [showCoordinates, setShowCoordinates] = useState(false);
   const [hoveredHex, setHoveredHex] = useState<Axial | null>(null);
   const activeGestureRef = useRef<ActiveEditorGesture | null>(null);
@@ -182,13 +176,6 @@ export function useEditorController({
   const selectedFaction = useMemo(
     () => (activeFactionId ? getFactionById(world, activeFactionId) : null),
     [activeFactionId, world],
-  );
-  const selectedFeature = useMemo(
-    () =>
-      selectedFeatureId
-        ? getFeatureById(world, view.level, selectedFeatureId)
-        : null,
-    [selectedFeatureId, view.level, world],
   );
   const submitLocalOperations = useCallback(
     (operations: MapOperation[], worldBefore: MapState = visibleWorld) => {
@@ -351,7 +338,10 @@ export function useEditorController({
         const axial = axials[0];
 
         if (!axial) {
-          setSelectedFeatureId(null);
+          return;
+        }
+
+        if (view.level !== SOURCE_LEVEL) {
           return;
         }
 
@@ -359,13 +349,6 @@ export function useEditorController({
 
         if (action === "paint") {
           if (existingFeature) {
-            setSelectedFeatureId(existingFeature.id);
-            return;
-          }
-
-          setSelectedFeatureId(null);
-
-          if (view.level !== SOURCE_LEVEL) {
             return;
           }
 
@@ -383,19 +366,10 @@ export function useEditorController({
         }
 
         if (!existingFeature) {
-          setSelectedFeatureId(null);
-          return;
-        }
-
-        if (view.level !== SOURCE_LEVEL) {
-          setSelectedFeatureId(existingFeature.id);
           return;
         }
 
         const result = commandRemoveFeature(visibleWorld, existingFeature.id);
-        setSelectedFeatureId(
-          existingFeature.id === selectedFeatureId ? null : selectedFeatureId,
-        );
 
         if (result.operations.length > 0) {
           submitLocalOperations(result.operations);
@@ -483,7 +457,6 @@ export function useEditorController({
       createFeatureId,
       visibleWorld,
       canEdit,
-      selectedFeatureId,
       submitLocalOperations,
       view.level,
     ],
@@ -546,10 +519,6 @@ export function useEditorController({
       }
 
       setActiveMode(mode);
-
-      if (mode !== "feature") {
-        setSelectedFeatureId(null);
-      }
     },
     [canEdit],
   );
@@ -568,42 +537,6 @@ export function useEditorController({
     },
     [activeMode, canEdit, changeMode],
   );
-
-  const clearSelectedFeature = useCallback(() => {
-    setSelectedFeatureId(null);
-  }, []);
-
-  const updateSelectedFeatureLabels = useCallback(
-    (updates: Partial<Pick<Feature, "gmLabel" | "hidden" | "playerLabel">>) => {
-      if (!canEdit || !selectedFeatureId) {
-        return;
-      }
-
-      const result = commandUpdateFeature(
-        visibleWorld,
-        view.level,
-        selectedFeatureId,
-        updates,
-      );
-
-      if (result.operations.length > 0) {
-        submitLocalOperations(result.operations);
-      }
-    },
-    [
-      canEdit,
-      visibleWorld,
-      selectedFeatureId,
-      submitLocalOperations,
-      view.level,
-    ],
-  );
-
-  useEffect(() => {
-    if (selectedFeatureId && !selectedFeature) {
-      setSelectedFeatureId(null);
-    }
-  }, [selectedFeature, selectedFeatureId]);
 
   useEffect(() => {
     if (activeFactionId && !selectedFaction) {
@@ -707,14 +640,11 @@ export function useEditorController({
     tokenPlacements,
     workspaceMembers,
     playerTokenColor,
-    selectedFeature,
     appRef,
     canvasProps,
     chooseFeatureKind,
-    clearSelectedFeature,
     deleteFaction,
     maxLevels,
-    selectedFeatureId,
     createFaction,
     renameFaction,
     recolorFaction,
@@ -726,7 +656,6 @@ export function useEditorController({
     setActiveType,
     syncStatus,
     redoLastOperationBatch,
-    updateSelectedFeatureLabels,
     undoLastOperationBatch,
     view,
     visualZoom,

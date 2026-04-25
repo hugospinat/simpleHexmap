@@ -16,7 +16,7 @@ Core capabilities:
 
 - terrain editing
 - fog of war
-- features and labels
+- tiered map features
 - roads and rivers
 - factions and territories
 - per-user token placement
@@ -66,10 +66,12 @@ It contains:
 Important document rules:
 
 - tiles carry both `terrain` and `hidden`
-- features carry `hidden: boolean`; there is no feature `visibility` string anymore
+- feature records carry `kind`, `featureLevel`, and `hidden: boolean`
+- feature labels do not exist anywhere in the canonical model
+- source features are placed only on level 3; level 2 shows feature levels 2-3 and level 1 shows feature level 3 only
 - terrain override is derived from visible feature kind; there is no persisted per-feature `overrideTerrainTile` boolean
 - factions are map-local records identified by `(mapId, id)` in persistence
-- document JSON is the import/export contract
+- document JSON version `2` is the import/export contract
 
 ### Overlay view
 
@@ -140,6 +142,8 @@ Current design choices:
 - fog left drag edits terrain hidden state only
 - fog right drag edits feature hidden state only
 - the first valid fog target in a drag locks the whole gesture to hide or reveal
+- feature placement and removal happen only on level 3; higher levels are derived read-only views
+- feature left click places the selected feature kind and never opens a popup editor
 - road add and road remove both work by dragging between neighboring hexes; removal clears only the traversed connections
 - visible feature kinds that support terrain override always replace terrain art; hidden features never do
 

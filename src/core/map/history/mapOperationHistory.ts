@@ -48,12 +48,10 @@ function featureToRecord(feature: Feature): MapFeatureRecord {
   return {
     id: feature.id,
     kind: feature.kind,
+    featureLevel: feature.featureLevel,
     q: axial.q,
     r: axial.r,
     hidden: feature.hidden,
-    gmLabel: feature.gmLabel ?? null,
-    playerLabel: feature.playerLabel ?? null,
-    labelRevealed: feature.labelRevealed ?? false,
   };
 }
 
@@ -130,20 +128,8 @@ function featurePatchForPreviousValues(
 ): FeaturePatch {
   const inverse: FeaturePatch = {};
 
-  if ("kind" in patch) {
-    inverse.kind = feature.kind;
-  }
   if ("hidden" in patch) {
     inverse.hidden = feature.hidden;
-  }
-  if ("gmLabel" in patch) {
-    inverse.gmLabel = feature.gmLabel ?? null;
-  }
-  if ("playerLabel" in patch) {
-    inverse.playerLabel = feature.playerLabel ?? null;
-  }
-  if ("labelRevealed" in patch) {
-    inverse.labelRevealed = feature.labelRevealed;
   }
 
   return inverse;

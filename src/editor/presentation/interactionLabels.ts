@@ -35,10 +35,10 @@ export function getInteractionLabel({
 
   if (activeMode === "feature") {
     if (level !== SOURCE_LEVEL) {
-      return `Left selects derived ${featureKindLabels[activeFeatureKind]} features, metadata edits update level 3 sources.`;
+      return "Features are source-level only. Use A/E to switch to level 3 and place or remove them.";
     }
 
-    return `Left places ${featureKindLabels[activeFeatureKind]} or selects an existing feature, right removes a feature, middle drag pans.`;
+    return `Left places ${featureKindLabels[activeFeatureKind]}, right removes a feature, middle drag pans.`;
   }
 
   if (activeMode === "faction") {

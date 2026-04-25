@@ -4,7 +4,7 @@ import { filterMapDocumentForPlayer } from "./mapVisibility.js";
 describe("mapVisibility", () => {
   it("filters hidden content out of player snapshots", () => {
     const filtered = filterMapDocumentForPlayer({
-      version: 1,
+      version: 2,
       tiles: [
         { q: 0, r: 0, terrain: "plain", hidden: false },
         { q: 1, r: 0, terrain: "forest", hidden: true },
@@ -14,32 +14,26 @@ describe("mapVisibility", () => {
         {
           id: "visible-feature",
           kind: "city",
+          featureLevel: 2,
           q: 0,
           r: 0,
           hidden: false,
-          gmLabel: "GM only",
-          playerLabel: "Town",
-          labelRevealed: true,
         },
         {
           id: "hidden-feature",
           kind: "city",
+          featureLevel: 2,
           q: 0,
           r: 0,
           hidden: true,
-          gmLabel: "Hidden",
-          playerLabel: null,
-          labelRevealed: false,
         },
         {
           id: "hidden-cell-feature",
           kind: "ruin",
+          featureLevel: 1,
           q: 1,
           r: 0,
           hidden: false,
-          gmLabel: "Leak",
-          playerLabel: "Leak",
-          labelRevealed: true,
         },
       ],
       rivers: [
@@ -72,12 +66,10 @@ describe("mapVisibility", () => {
       {
         id: "visible-feature",
         kind: "city",
+        featureLevel: 2,
         q: 0,
         r: 0,
         hidden: false,
-        gmLabel: null,
-        playerLabel: "Town",
-        labelRevealed: true,
       },
     ]);
     expect(filtered.rivers).toEqual([{ q: 0, r: 0, edge: 0 }]);

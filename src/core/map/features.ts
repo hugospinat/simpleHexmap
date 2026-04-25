@@ -4,78 +4,148 @@ import {
   parseHexKey,
   type Axial,
   type HexId,
-} from "@/core/geometry/hex";
-import type { MapState } from "./worldTypes";
-import { bumpMapStateVersion } from "./worldTypes";
-import { SOURCE_LEVEL } from "./mapRules";
+} from "../geometry/hex.js";
+import type { MapState } from "./worldTypes.js";
+import { bumpMapStateVersion } from "./worldTypes.js";
+import { SOURCE_LEVEL } from "./mapRules.js";
+
+export type FeatureLevel = 1 | 2 | 3;
 
 export type FeatureKind =
-  | "city"
-  | "capital"
+  | "camp"
+  | "ruin"
   | "village"
   | "fort"
-  | "ruin"
-  | "tower"
-  | "dungeon"
-  | "marker"
-  | "label";
+  | "donjon"
+  | "city"
+  | "citadel"
+  | "megadungeon"
+  | "capital";
+
+export type FeatureDefinition = {
+  kind: FeatureKind;
+  label: string;
+  featureLevel: FeatureLevel;
+  canOverrideTerrain: boolean;
+};
+
+export const featureDefinitions = [
+  {
+    kind: "camp",
+    label: "Camp",
+    featureLevel: 1,
+    canOverrideTerrain: true,
+  },
+  {
+    kind: "ruin",
+    label: "Ruin",
+    featureLevel: 1,
+    canOverrideTerrain: true,
+  },
+  {
+    kind: "village",
+    label: "Village",
+    featureLevel: 1,
+    canOverrideTerrain: true,
+  },
+  {
+    kind: "fort",
+    label: "Fort",
+    featureLevel: 2,
+    canOverrideTerrain: true,
+  },
+  {
+    kind: "donjon",
+    label: "Donjon",
+    featureLevel: 2,
+    canOverrideTerrain: true,
+  },
+  {
+    kind: "city",
+    label: "City",
+    featureLevel: 2,
+    canOverrideTerrain: true,
+  },
+  {
+    kind: "citadel",
+    label: "Citadel",
+    featureLevel: 3,
+    canOverrideTerrain: true,
+  },
+  {
+    kind: "megadungeon",
+    label: "Megadungeon",
+    featureLevel: 3,
+    canOverrideTerrain: true,
+  },
+  {
+    kind: "capital",
+    label: "Capital",
+    featureLevel: 3,
+    canOverrideTerrain: true,
+  },
+] as const satisfies readonly FeatureDefinition[];
+
+const featureDefinitionByKind = new Map<FeatureKind, FeatureDefinition>(
+  featureDefinitions.map((definition) => [definition.kind, definition]),
+);
 
 export type Feature = {
   id: string;
   kind: FeatureKind;
+  featureLevel: FeatureLevel;
   hexId: string;
   hidden: boolean;
-  gmLabel?: string;
-  playerLabel?: string;
-  labelRevealed?: boolean;
-  // TODO: add player discovery state (e.g. discovered: boolean).
 };
 
 export type FeatureInput = {
   id: string;
   kind: FeatureKind;
+  featureLevel?: FeatureLevel;
   hexId: HexId | string;
-  gmLabel?: string;
   hidden?: boolean;
-  labelRevealed?: boolean;
-  playerLabel?: string;
 };
 
 export type FeatureLevelMap = Map<string, Feature>;
 
 export type FeatureVisibilityMode = "gm" | "player";
 
-export const featureKinds: FeatureKind[] = [
-  "city",
-  "capital",
-  "village",
-  "fort",
-  "ruin",
-  "tower",
-  "dungeon",
-  "marker",
-  "label",
-];
+export const featureKinds: FeatureKind[] = featureDefinitions.map(
+  (definition) => definition.kind,
+);
 
-export const featureKindLabels: Record<FeatureKind, string> = {
-  city: "City",
-  capital: "Capital",
-  village: "Village",
-  fort: "Fort",
-  ruin: "Ruin",
-  tower: "Tower",
-  dungeon: "Dungeon",
-  marker: "Marker",
-  label: "Label",
-};
+export const featureKindLabels: Record<FeatureKind, string> =
+  Object.fromEntries(
+    featureDefinitions.map((definition) => [definition.kind, definition.label]),
+  ) as Record<FeatureKind, string>;
 
-export function canFeatureKindOverrideTerrain(kind: FeatureKind): boolean {
-  return kind !== "label" && kind !== "marker";
+export function isFeatureKind(value: unknown): value is FeatureKind {
+  return (
+    typeof value === "string" &&
+    featureDefinitionByKind.has(value as FeatureKind)
+  );
 }
 
-function optionalTrim(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
+export function isFeatureLevel(value: unknown): value is FeatureLevel {
+  return value === 1 || value === 2 || value === 3;
+}
+
+export function getFeatureDefinition(kind: FeatureKind): FeatureDefinition {
+  const definition = featureDefinitionByKind.get(kind);
+
+  if (!definition) {
+    throw new Error(`Unknown feature kind: ${String(kind)}.`);
+  }
+
+  return definition;
+}
+
+export function getFeatureLevelForKind(kind: FeatureKind): FeatureLevel {
+  return getFeatureDefinition(kind).featureLevel;
+}
+
+export function canFeatureKindOverrideTerrain(kind: FeatureKind): boolean {
+  return getFeatureDefinition(kind).canOverrideTerrain;
 }
 
 export function axialToFeatureHexId(coord: Axial): HexId {
@@ -90,12 +160,26 @@ export function normalizeFeature(feature: FeatureInput): Feature {
   return {
     id: feature.id,
     kind: feature.kind,
+    featureLevel: feature.featureLevel ?? getFeatureLevelForKind(feature.kind),
     hexId: feature.hexId,
     hidden: feature.hidden ?? false,
-    gmLabel: optionalTrim(feature.gmLabel),
-    playerLabel: optionalTrim(feature.playerLabel),
-    labelRevealed: feature.labelRevealed,
   };
+}
+
+function shouldRenderFeatureAtLevel(feature: Feature, level: number): boolean {
+  if (level >= SOURCE_LEVEL) {
+    return true;
+  }
+
+  if (level === 2) {
+    return feature.featureLevel >= 2;
+  }
+
+  if (level === 1) {
+    return feature.featureLevel === 3;
+  }
+
+  return true;
 }
 
 function getStoredFeaturesForLevel(
@@ -115,6 +199,10 @@ function deriveFeaturesForLevelFromSource(
   for (const feature of Array.from(sourceFeatures.values()).sort((a, b) =>
     a.hexId.localeCompare(b.hexId),
   )) {
+    if (!shouldRenderFeatureAtLevel(feature, level)) {
+      continue;
+    }
+
     const parent = getAncestorAtLevel(
       featureHexIdToAxial(feature.hexId),
       SOURCE_LEVEL,
@@ -145,7 +233,6 @@ export function createFeature(
     kind,
     hexId,
     hidden: false,
-    labelRevealed: false,
   });
 }
 
@@ -217,28 +304,14 @@ export function updateFeature(
   world: MapState,
   level: number,
   featureId: string,
-  updates: Partial<
-    Pick<
-      Feature,
-      "gmLabel" | "hidden" | "kind" | "labelRevealed" | "playerLabel"
-    >
-  >,
+  updates: Partial<Pick<Feature, "hidden">>,
 ): MapState {
   const targetLevel = level === SOURCE_LEVEL ? level : SOURCE_LEVEL;
   const allowedUpdates: typeof updates = level === SOURCE_LEVEL ? updates : {};
 
   if (level !== SOURCE_LEVEL) {
-    if ("gmLabel" in updates) {
-      allowedUpdates.gmLabel = updates.gmLabel;
-    }
     if ("hidden" in updates) {
       allowedUpdates.hidden = updates.hidden;
-    }
-    if ("labelRevealed" in updates) {
-      allowedUpdates.labelRevealed = updates.labelRevealed;
-    }
-    if ("playerLabel" in updates) {
-      allowedUpdates.playerLabel = updates.playerLabel;
     }
   }
 
@@ -301,17 +374,6 @@ export function removeFeatureAt(
     },
     versions: bumpMapStateVersion(world, "features"),
   };
-}
-
-export function getFeatureLabel(
-  feature: Feature,
-  mode: FeatureVisibilityMode,
-): string | undefined {
-  if (mode === "player") {
-    return feature.playerLabel;
-  }
-
-  return feature.gmLabel;
 }
 
 export function isFeatureVisible(

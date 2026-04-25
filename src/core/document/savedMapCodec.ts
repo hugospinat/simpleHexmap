@@ -7,8 +7,9 @@ import {
   type MapRoadRecord,
   type MapTileRecord,
 } from "../protocol/index.js";
+import { featureKinds, isFeatureLevel } from "../map/features.js";
 
-export const mapFileVersion = 1;
+export const mapFileVersion = 2;
 
 const terrainTypes = [
   "empty",
@@ -21,18 +22,6 @@ const terrainTypes = [
   "swamp",
   "tundra",
   "wasteland",
-] as const;
-
-const featureKinds = [
-  "city",
-  "capital",
-  "village",
-  "fort",
-  "ruin",
-  "tower",
-  "dungeon",
-  "marker",
-  "label",
 ] as const;
 
 type TerrainType = (typeof terrainTypes)[number];
@@ -53,10 +42,6 @@ function isRiverEdgeIndex(value: unknown): value is RiverEdgeIndex {
 
 function isRoadEdgeIndex(value: unknown): value is RoadEdgeIndex {
   return isInteger(value) && value >= 0 && value <= 5;
-}
-
-function isStringOrNull(value: unknown): value is string | null {
-  return typeof value === "string" || value === null;
 }
 
 function isHexColor(value: string): boolean {
@@ -128,27 +113,17 @@ export function parseMapDocument(raw: unknown): MapDocument {
       throw new Error(`Invalid feature hidden flag at index ${index}.`);
     }
 
-    if (!isStringOrNull(feature.gmLabel)) {
-      throw new Error(`Invalid gmLabel at index ${index}.`);
-    }
-
-    if (!isStringOrNull(feature.playerLabel)) {
-      throw new Error(`Invalid playerLabel at index ${index}.`);
-    }
-
-    if (typeof feature.labelRevealed !== "boolean") {
-      throw new Error(`Invalid labelRevealed at index ${index}.`);
+    if (!isFeatureLevel(feature.featureLevel)) {
+      throw new Error(`Invalid featureLevel at index ${index}.`);
     }
 
     return {
       id: feature.id,
       kind: feature.kind,
+      featureLevel: feature.featureLevel,
       q: feature.q,
       r: feature.r,
       hidden: feature.hidden,
-      gmLabel: feature.gmLabel,
-      playerLabel: feature.playerLabel,
-      labelRevealed: feature.labelRevealed,
     };
   });
 

@@ -4,13 +4,12 @@ import {
   addFeature,
   getFeatureAt,
   getFeatureById,
-  getFeatureLabel,
+  getFeatureLevelForKind,
   getFeaturesForLevel,
   isFeatureVisible,
   removeFeatureAt,
   updateFeature,
 } from "./features";
-import type { MapState } from "./world";
 
 describe("features", () => {
   it("stores features separately from terrain tiles", () => {
@@ -25,7 +24,6 @@ describe("features", () => {
       kind: "city",
       hexId: "2,-1",
       hidden: false,
-      gmLabel: "Blackford",
     });
 
     expect(getLevelMap(world, 3).get("2,-1")).toEqual({
@@ -35,9 +33,9 @@ describe("features", () => {
     expect(getFeatureAt(world, 3, { q: 2, r: -1 })).toEqual({
       id: "f1",
       kind: "city",
+      featureLevel: 2,
       hexId: "2,-1",
       hidden: false,
-      gmLabel: "Blackford",
     });
   });
 
@@ -50,18 +48,16 @@ describe("features", () => {
     });
     const second = addFeature(first, 3, {
       id: "f2",
-      kind: "dungeon",
+      kind: "donjon",
       hexId: "0,0",
       hidden: true,
-      gmLabel: "Steps",
-      playerLabel: "Old cellar",
-      labelRevealed: false,
     });
 
     expect(second).toBe(first);
     expect(getFeatureAt(second, 3, { q: 0, r: 0 })).toEqual({
       id: "f1",
       kind: "ruin",
+      featureLevel: 1,
       hexId: "0,0",
       hidden: false,
     });
@@ -90,73 +86,86 @@ describe("features", () => {
   it("updates a selected feature by id", () => {
     const world = addFeature(createEmptyWorld(), 3, {
       id: "f1",
-      kind: "marker",
+      kind: "camp",
       hexId: "0,0",
       hidden: false,
     });
     const nextWorld = updateFeature(world, 3, "f1", {
-      gmLabel: "Secret",
       hidden: true,
     });
 
     expect(getFeatureById(nextWorld, 3, "f1")).toEqual({
       id: "f1",
-      kind: "marker",
+      kind: "camp",
+      featureLevel: 1,
       hexId: "0,0",
       hidden: true,
-      gmLabel: "Secret",
-      playerLabel: undefined,
-      labelRevealed: undefined,
     });
   });
 
-  it("derives parent features from level 3 and routes metadata edits to the source feature", () => {
+  it("filters derived features by feature level", () => {
     const world = addFeature(createEmptyWorld(), 3, {
       id: "f1",
-      kind: "marker",
+      kind: "camp",
       hexId: "0,0",
       hidden: false,
     });
-
-    expect(getFeatureAt(world, 2, { q: 0, r: 0 })).toEqual({
-      id: "f1",
-      kind: "marker",
-      hexId: "0,0",
-      hidden: false,
-    });
-
-    const nextWorld = updateFeature(world, 2, "f1", {
-      gmLabel: "Source label",
-      hidden: true,
+    const nextWorld = addFeature(world, 3, {
+      id: "f2",
       kind: "city",
+      hexId: "1,0",
+      hidden: false,
     });
+    const finalWorld = addFeature(nextWorld, 3, {
+      id: "f3",
+      kind: "capital",
+      hexId: "2,0",
+      hidden: false,
+    });
+
+    expect(
+      Array.from(getFeaturesForLevel(finalWorld, 3).values()),
+    ).toHaveLength(3);
+    expect(
+      Array.from(getFeaturesForLevel(finalWorld, 2).values()),
+    ).toHaveLength(2);
+    expect(
+      Array.from(getFeaturesForLevel(finalWorld, 1).values()),
+    ).toHaveLength(1);
+    expect(
+      Array.from(getFeaturesForLevel(finalWorld, 1).values()).map(
+        (feature) => feature.kind,
+      ),
+    ).toEqual(["capital"]);
+  });
+
+  it("routes derived hidden updates back to the source feature", () => {
+    const world = addFeature(createEmptyWorld(), 3, {
+      id: "f1",
+      kind: "capital",
+      hexId: "0,0",
+      hidden: false,
+    });
+
+    const nextWorld = updateFeature(world, 2, "f1", { hidden: true });
 
     expect(getFeatureById(nextWorld, 3, "f1")).toMatchObject({
-      gmLabel: "Source label",
       hidden: true,
-      kind: "marker",
+      kind: "capital",
     });
   });
 
-  it("keeps GM labels separate from player labels", () => {
-    const feature = {
-      id: "f1",
-      kind: "label",
-      hexId: "0,0",
-      hidden: false,
-      gmLabel: "Secret shrine",
-      playerLabel: "Weathered stones",
-      labelRevealed: false,
-    } as const;
-
-    expect(getFeatureLabel(feature, "gm")).toBe("Secret shrine");
-    expect(getFeatureLabel(feature, "player")).toBe("Weathered stones");
+  it("derives feature levels from feature kind", () => {
+    expect(getFeatureLevelForKind("camp")).toBe(1);
+    expect(getFeatureLevelForKind("city")).toBe(2);
+    expect(getFeatureLevelForKind("capital")).toBe(3);
   });
 
   it("shows hidden features to GMs but not players", () => {
     const hiddenFeature = {
       id: "f1",
-      kind: "marker",
+      kind: "camp",
+      featureLevel: 1,
       hexId: "0,0",
       hidden: true,
     } as const;

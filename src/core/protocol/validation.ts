@@ -75,6 +75,9 @@ export function validateMapOperation(operation: unknown): string | null {
       !isInteger(feature.q) ||
       !isInteger(feature.r) ||
       typeof feature.kind !== "string" ||
+      !isInteger(feature.featureLevel) ||
+      feature.featureLevel < 1 ||
+      feature.featureLevel > 3 ||
       typeof feature.hidden !== "boolean"
     ) {
       return "Invalid add_feature operation.";

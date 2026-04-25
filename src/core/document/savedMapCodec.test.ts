@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { parseMapDocument } from "./savedMapCodec.js";
+import { mapFileVersion, parseMapDocument } from "./savedMapCodec.js";
 
 const baseValidInput = {
-  version: 1,
+  version: mapFileVersion,
   tiles: [],
   features: [],
   rivers: [],
@@ -20,12 +20,10 @@ describe("saved map codec", () => {
         {
           id: "feature-1",
           kind: "city",
+          featureLevel: 2,
           q: 0,
           r: 0,
           hidden: false,
-          gmLabel: null,
-          playerLabel: null,
-          labelRevealed: false,
         },
       ],
     });
@@ -37,7 +35,7 @@ describe("saved map codec", () => {
   });
 
   test("rejects payload missing required arrays", () => {
-    expect(() => parseMapDocument({ version: 1 })).toThrow(
+    expect(() => parseMapDocument({ version: mapFileVersion })).toThrow(
       "Map file is missing required arrays.",
     );
   });
@@ -78,9 +76,6 @@ describe("saved map codec", () => {
             q: 0,
             r: 0,
             hidden: false,
-            gmLabel: null,
-            playerLabel: null,
-            labelRevealed: false,
           },
         ],
       }),
@@ -94,12 +89,10 @@ describe("saved map codec", () => {
         features: [
           {
             kind: "city",
+            featureLevel: 2,
             q: 0,
             r: 0,
             hidden: false,
-            gmLabel: null,
-            playerLabel: null,
-            labelRevealed: false,
           },
         ],
       }),

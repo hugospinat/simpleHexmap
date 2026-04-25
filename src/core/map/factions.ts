@@ -3,11 +3,11 @@ import {
   getDescendantsAtLevel,
   hexKey,
   parseHexKey,
-  type Axial
-} from "@/core/geometry/hex";
-import type { MapState } from "./worldTypes";
-import { bumpMapStateVersion } from "./worldTypes";
-import { SOURCE_LEVEL } from "./mapRules";
+  type Axial,
+} from "../geometry/hex.js";
+import type { MapState } from "./worldTypes.js";
+import { bumpMapStateVersion } from "./worldTypes.js";
+import { SOURCE_LEVEL } from "./mapRules.js";
 
 export type Faction = {
   id: string;
@@ -20,7 +20,7 @@ export type FactionLevelMap = Map<string, string>;
 
 function cloneFactionMap(factionMap: FactionMap): FactionMap {
   return new Map(
-    Array.from(factionMap.entries(), ([id, faction]) => [id, { ...faction }])
+    Array.from(factionMap.entries(), ([id, faction]) => [id, { ...faction }]),
   );
 }
 
@@ -32,7 +32,10 @@ function getStoredFactionMap(world: MapState): FactionMap {
   return world.factions ? cloneFactionMap(world.factions) : new Map();
 }
 
-function getStoredFactionLevelMap(world: MapState, level: number): FactionLevelMap {
+function getStoredFactionLevelMap(
+  world: MapState,
+  level: number,
+): FactionLevelMap {
   return world.factionAssignmentsByLevel?.[level]
     ? cloneFactionLevelMap(world.factionAssignmentsByLevel[level])
     : new Map();
@@ -63,11 +66,16 @@ function sanitizeSourceAssignments(world: MapState): FactionLevelMap {
 }
 
 export function getFactions(world: MapState): Faction[] {
-  return Array.from(getStoredFactionMap(world).values())
-    .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id));
+  return Array.from(getStoredFactionMap(world).values()).sort(
+    (left, right) =>
+      left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
+  );
 }
 
-export function getFactionById(world: MapState, factionId: string): Faction | null {
+export function getFactionById(
+  world: MapState,
+  factionId: string,
+): Faction | null {
   return getStoredFactionMap(world).get(factionId) ?? null;
 }
 
@@ -83,14 +91,14 @@ export function addFaction(world: MapState, faction: Faction): MapState {
   return {
     ...world,
     factions,
-    versions: bumpMapStateVersion(world, "factions")
+    versions: bumpMapStateVersion(world, "factions"),
   };
 }
 
 export function updateFaction(
   world: MapState,
   factionId: string,
-  updates: Partial<Pick<Faction, "name" | "color">>
+  updates: Partial<Pick<Faction, "name" | "color">>,
 ): MapState {
   const factions = getStoredFactionMap(world);
   const current = factions.get(factionId);
@@ -101,7 +109,7 @@ export function updateFaction(
 
   const next: Faction = {
     ...current,
-    ...updates
+    ...updates,
   };
 
   if (next.name === current.name && next.color === current.color) {
@@ -113,7 +121,7 @@ export function updateFaction(
   return {
     ...world,
     factions,
-    versions: bumpMapStateVersion(world, "factions")
+    versions: bumpMapStateVersion(world, "factions"),
   };
 }
 
@@ -127,10 +135,12 @@ export function removeFaction(world: MapState, factionId: string): MapState {
   factions.delete(factionId);
 
   const nextAssignmentsByLevel: Record<number, FactionLevelMap> = {
-    ...world.factionAssignmentsByLevel
+    ...world.factionAssignmentsByLevel,
   };
 
-  for (const [levelKey, levelMap] of Object.entries(world.factionAssignmentsByLevel ?? {})) {
+  for (const [levelKey, levelMap] of Object.entries(
+    world.factionAssignmentsByLevel ?? {},
+  )) {
     const level = Number(levelKey);
     const nextLevelMap = new Map(levelMap);
     let changed = false;
@@ -155,14 +165,14 @@ export function removeFaction(world: MapState, factionId: string): MapState {
     ...world,
     factions,
     factionAssignmentsByLevel: nextAssignmentsByLevel,
-    versions: bumpMapStateVersion(world, "factions")
+    versions: bumpMapStateVersion(world, "factions"),
   };
 }
 
 function setSourceFactionAssignment(
   world: MapState,
   axial: Axial,
-  factionId: string | null
+  factionId: string | null,
 ): { changed: boolean; mapState: MapState } {
   const factions = getStoredFactionMap(world);
 
@@ -199,10 +209,10 @@ function setSourceFactionAssignment(
       ...world,
       factionAssignmentsByLevel: {
         ...world.factionAssignmentsByLevel,
-        [SOURCE_LEVEL]: sourceAssignments
+        [SOURCE_LEVEL]: sourceAssignments,
       },
-      versions: bumpMapStateVersion(world, "factions")
-    }
+      versions: bumpMapStateVersion(world, "factions"),
+    },
   };
 }
 
@@ -210,7 +220,7 @@ function assignFactionAcrossDescendants(
   world: MapState,
   level: number,
   axial: Axial,
-  factionId: string | null
+  factionId: string | null,
 ): MapState {
   let nextWorld = world;
   let changed = false;
@@ -229,7 +239,12 @@ function assignFactionAcrossDescendants(
   return changed ? nextWorld : world;
 }
 
-export function assignFactionAt(world: MapState, level: number, axial: Axial, factionId: string): MapState {
+export function assignFactionAt(
+  world: MapState,
+  level: number,
+  axial: Axial,
+  factionId: string,
+): MapState {
   if (level === SOURCE_LEVEL) {
     return setSourceFactionAssignment(world, axial, factionId).mapState;
   }
@@ -237,7 +252,11 @@ export function assignFactionAt(world: MapState, level: number, axial: Axial, fa
   return assignFactionAcrossDescendants(world, level, axial, factionId);
 }
 
-export function clearFactionAt(world: MapState, level: number, axial: Axial): MapState {
+export function clearFactionAt(
+  world: MapState,
+  level: number,
+  axial: Axial,
+): MapState {
   if (level === SOURCE_LEVEL) {
     return setSourceFactionAssignment(world, axial, null).mapState;
   }
@@ -245,7 +264,9 @@ export function clearFactionAt(world: MapState, level: number, axial: Axial): Ma
   return assignFactionAcrossDescendants(world, level, axial, null);
 }
 
-function pickDominantFaction(countsByFactionId: Map<string, number>): string | null {
+function pickDominantFaction(
+  countsByFactionId: Map<string, number>,
+): string | null {
   let winner: string | null = null;
   let bestCount = -1;
 
@@ -264,7 +285,10 @@ function pickDominantFaction(countsByFactionId: Map<string, number>): string | n
   return winner;
 }
 
-function deriveFactionLevelMapFromSource(world: MapState, level: number): FactionLevelMap {
+function deriveFactionLevelMapFromSource(
+  world: MapState,
+  level: number,
+): FactionLevelMap {
   const sourceAssignments = sanitizeSourceAssignments(world);
   const grouped = new Map<string, Map<string, number>>();
 
@@ -291,7 +315,10 @@ function deriveFactionLevelMapFromSource(world: MapState, level: number): Factio
   return derived;
 }
 
-export function getFactionLevelMap(world: MapState, level: number): FactionLevelMap {
+export function getFactionLevelMap(
+  world: MapState,
+  level: number,
+): FactionLevelMap {
   if (level === SOURCE_LEVEL) {
     return sanitizeSourceAssignments(world);
   }
@@ -299,7 +326,10 @@ export function getFactionLevelMap(world: MapState, level: number): FactionLevel
   return deriveFactionLevelMapFromSource(world, level);
 }
 
-export function getFactionOverlayColorMap(world: MapState, level: number): Map<string, string> {
+export function getFactionOverlayColorMap(
+  world: MapState,
+  level: number,
+): Map<string, string> {
   const assignments = getFactionLevelMap(world, level);
   const factions = getStoredFactionMap(world);
   const colorMap = new Map<string, string>();

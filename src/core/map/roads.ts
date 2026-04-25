@@ -6,10 +6,10 @@ import {
   parseHexKey,
   type Axial,
   type HexId,
-} from "@/core/geometry/hex";
-import type { MapState } from "@/core/map/worldTypes";
-import { bumpMapStateVersion } from "@/core/map/worldTypes";
-import { SOURCE_LEVEL } from "@/core/map/mapRules";
+} from "../geometry/hex.js";
+import type { MapState } from "./worldTypes.js";
+import { bumpMapStateVersion } from "./worldTypes.js";
+import { SOURCE_LEVEL } from "./mapRules.js";
 
 export type RoadEdgeIndex = 0 | 1 | 2 | 3 | 4 | 5;
 export type RoadEdgeSet = Set<RoadEdgeIndex>;
