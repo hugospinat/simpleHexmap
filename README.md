@@ -333,6 +333,9 @@ Explicit removals:
 - player payloads are filtered before serialization
 - hidden tiles, hidden features, hidden-overlay roads, rivers, faction territories, and hidden-cell tokens do not leak to player payloads
 - GM-only labels are stripped from player-facing features
+- HTTP bodies are byte-limited before JSON parsing to cap memory spikes on import and auth routes
+- WebSocket upgrades are capped globally and per map to keep one busy room from exhausting a small host
+- HTTP request, header, and keep-alive timeouts are explicitly bounded for low-resource deployments
 
 Primary implementation seam:
 
@@ -438,6 +441,20 @@ Start the frontend:
 npm.cmd run dev
 ```
 
+## Operational hardening knobs
+
+The default server profile is intentionally conservative so the app stays responsive on small machines:
+
+- `HEXMAP_MAX_HTTP_BODY_BYTES` default: `5242880` (5 MiB)
+- `HEXMAP_MAX_WS_PAYLOAD_BYTES` default: `262144` (256 KiB)
+- `HEXMAP_MAX_WS_CONNECTIONS` default: `100`
+- `HEXMAP_MAX_WS_CONNECTIONS_PER_MAP` default: `24`
+- `HEXMAP_REQUEST_TIMEOUT_MS` default: `15000`
+- `HEXMAP_HEADERS_TIMEOUT_MS` default: `20000`
+- `HEXMAP_KEEP_ALIVE_TIMEOUT_MS` default: `5000`
+
+These limits are intended to reduce abuse, accidental overload, and idle resource retention while preserving a zero-friction local setup.
+
 ## Smoke scripts
 
 The scripts under `scripts/` authenticate, provision an isolated workspace and map, run their checks, and delete their temporary workspace on exit.
@@ -476,3 +493,27 @@ Priority themes still in flight:
 - keep visibility filtering strictly server-side
 - keep workspace and map terminology aligned across code, docs, and storage
 - reduce dead terminology and dead adapters instead of preserving historical naming compromises
+
+## Product improvement backlog
+
+Shortlist aligned with the goal of an ultra-fast, low-friction GM tool:
+
+### Security and server operations
+
+- add login and signup rate limiting keyed by IP and username
+- add structured audit logs for auth failures, workspace invites, and map deletion
+- add per-user WebSocket operation throttling so one client cannot flood a room
+- expose lightweight health and metrics endpoints for deployment visibility
+
+### Features
+
+- add hotkey-first quick actions for terrain, fog, and token placement
+- add one-click map templates for common tabletop setups
+- add autosaved local draft state so reconnects feel instant
+- add read-only share links for players joining a prepared view
+
+### Organization
+
+- keep splitting large sync/editor/render orchestration files into narrower modules
+- centralize runtime configuration under `server/src/serverConfig.ts`
+- add a dedicated `server/src/services/realtime/` slice if WebSocket orchestration keeps growing
