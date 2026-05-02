@@ -43,7 +43,7 @@ function toInviteSummary(
     id: invite.id,
     maxUses: invite.maxUses,
     revokedAt: invite.revokedAt ? invite.revokedAt.toISOString() : null,
-    role: invite.role === "player" ? "player" : "player",
+    role: "player",
     usedCount: invite.usedCount,
     workspaceId: invite.workspaceId,
     workspaceName,
