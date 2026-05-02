@@ -12,6 +12,8 @@ import { getMapRecordForUser } from "./repositories/mapRepository.js";
 import { getAuthContext } from "./services/authService.js";
 import { sendSyncSnapshot } from "./syncSnapshotService.js";
 import { serverLimits } from "./serverConfig.js";
+import { getClientIp, isOriginAllowed } from "./security/requestSecurity.js";
+import { MemoryRateLimiter } from "./security/rateLimiter.js";
 import type {
   MapOperation,
   MapTokenOperation,
@@ -23,6 +25,7 @@ import {
 
 const idPatternSource = "[a-zA-Z0-9_-]{1,80}";
 const mapSocketPattern = new RegExp(`^/api/maps/(${idPatternSource})/ws$`);
+const wsUpgradeRateLimiter = new MemoryRateLimiter();
 
 type UpgradeRejection = {
   reason: string;
@@ -167,6 +170,34 @@ export function attachWebSocketRoutes(server) {
 
       if (!match) {
         socket.destroy();
+        return;
+      }
+
+      const origin = typeof request.headers.origin === "string"
+        ? request.headers.origin
+        : null;
+
+      if (!origin || !isOriginAllowed(request, origin)) {
+        console.warn("[ws] origin_denied", {
+          ip: getClientIp(request),
+          origin,
+        });
+        rejectUpgrade(socket, 403, "Request origin denied.");
+        return;
+      }
+
+      const rateLimitResult = wsUpgradeRateLimiter.consume(
+        `ws:${getClientIp(request)}`,
+        serverLimits.wsUpgradeRateLimitMaxAttempts,
+        serverLimits.wsUpgradeRateLimitWindowMs,
+      );
+
+      if (!rateLimitResult.allowed) {
+        console.warn("[ws] upgrade_rate_limited", {
+          ip: getClientIp(request),
+          retryAfterMs: rateLimitResult.retryAfterMs,
+        });
+        rejectUpgrade(socket, 429, "Too many requests.");
         return;
       }
 

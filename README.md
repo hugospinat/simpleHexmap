@@ -236,6 +236,11 @@ Authentication endpoints:
 - `POST /api/auth/login`
 - `POST /api/auth/logout`
 
+Invitation endpoints:
+
+- `GET /api/invites/:inviteToken`
+- `POST /api/invites/:inviteToken/join`
+
 Workspace endpoints:
 
 - `GET /api/workspaces`
@@ -247,6 +252,9 @@ Workspace endpoints:
 - `POST /api/workspaces/:workspaceId/members`
 - `PATCH /api/workspaces/:workspaceId/members/:userId`
 - `DELETE /api/workspaces/:workspaceId/members/:userId`
+- `GET /api/workspaces/:workspaceId/invites`
+- `POST /api/workspaces/:workspaceId/invites`
+- `DELETE /api/workspaces/:workspaceId/invites/:inviteId`
 - `GET /api/workspaces/:workspaceId/maps`
 - `POST /api/workspaces/:workspaceId/maps`
 - `POST /api/workspaces/:workspaceId/maps/import`
@@ -308,6 +316,7 @@ Key schema decisions:
 
 - `workspaces` only stores workspace metadata
 - `workspace_members` stores role and `token_color`
+- `workspace_invites` stores hashed invite tokens, expiry, revocation, and usage counters
 - `maps.workspace_id` is required
 - `map_tokens` stores token placement only
 - `hex_cells.hidden`, `features.hidden`, and `features.label_revealed` are booleans
@@ -325,10 +334,16 @@ Explicit removals:
 ## Visibility and security
 
 - auth is cookie/session-based
+- cookie-authenticated browser access remains same-origin; `HEXMAP_ALLOWED_ORIGINS` only gates explicit origin validation and non-credentialed CORS responses
+- mutating HTTP requests and WebSocket upgrades require an allowed `Origin` or same-origin `Referer`
 - every HTTP and WebSocket request is role-checked on the server
 - player payloads are filtered before serialization
 - hidden tiles, hidden features, hidden-overlay roads, rivers, faction territories, and hidden-cell tokens do not leak to player payloads
 - GM-only labels are stripped from player-facing features
+- login, signup, invite join, and WebSocket upgrades are rate-limited in memory per client IP; the limiter is intentionally process-local for low-resource single-instance deployments
+- re-authentication rotates the active session and revokes previously active sessions for the same user
+- idle, expired, and revoked sessions are cleaned up opportunistically during auth access and session issuance
+- workspace invite links are stored only as hashed tokens with expiry, usage caps, and explicit revocation
 - HTTP bodies are byte-limited before JSON parsing to cap memory spikes on import and auth routes
 - WebSocket upgrades are capped globally and per map to keep one busy room from exhausting a small host
 - HTTP request, header, and keep-alive timeouts are explicitly bounded for low-resource deployments

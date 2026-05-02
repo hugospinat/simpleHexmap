@@ -79,7 +79,7 @@ export function toRole(role: string | null | undefined): WorkspaceRole | null {
   return null;
 }
 
-function toWorkspaceSummary(
+export function toWorkspaceSummary(
   workspace: WorkspaceRow,
   role: WorkspaceRole,
 ): WorkspaceSummary {

@@ -85,6 +85,35 @@ export const workspaceMembers = pgTable(
   }),
 );
 
+export const workspaceInvites = pgTable(
+  "workspace_invites",
+  {
+    id: uuid("id").primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    createdByUserId: uuid("created_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    maxUses: integer("max_uses").notNull(),
+    usedCount: integer("used_count").notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    tokenHashUnique: uniqueIndex("workspace_invites_token_hash_unique").on(
+      table.tokenHash,
+    ),
+    workspaceIndex: index("workspace_invites_workspace_id_idx").on(
+      table.workspaceId,
+    ),
+  }),
+);
+
 export const maps = pgTable(
   "maps",
   {

@@ -1,10 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { sessions, users } from "../db/schema.js";
 import type { DbUser } from "./userRepository.js";
+import { serverLimits } from "../serverConfig.js";
 
-export const sessionDurationMs = 1000 * 60 * 60 * 24 * 30;
+export function getSessionDurationMs(): number {
+  return serverLimits.sessionLifetimeMs;
+}
+
+export function getSessionIdleTimeoutMs(): number {
+  return serverLimits.sessionIdleTimeoutMs;
+}
 
 export type DbSession = typeof sessions.$inferSelect;
 
@@ -18,7 +25,7 @@ export async function createSession(input: {
     userId: input.userId,
     tokenHash: input.tokenHash,
     createdAt: now,
-    expiresAt: new Date(now.getTime() + sessionDurationMs),
+    expiresAt: new Date(now.getTime() + getSessionDurationMs()),
     lastSeenAt: now,
     revokedAt: null
   }).returning();
@@ -31,6 +38,7 @@ export async function findActiveSessionByTokenHash(tokenHash: string): Promise<{
   user: DbUser;
 } | null> {
   const now = new Date();
+  const idleCutoff = new Date(now.getTime() - getSessionIdleTimeoutMs());
   const rows = await db
     .select({ session: sessions, user: users })
     .from(sessions)
@@ -38,7 +46,8 @@ export async function findActiveSessionByTokenHash(tokenHash: string): Promise<{
     .where(and(
       eq(sessions.tokenHash, tokenHash),
       isNull(sessions.revokedAt),
-      gt(sessions.expiresAt, now)
+      gt(sessions.expiresAt, now),
+      gt(sessions.lastSeenAt, idleCutoff),
     ))
     .limit(1);
 
@@ -55,4 +64,25 @@ export async function revokeSession(sessionId: string): Promise<void> {
   await db.update(sessions)
     .set({ revokedAt: new Date() })
     .where(eq(sessions.id, sessionId));
+}
+
+export async function revokeActiveSessionsForUser(userId: string): Promise<void> {
+  await db.update(sessions)
+    .set({ revokedAt: new Date() })
+    .where(and(
+      eq(sessions.userId, userId),
+      isNull(sessions.revokedAt),
+    ));
+}
+
+export async function deleteExpiredSessions(now = new Date()): Promise<void> {
+  const idleCutoff = new Date(now.getTime() - getSessionIdleTimeoutMs());
+
+  await db.delete(sessions).where(
+    or(
+      lt(sessions.expiresAt, now),
+      lt(sessions.lastSeenAt, idleCutoff),
+      isNotNull(sessions.revokedAt),
+    ),
+  );
 }

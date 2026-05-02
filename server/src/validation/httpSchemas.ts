@@ -24,6 +24,7 @@ export const renameWorkspaceBodySchema = z.object({
 });
 
 export const workspaceMemberRoleSchema = z.enum(["gm", "player"]);
+export const workspaceInviteRoleSchema = z.enum(["player"]);
 
 export const addWorkspaceMemberBodySchema = z.object({
   role: workspaceMemberRoleSchema.optional().default("player"),
@@ -32,6 +33,12 @@ export const addWorkspaceMemberBodySchema = z.object({
 
 export const updateWorkspaceMemberRoleBodySchema = z.object({
   role: workspaceMemberRoleSchema,
+});
+
+export const createWorkspaceInviteBodySchema = z.object({
+  expiresInDays: z.number().int().positive().max(365).optional(),
+  maxUses: z.number().int().positive().max(1000).optional(),
+  role: workspaceInviteRoleSchema.optional().default("player"),
 });
 
 export const createMapBodySchema = z.object({
