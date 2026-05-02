@@ -334,7 +334,7 @@ Explicit removals:
 ## Visibility and security
 
 - auth is cookie/session-based
-- cross-origin credentialed requests are restricted to same-origin plus `HEXMAP_ALLOWED_ORIGINS`
+- cookie-authenticated browser access remains same-origin; `HEXMAP_ALLOWED_ORIGINS` only gates explicit origin validation and non-credentialed CORS responses
 - mutating HTTP requests and WebSocket upgrades require an allowed `Origin` or same-origin `Referer`
 - every HTTP and WebSocket request is role-checked on the server
 - player payloads are filtered before serialization
