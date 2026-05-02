@@ -58,8 +58,8 @@ export function WorkspaceManagementScreen({
   const [usernameToAdd, setUsernameToAdd] = useState("");
   const [roleToAdd, setRoleToAdd] = useState<"gm" | "player">("player");
   const [newMapName, setNewMapName] = useState("");
-  const [inviteExpiresInDays, setInviteExpiresInDays] = useState("7");
-  const [inviteMaxUses, setInviteMaxUses] = useState("1");
+  const [inviteExpiresInDays, setInviteExpiresInDays] = useState("");
+  const [inviteMaxUses, setInviteMaxUses] = useState("");
   const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const canManageMembers = workspace.currentUserRole === "owner";
@@ -137,6 +137,8 @@ export function WorkspaceManagementScreen({
   const mapCountLabel = sortedMaps.length === 1 ? "1 map" : `${sortedMaps.length} maps`;
   const memberCountLabel = sortedMembers.length === 1 ? "1 member" : `${sortedMembers.length} members`;
   const inviteCountLabel = invites.length === 1 ? "1 invite" : `${invites.length} invites`;
+  const isInviteExpiresInDaysValid = /^[0-9]+$/.test(inviteExpiresInDays.trim());
+  const isInviteMaxUsesValid = /^[0-9]+$/.test(inviteMaxUses.trim());
 
   const submitCreateInvite = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -145,14 +147,16 @@ export function WorkspaceManagementScreen({
       return;
     }
 
-    const maxUses = Number.parseInt(inviteMaxUses, 10);
-    const expiresInDays = Number.parseInt(inviteExpiresInDays, 10);
-
-    if (!Number.isInteger(maxUses) || !Number.isInteger(expiresInDays)) {
+    if (!isInviteExpiresInDaysValid || !isInviteMaxUsesValid) {
       return;
     }
 
+    const maxUses = Number.parseInt(inviteMaxUses, 10);
+    const expiresInDays = Number.parseInt(inviteExpiresInDays, 10);
+
     const inviteUrl = await onCreateInvite(workspace.id, expiresInDays, maxUses);
+    setInviteExpiresInDays("");
+    setInviteMaxUses("");
     setLastInviteUrl(inviteUrl);
   };
 
@@ -406,28 +410,30 @@ export function WorkspaceManagementScreen({
 
             <form className="map-create-form workspace-inline-form" onSubmit={submitCreateInvite}>
               <label htmlFor="workspace-invite-expiration">Create player invite link</label>
-              <div className="map-create-row workspace-inline-row workspace-members-row">
+              <div className="map-create-row workspace-inline-row workspace-members-row workspace-invite-create-row">
                 <input
                   id="workspace-invite-expiration"
-                  type="number"
-                  min={1}
-                  max={30}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   value={inviteExpiresInDays}
+                  placeholder="Days before expiration (recommended: 7)"
                   onChange={(event) => setInviteExpiresInDays(event.currentTarget.value)}
                   disabled={isBusy}
                 />
                 <input
-                  type="number"
-                  min={1}
-                  max={100}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   value={inviteMaxUses}
+                  placeholder="Number of uses (recommended: 1)"
                   onChange={(event) => setInviteMaxUses(event.currentTarget.value)}
                   disabled={isBusy}
                 />
                 <button
                   type="submit"
                   className="compact-button"
-                  disabled={isBusy}
+                  disabled={isBusy || !isInviteExpiresInDaysValid || !isInviteMaxUsesValid}
                 >
                   Create invite
                 </button>
@@ -435,7 +441,7 @@ export function WorkspaceManagementScreen({
             </form>
 
             {lastInviteUrl ? (
-              <div className="map-create-form workspace-inline-form">
+              <div className="map-create-form workspace-inline-form workspace-invite-link-block">
                 <label htmlFor="workspace-invite-link">Last created link</label>
                 <input
                   id="workspace-invite-link"
