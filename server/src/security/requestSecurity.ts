@@ -78,6 +78,19 @@ export function isOriginAllowed(
   return allowedOrigins.includes(normalizedOrigin);
 }
 
+function getCorsAllowedOrigin(
+  origin: string,
+  allowedOrigins: readonly string[] = serverLimits.allowedOrigins,
+): string | null {
+  const normalizedOrigin = normalizeOrigin(origin);
+
+  if (!normalizedOrigin) {
+    return null;
+  }
+
+  return allowedOrigins.find((value) => value === normalizedOrigin) ?? null;
+}
+
 export function applySecurityHeaders(response: ServerResponse): void {
   response.setHeader("Referrer-Policy", "same-origin");
   response.setHeader("X-Content-Type-Options", "nosniff");
@@ -86,9 +99,10 @@ export function applySecurityHeaders(response: ServerResponse): void {
 
 export function setCors(request: IncomingMessage, response: ServerResponse): void {
   const origin = getForwardedHeaderValue(request.headers.origin);
+  const allowedOrigin = origin ? getCorsAllowedOrigin(origin) : null;
 
-  if (origin && isOriginAllowed(request, origin)) {
-    response.setHeader("Access-Control-Allow-Origin", origin);
+  if (allowedOrigin) {
+    response.setHeader("Access-Control-Allow-Origin", allowedOrigin);
     response.setHeader("Access-Control-Allow-Credentials", "true");
     response.setHeader(
       "Access-Control-Allow-Methods",
