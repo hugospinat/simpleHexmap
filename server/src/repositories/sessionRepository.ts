@@ -5,8 +5,13 @@ import { sessions, users } from "../db/schema.js";
 import type { DbUser } from "./userRepository.js";
 import { serverLimits } from "../serverConfig.js";
 
-export const sessionDurationMs = serverLimits.sessionLifetimeMs;
-export const sessionIdleTimeoutMs = serverLimits.sessionIdleTimeoutMs;
+export function getSessionDurationMs(): number {
+  return serverLimits.sessionLifetimeMs;
+}
+
+export function getSessionIdleTimeoutMs(): number {
+  return serverLimits.sessionIdleTimeoutMs;
+}
 
 export type DbSession = typeof sessions.$inferSelect;
 
@@ -20,7 +25,7 @@ export async function createSession(input: {
     userId: input.userId,
     tokenHash: input.tokenHash,
     createdAt: now,
-    expiresAt: new Date(now.getTime() + sessionDurationMs),
+    expiresAt: new Date(now.getTime() + getSessionDurationMs()),
     lastSeenAt: now,
     revokedAt: null
   }).returning();
@@ -33,7 +38,7 @@ export async function findActiveSessionByTokenHash(tokenHash: string): Promise<{
   user: DbUser;
 } | null> {
   const now = new Date();
-  const idleCutoff = new Date(now.getTime() - sessionIdleTimeoutMs);
+  const idleCutoff = new Date(now.getTime() - getSessionIdleTimeoutMs());
   const rows = await db
     .select({ session: sessions, user: users })
     .from(sessions)
@@ -71,7 +76,7 @@ export async function revokeActiveSessionsForUser(userId: string): Promise<void>
 }
 
 export async function deleteExpiredSessions(now = new Date()): Promise<void> {
-  const idleCutoff = new Date(now.getTime() - sessionIdleTimeoutMs);
+  const idleCutoff = new Date(now.getTime() - getSessionIdleTimeoutMs());
 
   await db.delete(sessions).where(
     or(

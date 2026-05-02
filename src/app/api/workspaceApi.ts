@@ -189,7 +189,7 @@ function parseWorkspaceInviteSummary(raw: unknown): WorkspaceInviteSummary {
     id: raw.id,
     maxUses: raw.maxUses,
     revokedAt: typeof raw.revokedAt === "string" ? raw.revokedAt : null,
-    role: raw.role === "player" ? "player" : "player",
+    role: "player",
     usedCount: raw.usedCount,
     workspaceId: raw.workspaceId,
     workspaceName: raw.workspaceName,
