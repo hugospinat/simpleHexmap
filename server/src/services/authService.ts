@@ -15,8 +15,8 @@ import {
   revokeActiveSessionsForUser,
   touchSession,
   deleteExpiredSessions,
+  getSessionDurationMs,
   type DbSession,
-  sessionDurationMs,
 } from "../repositories/sessionRepository.js";
 import type { UserRecord } from "../../../src/core/auth/authTypes.js";
 import { signupBodySchema, loginBodySchema } from "../validation/httpSchemas.js";
@@ -210,7 +210,7 @@ async function issueSession(response: ServerResponse, userId: string): Promise<v
   });
   appendSetCookie(response, serializeCookie(sessionCookieName, token, {
     httpOnly: true,
-    maxAge: sessionDurationMs / 1000,
+    maxAge: getSessionDurationMs() / 1000,
     path: "/",
     sameSite: "Lax",
     secure: isSecureCookie()

@@ -340,7 +340,7 @@ Explicit removals:
 - player payloads are filtered before serialization
 - hidden tiles, hidden features, hidden-overlay roads, rivers, faction territories, and hidden-cell tokens do not leak to player payloads
 - GM-only labels are stripped from player-facing features
-- login, signup, invite join, and WebSocket upgrades are rate-limited in memory per client IP
+- login, signup, invite join, and WebSocket upgrades are rate-limited in memory per client IP; the limiter is intentionally process-local for low-resource single-instance deployments
 - re-authentication rotates the active session and revokes previously active sessions for the same user
 - idle, expired, and revoked sessions are cleaned up opportunistically during auth access and session issuance
 - workspace invite links are stored only as hashed tokens with expiry, usage caps, and explicit revocation
