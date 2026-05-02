@@ -1,11 +1,17 @@
+import type { Socket } from "node:net";
 import { WebSocket, WebSocketServer } from "ws";
 import { applyOperationToSession } from "./operationService.js";
 import { applyTokenOperationToSession } from "./tokenOperationService.js";
-import { getOrCreateSession } from "./sessionStore.js";
+import {
+  getOrCreateSession,
+  getSession,
+  removeClientFromSession,
+} from "./sessionStore.js";
 import { getVisibilityModeForMapRole } from "./repositories/mapVisibility.js";
 import { getMapRecordForUser } from "./repositories/mapRepository.js";
 import { getAuthContext } from "./services/authService.js";
 import { sendSyncSnapshot } from "./syncSnapshotService.js";
+import { serverLimits } from "./serverConfig.js";
 import type {
   MapOperation,
   MapTokenOperation,
@@ -17,6 +23,53 @@ import {
 
 const idPatternSource = "[a-zA-Z0-9_-]{1,80}";
 const mapSocketPattern = new RegExp(`^/api/maps/(${idPatternSource})/ws$`);
+
+type UpgradeRejection = {
+  reason: string;
+  statusCode: number;
+};
+
+export function resolveWebSocketUpgradeRejection(input: {
+  currentConnections: number;
+  currentMapConnections: number;
+  maxConnections: number;
+  maxConnectionsPerMap: number;
+}): UpgradeRejection | null {
+  if (input.currentConnections >= input.maxConnections) {
+    return {
+      reason: "Server is at WebSocket capacity.",
+      statusCode: 503,
+    };
+  }
+
+  if (input.currentMapConnections >= input.maxConnectionsPerMap) {
+    return {
+      reason: "Map is at WebSocket capacity.",
+      statusCode: 503,
+    };
+  }
+
+  return null;
+}
+
+function rejectUpgrade(
+  socket: Socket,
+  statusCode: number,
+  reason: string,
+): void {
+  if (socket.writable) {
+    const body = `${reason}\n`;
+    socket.write(
+      `HTTP/1.1 ${statusCode} ${reason}\r\n` +
+        "Connection: close\r\n" +
+        "Content-Type: text/plain; charset=utf-8\r\n" +
+        `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n` +
+        body,
+    );
+  }
+
+  socket.destroy();
+}
 
 async function handleClientMessage(
   mapId: string,
@@ -80,7 +133,7 @@ async function attachClientHandlers(
   await sendSyncSnapshot(client, mapId, userId);
 
   client.on("close", () => {
-    session.clients.delete(client);
+    removeClientFromSession(mapId, client);
   });
 
   client.on("message", async (raw) => {
@@ -97,7 +150,10 @@ async function attachClientHandlers(
 }
 
 export function attachWebSocketRoutes(server) {
-  const webSocketServer = new WebSocketServer({ noServer: true });
+  const webSocketServer = new WebSocketServer({
+    maxPayload: serverLimits.maxWebSocketPayloadBytes,
+    noServer: true,
+  });
 
   server.on("upgrade", async (request, socket, head) => {
     try {
@@ -122,6 +178,18 @@ export function attachWebSocketRoutes(server) {
       }
 
       const mapId = match[1];
+      const rejection = resolveWebSocketUpgradeRejection({
+        currentConnections: webSocketServer.clients.size,
+        currentMapConnections: getSession(mapId)?.clients.size ?? 0,
+        maxConnections: serverLimits.maxWebSocketConnections,
+        maxConnectionsPerMap: serverLimits.maxWebSocketConnectionsPerMap,
+      });
+
+      if (rejection) {
+        rejectUpgrade(socket, rejection.statusCode, rejection.reason);
+        return;
+      }
+
       const map = await getMapRecordForUser(mapId, auth.user.id);
 
       if (!map) {
