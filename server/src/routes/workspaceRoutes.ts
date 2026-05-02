@@ -16,10 +16,16 @@ import { closeSession } from "../sessionStore.js";
 import { readBody, sendJson } from "./httpHelpers.js";
 import {
   addWorkspaceMemberBodySchema,
+  createWorkspaceInviteBodySchema,
   createWorkspaceBodySchema,
   renameWorkspaceBodySchema,
   updateWorkspaceMemberRoleBodySchema,
 } from "../validation/httpSchemas.js";
+import {
+  createWorkspaceInvite,
+  listWorkspaceInvites,
+  revokeWorkspaceInvite,
+} from "../repositories/workspaceInviteRepository.js";
 
 const idPatternSource = "[a-zA-Z0-9_-]{1,80}";
 export const workspacePathPattern = new RegExp(
@@ -30,6 +36,12 @@ export const workspaceMembersPathPattern = new RegExp(
 );
 export const workspaceMemberPathPattern = new RegExp(
   `^/api/workspaces/(${idPatternSource})/members/(${idPatternSource})$`,
+);
+export const workspaceInvitesPathPattern = new RegExp(
+  `^/api/workspaces/(${idPatternSource})/invites$`,
+);
+export const workspaceInvitePathPattern = new RegExp(
+  `^/api/workspaces/(${idPatternSource})/invites/(${idPatternSource})$`,
 );
 
 function sendMembersView(response, statusCode: number, view) {
@@ -221,4 +233,57 @@ export async function handleWorkspaceMemberResourceRequest(
   }
 
   return false;
+}
+
+export async function handleWorkspaceInvitesCollectionRequest(
+  request,
+  response,
+  match,
+): Promise<boolean> {
+  const auth = await requireAuth(request);
+  const workspaceId = match[1];
+
+  if (request.method === "GET") {
+    sendJson(response, 200, {
+      invites: await listWorkspaceInvites({
+        actorUserId: auth.user.id,
+        workspaceId,
+      }),
+    });
+    return true;
+  }
+
+  if (request.method === "POST") {
+    const body = createWorkspaceInviteBodySchema.parse(await readBody(request));
+    const created = await createWorkspaceInvite({
+      actorUserId: auth.user.id,
+      expiresInDays: body.expiresInDays,
+      maxUses: body.maxUses,
+      role: body.role,
+      workspaceId,
+    });
+    sendJson(response, 201, created);
+    return true;
+  }
+
+  return false;
+}
+
+export async function handleWorkspaceInviteResourceRequest(
+  request,
+  response,
+  match,
+): Promise<boolean> {
+  if (request.method !== "DELETE") {
+    return false;
+  }
+
+  const auth = await requireAuth(request);
+  await revokeWorkspaceInvite({
+    actorUserId: auth.user.id,
+    inviteId: match[2],
+    workspaceId: match[1],
+  });
+  sendJson(response, 200, { deleted: true });
+  return true;
 }

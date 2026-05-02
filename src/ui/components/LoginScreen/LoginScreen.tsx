@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from "react";
+import type { WorkspaceInviteSummary } from "@/core/auth/authTypes";
 
 type LoginScreenProps = {
   errorMessage: string | null;
+  invite: WorkspaceInviteSummary | null;
   isBusy: boolean;
   onLogin: (username: string, password: string) => Promise<void>;
   onSignup: (username: string, password: string) => Promise<void>;
@@ -9,6 +11,7 @@ type LoginScreenProps = {
 
 export function LoginScreen({
   errorMessage,
+  invite,
   isBusy,
   onLogin,
   onSignup
@@ -41,6 +44,11 @@ export function LoginScreen({
           <span className="eyebrow">OSR CARTOGRAPHY</span>
           <h1>Simple Hex</h1>
           <p>Sign in to open maps, edit as GM, and keep player tokens tied to your account.</p>
+          {invite ? (
+            <p>
+              Invite ready for <strong>{invite.workspaceName}</strong>. Sign in or create an account to join as player.
+            </p>
+          ) : null}
         </header>
 
         <div className="auth-mode-tabs" role="tablist" aria-label="Authentication mode">

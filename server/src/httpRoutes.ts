@@ -1,7 +1,13 @@
 import { ZodError } from "zod";
 import { AppError } from "./errors.js";
 import { handleAuthRequest } from "./routes/authRoutes.js";
-import { handleStaticRequest, sendJson, setCors } from "./routes/httpHelpers.js";
+import {
+  handleInviteJoinRequest,
+  handleInviteResourceRequest,
+  inviteJoinPathPattern,
+  invitePathPattern,
+} from "./routes/inviteRoutes.js";
+import { handleStaticRequest, sendJson } from "./routes/httpHelpers.js";
 import {
   handleMapExportRequest,
   handleMapResourceRequest,
@@ -14,13 +20,23 @@ import {
 } from "./routes/mapRoutes.js";
 import {
   handleWorkspaceCollectionRequest,
+  handleWorkspaceInviteResourceRequest,
+  handleWorkspaceInvitesCollectionRequest,
   handleWorkspaceMemberResourceRequest,
   handleWorkspaceMembersCollectionRequest,
   handleWorkspaceResourceRequest,
+  workspaceInvitePathPattern,
+  workspaceInvitesPathPattern,
   workspaceMemberPathPattern,
   workspaceMembersPathPattern,
   workspacePathPattern,
 } from "./routes/workspaceRoutes.js";
+import {
+  applySecurityHeaders,
+  assertRequestOriginAllowed,
+  isCorsPreflightAllowed,
+  setCors,
+} from "./security/requestSecurity.js";
 
 const errorStatusMap: Record<string, number> = {
   "Authentication required.": 401,
@@ -36,9 +52,19 @@ const errorStatusMap: Record<string, number> = {
   "User not found.": 404,
   "User is already in this workspace.": 409,
   "Invalid workspace role.": 400,
+  "Invalid workspace invite role.": 400,
+  "Invalid workspace invite max uses.": 400,
+  "Invalid workspace invite expiration.": 400,
   "Username is required.": 400,
+  "Invite link not found.": 404,
+  "Invite link has expired.": 409,
+  "Invite link has been revoked.": 409,
+  "Invite link has reached its usage limit.": 409,
+  "Workspace invite not found.": 404,
   "Invalid JSON body.": 400,
   "Request body too large.": 413,
+  "Request origin denied.": 403,
+  "Too many requests.": 429,
 };
 
 function resolveErrorStatus(error: unknown): number {
@@ -65,9 +91,15 @@ function resolveErrorStatus(error: unknown): number {
 
 export function createHttpHandler() {
   return async (request, response) => {
+    applySecurityHeaders(response);
     setCors(request, response);
 
     if (request.method === "OPTIONS") {
+      if (!isCorsPreflightAllowed(request)) {
+        sendJson(response, 403, { error: "Request origin denied." });
+        return;
+      }
+
       response.statusCode = 204;
       response.end();
       return;
@@ -81,7 +113,15 @@ export function createHttpHandler() {
     const url = new URL(request.url, "http://localhost");
 
     try {
+      assertRequestOriginAllowed(request);
       if (await handleAuthRequest(request, response, url)) return;
+
+      const inviteJoinMatch = url.pathname.match(inviteJoinPathPattern);
+      if (inviteJoinMatch && await handleInviteJoinRequest(request, response, inviteJoinMatch)) return;
+
+      const inviteMatch = url.pathname.match(invitePathPattern);
+      if (inviteMatch && await handleInviteResourceRequest(request, response, inviteMatch)) return;
+
       if (await handleWorkspaceCollectionRequest(request, response, url)) return;
 
       const membersMatch = url.pathname.match(workspaceMembersPathPattern);
@@ -89,6 +129,12 @@ export function createHttpHandler() {
 
       const memberMatch = url.pathname.match(workspaceMemberPathPattern);
       if (memberMatch && await handleWorkspaceMemberResourceRequest(request, response, memberMatch)) return;
+
+      const invitesMatch = url.pathname.match(workspaceInvitesPathPattern);
+      if (invitesMatch && await handleWorkspaceInvitesCollectionRequest(request, response, invitesMatch)) return;
+
+      const inviteResourceMatch = url.pathname.match(workspaceInvitePathPattern);
+      if (inviteResourceMatch && await handleWorkspaceInviteResourceRequest(request, response, inviteResourceMatch)) return;
 
       const workspaceMapsImportMatch = url.pathname.match(workspaceMapsImportPathPattern);
       if (workspaceMapsImportMatch && await handleWorkspaceMapImportRequest(request, response, workspaceMapsImportMatch)) return;

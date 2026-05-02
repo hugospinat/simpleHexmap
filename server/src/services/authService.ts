@@ -12,16 +12,23 @@ import {
   createSession,
   findActiveSessionByTokenHash,
   revokeSession,
+  revokeActiveSessionsForUser,
   touchSession,
+  deleteExpiredSessions,
   type DbSession,
-  sessionDurationMs
+  sessionDurationMs,
 } from "../repositories/sessionRepository.js";
 import type { UserRecord } from "../../../src/core/auth/authTypes.js";
 import { signupBodySchema, loginBodySchema } from "../validation/httpSchemas.js";
 import { AuthRequiredError } from "../errors.js";
+import { getClientIp } from "../security/requestSecurity.js";
+import { MemoryRateLimiter } from "../security/rateLimiter.js";
+import { serverLimits } from "../serverConfig.js";
 
 const sessionCookieName = "simplehex_session";
 const passwordKeyLength = 64;
+const authRateLimiter = new MemoryRateLimiter();
+let lastSessionCleanupAt = 0;
 
 function scryptAsync(password: string, salt: string, keyLength: number, options: ScryptOptions): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -43,6 +50,23 @@ export type AuthContext = {
 
 function hashSessionToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
+}
+
+function assertAuthRateLimit(request: IncomingMessage, action: "login" | "signup"): void {
+  const result = authRateLimiter.consume(
+    `${action}:${getClientIp(request)}`,
+    serverLimits.authRateLimitMaxAttempts,
+    serverLimits.authRateLimitWindowMs,
+  );
+
+  if (!result.allowed) {
+    console.warn("[auth] rate_limited", {
+      action,
+      ip: getClientIp(request),
+      retryAfterMs: result.retryAfterMs,
+    });
+    throw new Error("Too many requests.");
+  }
 }
 
 function parseCookies(header: string | undefined): Map<string, string> {
@@ -137,6 +161,17 @@ function validatePassword(password: unknown): string | null {
   return null;
 }
 
+async function cleanupSessionsIfNeeded(): Promise<void> {
+  const now = Date.now();
+
+  if (now - lastSessionCleanupAt < serverLimits.sessionCleanupIntervalMs) {
+    return;
+  }
+
+  lastSessionCleanupAt = now;
+  await deleteExpiredSessions(new Date(now));
+}
+
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("base64url");
   const key = await scryptAsync(password, salt, passwordKeyLength, {
@@ -166,6 +201,8 @@ export async function verifyPassword(password: string, encoded: string): Promise
 }
 
 async function issueSession(response: ServerResponse, userId: string): Promise<void> {
+  await cleanupSessionsIfNeeded();
+  await revokeActiveSessionsForUser(userId);
   const token = createSessionToken();
   await createSession({
     tokenHash: hashSessionToken(token),
@@ -224,7 +261,19 @@ export async function signupUser(input: unknown, response: ServerResponse): Prom
   return toUserRecord(user);
 }
 
-export async function loginUser(input: unknown, response: ServerResponse): Promise<UserRecord> {
+export async function signupUserFromRequest(
+  request: IncomingMessage,
+  input: unknown,
+  response: ServerResponse,
+): Promise<UserRecord> {
+  assertAuthRateLimit(request, "signup");
+  return signupUser(input, response);
+}
+
+export async function loginUser(
+  input: unknown,
+  response: ServerResponse,
+): Promise<UserRecord> {
   const parsed = loginBodySchema.safeParse(input);
 
   if (!parsed.success) {
@@ -243,7 +292,28 @@ export async function loginUser(input: unknown, response: ServerResponse): Promi
   return toUserRecord(user);
 }
 
+export async function loginUserFromRequest(
+  request: IncomingMessage,
+  input: unknown,
+  response: ServerResponse,
+): Promise<UserRecord> {
+  assertAuthRateLimit(request, "login");
+
+  try {
+    return await loginUser(input, response);
+  } catch (error) {
+    if (error instanceof Error && error.message === "Invalid username or password.") {
+      console.warn("[auth] login_failed", {
+        ip: getClientIp(request),
+      });
+    }
+
+    throw error;
+  }
+}
+
 export async function getAuthContext(request: IncomingMessage): Promise<AuthContext | null> {
+  await cleanupSessionsIfNeeded();
   const token = parseCookies(request.headers.cookie).get(sessionCookieName);
 
   if (!token) {

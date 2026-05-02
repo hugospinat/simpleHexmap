@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { buildInviteUrl } from "@/app/api/apiBase";
 import { editorConfig } from "@/config/editorConfig";
 import { createInitialWorld, type MapState } from "@/core/map/world";
 import { EditorScreen } from "@/app/EditorScreen";
@@ -13,19 +14,25 @@ import {
 } from "@/app/api/authApi";
 import {
   addWorkspaceMemberByUsername,
+  createWorkspaceInviteById,
   createWorkspace,
   createWorkspaceMapById,
   deleteMapById,
   deleteWorkspaceById,
   exportMapById,
+  getWorkspaceInviteByToken,
   importWorkspaceMapById,
+  joinWorkspaceByInviteToken,
   listWorkspaceMapsById,
   listWorkspaceMembersById,
+  listWorkspaceInvitesById,
   listWorkspaces,
   loadMapById,
   removeWorkspaceMemberById,
   renameWorkspaceById,
+  revokeWorkspaceInviteById,
   updateWorkspaceMemberRoleById,
+  type WorkspaceInviteLookup,
   type WorkspaceMapSummary,
   type WorkspaceSummary
 } from "@/app/api/workspaceApi";
@@ -33,6 +40,7 @@ import {
   canOpenWorkspaceAsGM,
   type MapOpenMode,
   type UserRecord,
+  type WorkspaceInviteSummary,
   type WorkspaceMember
 } from "@/core/auth/authTypes";
 import { parseMapDocument } from "@/core/document/savedMapCodec";
@@ -53,6 +61,17 @@ type OpenMapState = {
 function getDefaultName(value: string, fallback: string): string {
   const trimmed = value.trim();
   return trimmed || fallback;
+}
+
+function readInviteTokenFromLocation(): string | null {
+  const value = new URLSearchParams(window.location.search).get("invite");
+  return value?.trim() || null;
+}
+
+function clearInviteTokenFromLocation(): void {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("invite");
+  window.history.replaceState({}, "", url);
 }
 
 async function readFileText(file: File): Promise<string> {
@@ -94,9 +113,13 @@ export default function App() {
   const [busyMessage, setBusyMessage] = useState<string | null>("Checking account...");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [managedWorkspaceId, setManagedWorkspaceId] = useState<string | null>(null);
+  const [managedWorkspaceInvites, setManagedWorkspaceInvites] = useState<WorkspaceInviteSummary[]>([]);
   const [managedWorkspaceMembers, setManagedWorkspaceMembers] = useState<WorkspaceMember[]>([]);
   const [managedWorkspaceMaps, setManagedWorkspaceMaps] = useState<WorkspaceMapSummary[]>([]);
   const [openMap, setOpenMap] = useState<OpenMapState | null>(null);
+  const [inviteToken, setInviteToken] = useState<string | null>(() => readInviteTokenFromLocation());
+  const [inviteLookup, setInviteLookup] = useState<WorkspaceInviteLookup | null>(null);
+  const [joiningInviteToken, setJoiningInviteToken] = useState<string | null>(null);
   const [user, setUser] = useState<UserRecord | null>(null);
 
   const isBusy = busyMessage !== null;
@@ -114,6 +137,7 @@ export default function App() {
     if (nextWorkspaces.length === 0) {
       setSelectedWorkspaceId(null);
       setManagedWorkspaceId(null);
+      setManagedWorkspaceInvites([]);
       return;
     }
 
@@ -159,6 +183,22 @@ export default function App() {
     });
   }, [refreshWorkspaces, withBusyState]);
 
+  useEffect(() => {
+    if (!inviteToken) {
+      setInviteLookup(null);
+      return;
+    }
+
+    void (async () => {
+      try {
+        setInviteLookup(await getWorkspaceInviteByToken(inviteToken));
+      } catch (error) {
+        setInviteLookup(null);
+        setErrorMessage(error instanceof Error ? error.message : "Could not load invite.");
+      }
+    })();
+  }, [inviteToken]);
+
   const login = useCallback(async (username: string, password: string) => {
     await withBusyState("Signing in...", async () => {
       const authenticated = await loginAccount(username, password);
@@ -180,6 +220,7 @@ export default function App() {
       await logoutAccount();
       setOpenMap(null);
       setManagedWorkspaceId(null);
+      setManagedWorkspaceInvites([]);
       setManagedWorkspaceMembers([]);
       setManagedWorkspaceMaps([]);
       setUser(null);
@@ -228,6 +269,7 @@ export default function App() {
 
       if (managedWorkspaceId === workspaceId) {
         setManagedWorkspaceId(null);
+        setManagedWorkspaceInvites([]);
         setManagedWorkspaceMembers([]);
         setManagedWorkspaceMaps([]);
       }
@@ -246,12 +288,27 @@ export default function App() {
     syncWorkspaceSummary(payload.workspace);
   }, [syncWorkspaceSummary]);
 
+  const refreshWorkspaceInvites = useCallback(async (workspaceId: string) => {
+    try {
+      const payload = await listWorkspaceInvitesById(workspaceId);
+      setManagedWorkspaceInvites(payload.invites);
+    } catch (error) {
+      if (error instanceof Error && error.message === "Owner access denied.") {
+        setManagedWorkspaceInvites([]);
+        return;
+      }
+
+      throw error;
+    }
+  }, []);
+
   const refreshWorkspaceManagement = useCallback(async (workspaceId: string) => {
     await Promise.all([
+      refreshWorkspaceInvites(workspaceId),
       refreshWorkspaceMembers(workspaceId),
       refreshWorkspaceMaps(workspaceId)
     ]);
-  }, [refreshWorkspaceMaps, refreshWorkspaceMembers]);
+  }, [refreshWorkspaceInvites, refreshWorkspaceMaps, refreshWorkspaceMembers]);
 
   const openWorkspaceManagement = useCallback(async (workspaceId: string) => {
     if (!user) {
@@ -310,6 +367,36 @@ export default function App() {
       await refreshWorkspaces();
     });
   }, [refreshWorkspaces, syncWorkspaceSummary, user, withBusyState]);
+
+  const createWorkspaceInvite = useCallback(async (workspaceId: string, expiresInDays: number, maxUses: number) => {
+    if (!user) {
+      return "";
+    }
+
+    let inviteUrl = "";
+
+    await withBusyState("Creating invite link...", async () => {
+      const created = await createWorkspaceInviteById(workspaceId, {
+        expiresInDays,
+        maxUses,
+      });
+      inviteUrl = buildInviteUrl(created.token);
+      await refreshWorkspaceInvites(workspaceId);
+    });
+
+    return inviteUrl;
+  }, [refreshWorkspaceInvites, user, withBusyState]);
+
+  const revokeWorkspaceInvite = useCallback(async (workspaceId: string, inviteId: string) => {
+    if (!user) {
+      return;
+    }
+
+    await withBusyState("Revoking invite link...", async () => {
+      await revokeWorkspaceInviteById(workspaceId, inviteId);
+      await refreshWorkspaceInvites(workspaceId);
+    });
+  }, [refreshWorkspaceInvites, user, withBusyState]);
 
   const createWorkspaceMap = useCallback(async (workspaceId: string, name: string) => {
     if (!user) {
@@ -406,6 +493,7 @@ export default function App() {
 
   const closeWorkspaceManagement = useCallback(() => {
     setManagedWorkspaceId(null);
+    setManagedWorkspaceInvites([]);
     setManagedWorkspaceMembers([]);
     setManagedWorkspaceMaps([]);
   }, []);
@@ -427,6 +515,26 @@ export default function App() {
     ? workspaces.find((workspace) => workspace.id === managedWorkspaceId) ?? null
     : null;
 
+  useEffect(() => {
+    if (!user || !inviteToken || !inviteLookup || joiningInviteToken === inviteToken) {
+      return;
+    }
+
+    setJoiningInviteToken(inviteToken);
+    void withBusyState("Joining workspace invite...", async () => {
+      const result = await joinWorkspaceByInviteToken(inviteToken);
+      await refreshWorkspaces();
+      await refreshWorkspaceManagement(result.workspace.id);
+      setSelectedWorkspaceId(result.workspace.id);
+      setManagedWorkspaceId(result.workspace.id);
+      setInviteLookup(null);
+      setInviteToken(null);
+      clearInviteTokenFromLocation();
+    }).finally(() => {
+      setJoiningInviteToken((current) => current === inviteToken ? null : current);
+    });
+  }, [inviteLookup, inviteToken, joiningInviteToken, refreshWorkspaceManagement, refreshWorkspaces, user, withBusyState]);
+
   if (openMap && user) {
     return (
       <EditorScreen
@@ -446,6 +554,7 @@ export default function App() {
     return (
       <LoginScreen
         errorMessage={errorMessage}
+        invite={inviteLookup?.invite ?? null}
         isBusy={isBusy}
         onLogin={login}
         onSignup={signup}
@@ -459,10 +568,12 @@ export default function App() {
         currentUser={user}
         errorMessage={errorMessage}
         isBusy={isBusy}
+        invites={managedWorkspaceInvites}
         maps={managedWorkspaceMaps}
         members={managedWorkspaceMembers}
         onAddMember={addWorkspaceMember}
         onBackToWorkspaces={closeWorkspaceManagement}
+        onCreateInvite={createWorkspaceInvite}
         onCreateMap={createWorkspaceMap}
         onDeleteMap={deleteWorkspaceMap}
         onExportMap={exportWorkspaceMap}
@@ -470,6 +581,7 @@ export default function App() {
         onOpenMapAs={openWorkspaceMap}
         onRefresh={refreshManagedWorkspace}
         onRemoveMember={removeWorkspaceMember}
+        onRevokeInvite={revokeWorkspaceInvite}
         onUpdateRole={updateWorkspaceMemberRole}
         workspace={managedWorkspace}
       />

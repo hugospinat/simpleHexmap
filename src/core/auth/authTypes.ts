@@ -8,6 +8,7 @@ export type UserRecord = {
 };
 
 export type WorkspaceRole = "owner" | "gm" | "player";
+export type WorkspaceInviteRole = "player";
 export type MapOpenMode = "gm" | "player";
 export const defaultWorkspaceTokenColor = "#2f6fed";
 
@@ -20,6 +21,18 @@ export type WorkspaceMember = {
 
 export type WorkspaceAccess = {
   currentUserRole: WorkspaceRole;
+};
+
+export type WorkspaceInviteSummary = {
+  createdAt: string;
+  expiresAt: string;
+  id: string;
+  maxUses: number;
+  role: WorkspaceInviteRole;
+  revokedAt: string | null;
+  usedCount: number;
+  workspaceId: string;
+  workspaceName: string;
 };
 
 export function canOpenWorkspaceAsGM(access: WorkspaceAccess): boolean {

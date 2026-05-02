@@ -60,3 +60,11 @@ export function buildWebSocketUrl(path: string): string {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   return `${protocol}://${window.location.host}${normalizedPath}`;
 }
+
+export function buildInviteUrl(token: string): string {
+  const configured = import.meta.env.VITE_APP_BASE_URL?.trim();
+  const base = configured || window.location.origin;
+  const url = new URL("/", base);
+  url.searchParams.set("invite", token);
+  return url.toString();
+}
