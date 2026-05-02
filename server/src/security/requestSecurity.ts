@@ -103,7 +103,6 @@ export function setCors(request: IncomingMessage, response: ServerResponse): voi
 
   if (allowedOrigin) {
     response.setHeader("Access-Control-Allow-Origin", allowedOrigin);
-    response.setHeader("Access-Control-Allow-Credentials", "true");
     response.setHeader(
       "Access-Control-Allow-Methods",
       "GET,POST,PATCH,DELETE,OPTIONS",
