@@ -42,21 +42,6 @@ export function sanitizeName(
   return trimmed ? trimmed.slice(0, 120) : fallback;
 }
 
-export function setCors(request, response): void {
-  const origin = request.headers.origin;
-  response.setHeader(
-    "Access-Control-Allow-Origin",
-    typeof origin === "string" ? origin : "*",
-  );
-  response.setHeader("Access-Control-Allow-Credentials", "true");
-  response.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET,POST,PATCH,DELETE,OPTIONS",
-  );
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  response.setHeader("Vary", "Origin");
-}
-
 export function sendJson(response, statusCode: number, payload: unknown): void {
   response.statusCode = statusCode;
   response.setHeader("Content-Type", "application/json; charset=utf-8");
