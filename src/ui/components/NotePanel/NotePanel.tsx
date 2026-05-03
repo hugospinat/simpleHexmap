@@ -68,7 +68,12 @@ export function NotePanel({
         <button
           type="button"
           className="compact-button"
-          onClick={onClear}
+          onClick={() => {
+            setDraft("");
+            if (hasSavedNote) {
+              onClear();
+            }
+          }}
           disabled={!hasSavedNote && !hasDraft}
         >
           Clear
