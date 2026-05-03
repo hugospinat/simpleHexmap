@@ -1,10 +1,7 @@
 import { AppShell } from "./AppShell";
-import { BottomBar } from "@/ui/components/BottomBar/BottomBar";
-import { MapPane } from "@/ui/components/MapCanvas/MapPane";
-import { PlayerControls } from "@/ui/components/PlayerControls/PlayerControls";
-import { Sidebar } from "@/ui/components/Sidebar/Sidebar";
-import { useEditorController } from "@/editor/hooks/useEditorController";
-import { MapAssetsProvider } from "@/editor/context/MapAssetsContext";
+import { MapAssetsProvider } from "@/editor/context";
+import { useEditorController } from "@/editor/hooks";
+import { BottomBar, MapPane, PlayerControls, Sidebar } from "@/ui/components";
 import type { MapState } from "@/core/map/world";
 import type { MapOpenMode, UserRecord, WorkspaceMember } from "@/core/auth/authTypes";
 

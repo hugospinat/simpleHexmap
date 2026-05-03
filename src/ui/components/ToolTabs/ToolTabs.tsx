@@ -1,4 +1,4 @@
-import type { EditorMode } from "@/editor/tools/editorTypes";
+import type { EditorMode } from "@/editor/tools";
 
 type ToolTabsProps = {
   activeMode: EditorMode;

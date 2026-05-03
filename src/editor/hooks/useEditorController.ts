@@ -1,71 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { editorConfig } from "@/config/editorConfig";
-import { editorModeOrder, type EditorMode } from "@/editor/tools/editorTypes";
-import { useKeyboardNavigation } from "@/editor/hooks/useKeyboardNavigation";
-import {
-  applyEditGestureCells,
-  createEditGesture,
-  type EditGesture,
-  type EditGestureAction,
-} from "@/editor/tools/editGesture";
-import {
-  applyRiverGestureEdges,
-  createRiverGesture,
-  type RiverGesture,
-} from "@/editor/tools/riverGesture";
-import {
-  applyRoadGestureCells,
-  createRoadGesture,
-  type RoadGesture,
-} from "@/editor/tools/roadGesture";
-import {
-  applyFactionGestureCells,
-  createFactionGesture,
-  type FactionGesture,
-} from "@/editor/tools/factionGesture";
-import {
-  applyFogGestureCells,
-  createFogGesture,
-  type FogGesture,
-} from "@/editor/tools/fogGesture";
-import {
-  createFeature,
-  getFeatureAt,
-  type FeatureKind,
-} from "@/core/map/features";
-import {
-  getFactionById,
-  getFactions,
-  getLevelMap,
-  type RiverEdgeRef,
-  type TerrainType,
-  type MapState,
-} from "@/core/map/world";
-import { useCamera } from "./useCamera";
-import { hexKey, type Axial } from "@/core/geometry/hex";
-import { SOURCE_LEVEL } from "@/core/map/mapRules";
-import { useMapSocketSync } from "@/app/sync/useMapSocketSync";
-import { useFactionControls } from "@/editor/hooks/useFactionControls";
-import { useEditorCanvasProps } from "@/editor/hooks/useEditorCanvasProps";
-import { useTokenControls } from "@/editor/hooks/useTokenControls";
-import { getInteractionLabel } from "@/editor/presentation/interactionLabels";
-import {
-  commandAddFeature,
-  commandRemoveFeature,
-} from "@/core/map/commands/mapEditCommands";
-import {
-  clearOperationHistory,
-  createOperationHistoryState,
-  recordOperationHistory,
-  takeRedoOperations,
-  takeUndoOperations,
-} from "@/core/map/history/mapOperationHistory";
+import { useMapSocketSync } from "@/app/sync";
+import { getFactionById, getFactions, type MapState } from "@/core/map/world";
 import type { MapOperation } from "@/core/protocol";
 import type {
   MapOpenMode,
   UserRecord,
   WorkspaceMember,
 } from "@/core/auth/authTypes";
+import { useCamera } from "./useCamera";
+import { useEditorCanvasProps } from "./useEditorCanvasProps";
+import { useEditorGestureController } from "./useEditorGestureController";
+import { useEditorOperationHistory } from "./useEditorOperationHistory";
+import { useEditorToolState } from "./useEditorToolState";
+import { useFactionControls } from "./useFactionControls";
+import { useKeyboardNavigation } from "./useKeyboardNavigation";
+import { useTokenControls } from "./useTokenControls";
+import { getInteractionLabel } from "@/editor/presentation/interactionLabels";
 
 type UseEditorControllerOptions = {
   initialWorld: MapState;
@@ -74,13 +25,6 @@ type UseEditorControllerOptions = {
   role: MapOpenMode;
   workspaceMembers: WorkspaceMember[];
 };
-
-type ActiveEditorGesture =
-  | { kind: "terrain"; gesture: EditGesture; worldBefore: MapState }
-  | { kind: "faction"; gesture: FactionGesture; worldBefore: MapState }
-  | { kind: "river"; gesture: RiverGesture; worldBefore: MapState }
-  | { kind: "road"; gesture: RoadGesture; worldBefore: MapState }
-  | { kind: "fog"; gesture: FogGesture; worldBefore: MapState };
 
 export function useEditorController({
   initialWorld,
@@ -91,472 +35,143 @@ export function useEditorController({
 }: UseEditorControllerOptions) {
   const maxLevels = editorConfig.maxLevels;
   const appRef = useRef<HTMLElement | null>(null);
+  const featureIdRef = useRef(0);
   const { changeLevelByDelta, changeVisualZoom, setCenter, view, visualZoom } =
     useCamera();
   const [toolPreviewOperations, setToolPreviewOperations] = useState<
     MapOperation[]
   >([]);
-  const [activeMode, setActiveMode] = useState<EditorMode>("terrain");
-  const [activeType, setActiveType] = useState<TerrainType>("plain");
-  const [activeFeatureKind, setActiveFeatureKind] =
-    useState<FeatureKind>("city");
-  const [activeFactionId, setActiveFactionId] = useState<string | null>(null);
-  const [showCoordinates, setShowCoordinates] = useState(false);
-  const [hoveredHex, setHoveredHex] = useState<Axial | null>(null);
-  const activeGestureRef = useRef<ActiveEditorGesture | null>(null);
-  const operationHistoryRef = useRef(createOperationHistoryState());
-  const featureIdRef = useRef(0);
-  const publishToolPreviewOperations = useCallback(
-    (operations: MapOperation[]) => {
-      if (operations.length === 0) {
-        return;
-      }
-
-      setToolPreviewOperations((previous) => [...previous, ...operations]);
-    },
-    [],
+  const clearPreviewHandlerRef = useRef<() => void>(() => {
+    setToolPreviewOperations([]);
+  });
+  const authoritativeResyncHandlerRef = useRef<() => void>(() => {});
+  const remoteOperationsAppliedHandlerRef = useRef<(count: number) => void>(
+    () => {},
   );
-  const clearToolPreview = useCallback(() => {
-    // Keep local paint preview stable while a pointer gesture is still active.
-    if (activeGestureRef.current) {
-      return;
-    }
-
-    setToolPreviewOperations([]);
-  }, []);
-  const clearUndoRedoHistory = useCallback(() => {
-    clearOperationHistory(operationHistoryRef.current);
-  }, []);
-  const handleAuthoritativeResync = useCallback(() => {
-    clearUndoRedoHistory();
-    activeGestureRef.current = null;
-    setToolPreviewOperations([]);
-  }, [clearUndoRedoHistory]);
-  const {
-    acknowledgeRenderWorldPatch,
-    commitLocalOperations,
-    tokenPlacements,
-    renderWorldPatch,
-    sendTokenOperation,
-    syncStatus,
-    workspaceMembers,
-    visibleWorld,
-  } = useMapSocketSync({
-    clearPreview: clearToolPreview,
-    initialWorld,
-    mapId,
-    onAuthoritativeResync: handleAuthoritativeResync,
-    onRemoteOperationsApplied: clearUndoRedoHistory,
-    userId: profile.id,
-    initialWorkspaceMembers,
-  });
-  const {
-    activeTokenUserId,
-    clearMapTokenSelection,
-    placePlayerToken,
-    placeSelectedMapToken,
-    playerTokenColor,
-    removeMapToken,
-    selectWorkspaceMember,
-    setPlayerTokenColor,
-  } = useTokenControls({
-    canEdit: role === "gm",
-    mapId,
-    mapTokens: tokenPlacements,
-    userId: profile.id,
-    role,
-    sendTokenOperation,
-    viewLevel: view.level,
-    visibleWorld,
-  });
-
-  const world = visibleWorld;
   const canEdit = role === "gm";
-  const factions = useMemo(() => getFactions(world), [world]);
-  const selectedFaction = useMemo(
-    () => (activeFactionId ? getFactionById(world, activeFactionId) : null),
-    [activeFactionId, world],
-  );
-  const submitLocalOperations = useCallback(
-    (operations: MapOperation[], worldBefore: MapState = visibleWorld) => {
-      if (operations.length === 0) {
-        return;
-      }
-
-      recordOperationHistory(
-        operationHistoryRef.current,
-        worldBefore,
-        operations,
-      );
-      commitLocalOperations(operations);
-    },
-    [commitLocalOperations, visibleWorld],
-  );
-
-  const undoLastOperationBatch = useCallback(() => {
-    if (!canEdit) {
-      return;
-    }
-
-    const operations = takeUndoOperations(operationHistoryRef.current);
-
-    if (operations.length > 0) {
-      commitLocalOperations(operations);
-    }
-  }, [canEdit, commitLocalOperations]);
-  const redoLastOperationBatch = useCallback(() => {
-    if (!canEdit) {
-      return;
-    }
-
-    const operations = takeRedoOperations(operationHistoryRef.current);
-
-    if (operations.length > 0) {
-      commitLocalOperations(operations);
-    }
-  }, [canEdit, commitLocalOperations]);
+  const toolState = useEditorToolState(canEdit);
 
   const createFeatureId = useCallback(() => {
     featureIdRef.current += 1;
     return `feature-${Date.now()}-${featureIdRef.current}`;
   }, []);
 
-  useEffect(() => {
-    clearOperationHistory(operationHistoryRef.current);
-    activeGestureRef.current = null;
-    setToolPreviewOperations([]);
-  }, [mapId]);
-
-  const applyTerrainGestureCells = useCallback(
-    (axials: Axial[]) => {
-      const activeGesture = activeGestureRef.current;
-      const gesture =
-        activeGesture?.kind === "terrain" ? activeGesture.gesture : null;
-
-      if (!gesture) {
-        return;
-      }
-
-      const beforeWorld = gesture.world;
-      const operationStartIndex = gesture.operations.length;
-      const nextWorld = applyEditGestureCells(gesture, axials);
-
-      if (nextWorld !== beforeWorld) {
-        publishToolPreviewOperations(
-          gesture.operations.slice(operationStartIndex),
-        );
-      }
-    },
-    [publishToolPreviewOperations],
-  );
-
-  const applyActiveGestureCells = useCallback(
-    (axials: Axial[]) => {
-      const activeGesture = activeGestureRef.current;
-
-      if (activeGesture?.kind === "terrain") {
-        applyTerrainGestureCells(axials);
-        return;
-      }
-
-      if (activeGesture?.kind === "faction") {
-        const beforeWorld = activeGesture.gesture.world;
-        const operationStartIndex = activeGesture.gesture.operations.length;
-        const nextWorld = applyFactionGestureCells(
-          activeGesture.gesture,
-          axials,
-        );
-
-        if (nextWorld !== beforeWorld) {
-          publishToolPreviewOperations(
-            activeGesture.gesture.operations.slice(operationStartIndex),
-          );
-        }
-        return;
-      }
-
-      if (activeGesture?.kind === "road") {
-        const beforeWorld = activeGesture.gesture.world;
-        const operationStartIndex = activeGesture.gesture.operations.length;
-        const nextWorld = applyRoadGestureCells(activeGesture.gesture, axials);
-
-        if (nextWorld !== beforeWorld) {
-          publishToolPreviewOperations(
-            activeGesture.gesture.operations.slice(operationStartIndex),
-          );
-        }
-        return;
-      }
-
-      if (activeGesture?.kind === "fog") {
-        const beforeWorld = activeGesture.gesture.world;
-        const operationStartIndex = activeGesture.gesture.operations.length;
-        const nextWorld = applyFogGestureCells(activeGesture.gesture, axials);
-
-        if (nextWorld !== beforeWorld) {
-          publishToolPreviewOperations(
-            activeGesture.gesture.operations.slice(operationStartIndex),
-          );
-        }
-      }
-    },
-    [applyTerrainGestureCells, publishToolPreviewOperations],
-  );
-
-  const applyActiveRiverGestureEdges = useCallback(
-    (edges: RiverEdgeRef[]) => {
-      const activeGesture = activeGestureRef.current;
-      const gesture =
-        activeGesture?.kind === "river" ? activeGesture.gesture : null;
-
-      if (!gesture) {
-        return;
-      }
-
-      const beforeWorld = gesture.world;
-      const operationStartIndex = gesture.operations.length;
-      const nextWorld = applyRiverGestureEdges(gesture, edges);
-
-      if (nextWorld !== beforeWorld) {
-        publishToolPreviewOperations(
-          gesture.operations.slice(operationStartIndex),
-        );
-      }
-    },
-    [publishToolPreviewOperations],
-  );
-
-  const startEditGesture = useCallback(
-    (action: EditGestureAction, axials: Axial[]) => {
-      if (!canEdit) {
-        return;
-      }
-
-      activeGestureRef.current = null;
-
-      if (activeMode === "feature") {
-        const axial = axials[0];
-
-        if (!axial) {
-          return;
-        }
-
-        if (view.level !== SOURCE_LEVEL) {
-          return;
-        }
-
-        const existingFeature = getFeatureAt(visibleWorld, view.level, axial);
-
-        if (action === "paint") {
-          if (existingFeature) {
-            return;
-          }
-
-          const result = commandAddFeature(
-            visibleWorld,
-            view.level,
-            createFeature(createFeatureId(), activeFeatureKind, hexKey(axial)),
-          );
-
-          if (result.operations.length > 0) {
-            submitLocalOperations(result.operations);
-          }
-
-          return;
-        }
-
-        if (!existingFeature) {
-          return;
-        }
-
-        const result = commandRemoveFeature(visibleWorld, existingFeature.id);
-
-        if (result.operations.length > 0) {
-          submitLocalOperations(result.operations);
-        }
-
-        return;
-      }
-
-      if (activeMode === "river") {
-        return;
-      }
-
-      if (activeMode === "road") {
-        if (view.level !== SOURCE_LEVEL) {
-          return;
-        }
-
-        activeGestureRef.current = {
-          kind: "road",
-          gesture: createRoadGesture(
-            action === "paint" ? "add" : "remove",
-            visibleWorld,
-            view.level,
-          ),
-          worldBefore: visibleWorld,
-        };
-        applyActiveGestureCells(axials);
-        return;
-      }
-
-      if (activeMode === "faction") {
-        activeGestureRef.current = {
-          kind: "faction",
-          gesture: createFactionGesture(
-            action === "paint" ? "assign" : "clear",
-            visibleWorld,
-            view.level,
-            activeFactionId,
-          ),
-          worldBefore: visibleWorld,
-        };
-        applyActiveGestureCells(axials);
-        return;
-      }
-
-      if (activeMode === "fog") {
-        const initialAxial = axials[0];
-
-        if (!initialAxial) {
-          return;
-        }
-
-        activeGestureRef.current = {
-          kind: "fog",
-          gesture: createFogGesture(
-            action === "paint" ? "paint" : "erase",
-            visibleWorld,
-            view.level,
-            initialAxial,
-          ),
-          worldBefore: visibleWorld,
-        };
-        applyActiveGestureCells(axials);
-        return;
-      }
-
-      activeGestureRef.current = {
-        kind: "terrain",
-        gesture: createEditGesture(
-          action,
-          visibleWorld,
-          view.level,
-          activeType,
-        ),
-        worldBefore: visibleWorld,
-      };
-      applyActiveGestureCells(axials);
-    },
-    [
-      activeFeatureKind,
-      activeFactionId,
-      activeMode,
-      activeType,
-      applyActiveGestureCells,
-      createFeatureId,
-      visibleWorld,
-      canEdit,
-      submitLocalOperations,
-      view.level,
-    ],
-  );
-
-  const startRiverGesture = useCallback(
-    (action: EditGestureAction, edges: RiverEdgeRef[]) => {
-      if (!canEdit) {
-        return;
-      }
-
-      activeGestureRef.current = null;
-
-      if (view.level !== SOURCE_LEVEL) {
-        return;
-      }
-
-      activeGestureRef.current = {
-        kind: "river",
-        gesture: createRiverGesture(
-          action === "paint" ? "add" : "remove",
-          visibleWorld,
-          view.level,
-        ),
-        worldBefore: visibleWorld,
-      };
-      applyActiveRiverGestureEdges(edges);
-    },
-    [applyActiveRiverGestureEdges, canEdit, visibleWorld, view.level],
-  );
-
-  const finishEditGesture = useCallback(() => {
-    const activeGesture = activeGestureRef.current;
-    activeGestureRef.current = null;
-    setToolPreviewOperations([]);
-
-    const operations = activeGesture?.gesture.operations ?? [];
-
-    if (operations.length > 0) {
-      submitLocalOperations(operations, activeGesture?.worldBefore);
+  const clearToolPreview = useCallback((force = false) => {
+    if (!force) {
+      return;
     }
-  }, [submitLocalOperations]);
 
-  const chooseFeatureKind = useCallback(
-    (type: FeatureKind) => {
-      if (!canEdit) {
-        return;
-      }
-
-      setActiveFeatureKind(type);
-      setActiveMode("feature");
-    },
-    [canEdit],
-  );
-
-  const changeMode = useCallback(
-    (mode: EditorMode) => {
-      if (!canEdit) {
-        return;
-      }
-
-      setActiveMode(mode);
-    },
-    [canEdit],
-  );
-
-  const changeToolByDelta = useCallback(
-    (delta: 1 | -1) => {
-      if (!canEdit) {
-        return;
-      }
-
-      const currentIndex = editorModeOrder.indexOf(activeMode);
-      const nextIndex =
-        (currentIndex + delta + editorModeOrder.length) %
-        editorModeOrder.length;
-      changeMode(editorModeOrder[nextIndex]);
-    },
-    [activeMode, canEdit, changeMode],
-  );
-
-  useEffect(() => {
-    if (activeFactionId && !selectedFaction) {
-      setActiveFactionId(null);
-    }
-  }, [activeFactionId, selectedFaction]);
-
-  const toggleCoordinates = useCallback(() => {
-    setShowCoordinates((previous) => !previous);
+    setToolPreviewOperations([]);
   }, []);
+
+  const handleToolPreviewOperations = useCallback((operations: MapOperation[]) => {
+    if (operations.length === 0) {
+      return;
+    }
+
+    setToolPreviewOperations((previous) => [...previous, ...operations]);
+  }, []);
+
+  const syncState = useMapSocketSync({
+    clearPreview: () => clearPreviewHandlerRef.current(),
+    initialWorld,
+    mapId,
+    onAuthoritativeResync: () => authoritativeResyncHandlerRef.current(),
+    onRemoteOperationsApplied: (count) =>
+      remoteOperationsAppliedHandlerRef.current(count),
+    userId: profile.id,
+    initialWorkspaceMembers,
+  });
+
+  const {
+    acknowledgeRenderWorldPatch: acknowledgePatch,
+    commitLocalOperations: commitOperations,
+    tokenPlacements: activeTokenPlacements,
+    renderWorldPatch: activeRenderWorldPatch,
+    sendTokenOperation: dispatchTokenOperation,
+    syncStatus: currentSyncStatus,
+    workspaceMembers: currentWorkspaceMembers,
+    visibleWorld: world,
+  } = syncState;
+
+  const operationHistory = useEditorOperationHistory(canEdit, commitOperations);
+  const editorGestures = useEditorGestureController({
+    activeFactionId: toolState.activeFactionId,
+    activeFeatureKind: toolState.activeFeatureKind,
+    activeMode: toolState.activeMode,
+    activeType: toolState.activeType,
+    canEdit,
+    createFeatureId,
+    publishToolPreviewOperations: handleToolPreviewOperations,
+    submitLocalOperations: operationHistory.submitLocalOperations,
+    viewLevel: view.level,
+    visibleWorld: world,
+  });
+
+  useEffect(() => {
+    clearPreviewHandlerRef.current = () => {
+      if (editorGestures.hasActiveGesture()) {
+        return;
+      }
+
+      clearToolPreview(true);
+    };
+    authoritativeResyncHandlerRef.current = () => {
+      operationHistory.resetHistory();
+      editorGestures.resetGestureState();
+      clearToolPreview(true);
+    };
+    remoteOperationsAppliedHandlerRef.current = () => {
+      operationHistory.clearUndoRedoHistory();
+    };
+  }, [clearToolPreview, editorGestures, operationHistory]);
+
+  const tokenControls = useTokenControls({
+    canEdit,
+    mapId,
+    mapTokens: activeTokenPlacements,
+    userId: profile.id,
+    role,
+    sendTokenOperation: dispatchTokenOperation,
+    viewLevel: view.level,
+    visibleWorld: world,
+  });
+
+  const factions = useMemo(() => getFactions(world), [world]);
+  const selectedFaction = useMemo(
+    () =>
+      toolState.activeFactionId ? getFactionById(world, toolState.activeFactionId) : null,
+    [toolState.activeFactionId, world],
+  );
+
+  useEffect(() => {
+    operationHistory.resetHistory();
+    editorGestures.resetGestureState();
+    clearToolPreview(true);
+  }, [clearToolPreview, editorGestures, mapId, operationHistory]);
+
+  useEffect(() => {
+    if (toolState.activeFactionId && !selectedFaction) {
+      toolState.setActiveFactionId(null);
+    }
+  }, [selectedFaction, toolState]);
+
+  const submitVisibleWorldOperations = useCallback(
+    (operations: MapOperation[]) => {
+      operationHistory.submitLocalOperations(operations, world);
+    },
+    [operationHistory, world],
+  );
 
   const { createFaction, deleteFaction, recolorFaction, renameFaction } =
     useFactionControls({
-      activeFactionId,
+      activeFactionId: toolState.activeFactionId,
       canEdit,
-      commitLocalOperations: submitLocalOperations,
+      commitLocalOperations: submitVisibleWorldOperations,
       factionCount: factions.length,
-      presentWorld: visibleWorld,
-      setActiveFactionId,
-      setActiveMode,
+      presentWorld: world,
+      setActiveFactionId: toolState.setActiveFactionId,
+      setActiveMode: toolState.setActiveMode,
     });
 
   useKeyboardNavigation({
@@ -567,96 +182,99 @@ export function useEditorController({
     visualZoom,
     onCenterChange: setCenter,
     onLevelStep: changeLevelByDelta,
-    onRedo: redoLastOperationBatch,
-    onToggleCoordinates: toggleCoordinates,
-    onUndo: undoLastOperationBatch,
+    onRedo: operationHistory.redoLastOperationBatch,
+    onToggleCoordinates: toolState.toggleCoordinates,
+    onUndo: operationHistory.undoLastOperationBatch,
   });
 
   const interactionLabel = useMemo(
     () =>
       getInteractionLabel({
-        activeFactionId,
-        activeFeatureKind,
-        activeMode,
-        activeTokenUserId,
-        activeType,
+        activeFactionId: toolState.activeFactionId,
+        activeFeatureKind: toolState.activeFeatureKind,
+        activeMode: toolState.activeMode,
+        activeTokenUserId: tokenControls.activeTokenUserId,
+        activeType: toolState.activeType,
         canEdit,
         level: view.level,
         selectedFaction,
       }),
     [
-      activeFactionId,
-      activeFeatureKind,
-      activeMode,
-      activeTokenUserId,
-      activeType,
       canEdit,
       selectedFaction,
+      tokenControls.activeTokenUserId,
+      toolState.activeFactionId,
+      toolState.activeFeatureKind,
+      toolState.activeMode,
+      toolState.activeType,
       view.level,
     ],
   );
-  const featureVisibilityMode: "gm" | "player" =
-    role === "player" ? "player" : "gm";
+
+  const featureVisibilityMode: "gm" | "player" = role === "player" ? "player" : "gm";
 
   const canvasProps = useEditorCanvasProps({
-    activeMode,
-    activeTokenUserId,
-    applyActiveGestureCells,
-    applyActiveRiverGestureEdges,
+    activeMode: toolState.activeMode,
+    activeTokenUserId: tokenControls.activeTokenUserId,
+    applyActiveGestureCells: editorGestures.applyActiveGestureCells,
+    applyActiveRiverGestureEdges: editorGestures.applyActiveRiverGestureEdges,
     canEdit,
     center: view.center,
     changeVisualZoom,
     featureVisibilityMode,
-    finishEditGesture,
-    hoveredHex,
+    finishEditGesture: () => {
+      editorGestures.finishEditGesture();
+      clearToolPreview(true);
+    },
+    hoveredHex: toolState.hoveredHex,
     interactionLabel,
     level: view.level,
-    onRenderWorldPatchApplied: acknowledgeRenderWorldPatch,
+    onRenderWorldPatchApplied: acknowledgePatch,
     previewOperations: toolPreviewOperations,
-    tokenPlacements,
-    onToolStep: canEdit ? changeToolByDelta : undefined,
+    tokenPlacements: activeTokenPlacements,
+    onToolStep: canEdit ? toolState.changeToolByDelta : undefined,
     role,
-    renderWorldPatch,
+    renderWorldPatch: activeRenderWorldPatch,
     setCenter,
-    setHoveredHex,
-    onGmTokenPlace: placeSelectedMapToken,
-    onGmTokenRemove: removeMapToken,
-    onPlayerTokenPlace: placePlayerToken,
-    showCoordinates,
-    startEditGesture,
-    startRiverGesture,
+    setHoveredHex: toolState.setHoveredHex,
+    onGmTokenPlace: tokenControls.placeSelectedMapToken,
+    onGmTokenRemove: tokenControls.removeMapToken,
+    onPlayerTokenPlace: tokenControls.placePlayerToken,
+    showCoordinates: toolState.showCoordinates,
+    startEditGesture: editorGestures.startEditGesture,
+    startRiverGesture: editorGestures.startRiverGesture,
     visualZoom,
     world,
   });
 
   return {
-    activeFeatureKind,
-    activeFactionId,
-    activeMode,
-    activeTokenUserId,
-    activeType,
+    activeFeatureKind: toolState.activeFeatureKind,
+    activeFactionId: toolState.activeFactionId,
+    activeMode: toolState.activeMode,
+    activeTokenUserId: tokenControls.activeTokenUserId,
+    activeType: toolState.activeType,
     factions,
-    hoveredHex,
-    tokenPlacements,
-    workspaceMembers,
-    playerTokenColor,
+    hoveredHex: toolState.hoveredHex,
+    tokenPlacements: activeTokenPlacements,
+    workspaceMembers: currentWorkspaceMembers,
+    playerTokenColor: tokenControls.playerTokenColor,
     appRef,
     canvasProps,
-    chooseFeatureKind,
+    chooseFeatureKind: toolState.chooseFeatureKind,
     deleteFaction,
     maxLevels,
     createFaction,
     renameFaction,
     recolorFaction,
-    selectFaction: setActiveFactionId,
-    clearMapTokenSelection,
-    selectWorkspaceMember,
-    setPlayerTokenColor,
-    setActiveMode: changeMode,
-    setActiveType,
-    syncStatus,
-    redoLastOperationBatch,
-    undoLastOperationBatch,
+    selectFaction: toolState.setActiveFactionId,
+    clearMapTokenSelection: tokenControls.clearMapTokenSelection,
+    selectWorkspaceMember: tokenControls.selectWorkspaceMember,
+    setPlayerTokenColor: tokenControls.setPlayerTokenColor,
+    setActiveMode: toolState.setActiveMode,
+    setActiveType: toolState.setActiveType,
+    syncStatus: currentSyncStatus,
+    redoLastOperationBatch: operationHistory.redoLastOperationBatch,
+    undoLastOperationBatch: operationHistory.undoLastOperationBatch,
     view,
     visualZoom,
   };

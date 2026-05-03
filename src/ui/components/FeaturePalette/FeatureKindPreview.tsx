@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { drawFeaturePreview } from "@/render/featurePreview";
 import type { FeatureKind } from "@/core/map/features";
-import { useMapAssetsVersion } from "@/editor/hooks/useMapAssetsVersion";
+import { useMapAssetsVersion } from "@/editor/hooks";
 
 type FeatureKindPreviewProps = {
   selected: boolean;

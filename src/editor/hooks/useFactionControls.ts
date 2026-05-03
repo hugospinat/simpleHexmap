@@ -5,7 +5,7 @@ import {
   commandRemoveFaction,
   commandUpdateFaction
 } from "@/core/map/commands/mapEditCommands";
-import type { EditorMode } from "@/editor/tools/editorTypes";
+import type { EditorMode } from "@/editor/tools";
 import type { Faction, MapState } from "@/core/map/world";
 
 const defaultFactionColors = [
