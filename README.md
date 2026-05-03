@@ -232,6 +232,11 @@ Design rules:
 - `POST /api/auth/login`
 - `POST /api/auth/logout`
 
+**Operational visibility**
+
+- `GET /healthz` — returns `{ status, startedAt, timestamp, uptimeMs }`
+- `GET /metrics` — returns lightweight JSON with process memory, HTTP limits, and active WebSocket session/client counts
+
 **Invitations**
 
 - `GET /api/invites/:inviteToken`
@@ -350,6 +355,7 @@ Authentication is cookie/session-based.
 - workspace invite links are stored as hashed tokens only, with expiry, usage caps, and explicit revocation
 - HTTP bodies are byte-limited before JSON parsing
 - WebSocket upgrades are capped globally and per map
+- unauthenticated `GET /healthz` and `GET /metrics` expose aggregate process and connection telemetry only; they do not include workspace or user data
 - HTTP request, header, and keep-alive timeouts are explicitly bounded
 
 Primary implementation seam: `server/src/repositories/mapVisibility.ts`
@@ -455,7 +461,6 @@ The scripts under `scripts/` authenticate, provision an isolated workspace and m
 - add login and signup rate limiting keyed by IP and username
 - add structured audit logs for auth failures, workspace invites, and map deletion
 - add per-user WebSocket operation throttling so one client cannot flood a room
-- expose lightweight health and metrics endpoints for deployment visibility
 
 **Features**
 

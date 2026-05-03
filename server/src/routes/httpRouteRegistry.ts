@@ -29,6 +29,7 @@ import {
   workspaceMembersPathPattern,
   workspacePathPattern,
 } from "./workspaceRoutes.js";
+import { handleMonitoringRequest } from "./monitoringRoutes.js";
 
 type RouteHandler = (
   request: unknown,
@@ -52,6 +53,7 @@ function createRegexRoute(
 }
 
 const httpRouteHandlers: RouteHandler[] = [
+  (request, response, url) => handleMonitoringRequest(request, response, url),
   (request, response, url) => handleAuthRequest(request, response, url),
   createRegexRoute(inviteJoinPathPattern, (request, response, match) =>
     handleInviteJoinRequest(request, response, match),

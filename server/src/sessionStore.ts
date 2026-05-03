@@ -3,6 +3,11 @@ import type { MapSession } from "./types.js";
 
 const sessionsByMapId = new Map<string, MapSession>();
 
+export type SessionStoreMetrics = {
+  activeSessions: number;
+  activeClients: number;
+};
+
 export function getOrCreateSession(mapId: string): MapSession {
   const existing = sessionsByMapId.get(mapId);
 
@@ -20,6 +25,19 @@ export function getOrCreateSession(mapId: string): MapSession {
 
 export function getSession(mapId: string): MapSession | null {
   return sessionsByMapId.get(mapId) ?? null;
+}
+
+export function getSessionStoreMetrics(): SessionStoreMetrics {
+  let activeClients = 0;
+
+  for (const session of sessionsByMapId.values()) {
+    activeClients += session.clients.size;
+  }
+
+  return {
+    activeSessions: sessionsByMapId.size,
+    activeClients,
+  };
 }
 
 export function removeClientFromSession(mapId: string, client: WebSocket): void {
