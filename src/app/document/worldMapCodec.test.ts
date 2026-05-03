@@ -23,9 +23,6 @@ function createSampleWorld(): MapState {
     kind: "city",
     hexId: "0,0",
     hidden: false,
-    labelRevealed: true,
-    gmLabel: "GM",
-    playerLabel: "City",
   });
   world = addRiverEdge(world, 3, {
     axial: { q: 0, r: 0 },

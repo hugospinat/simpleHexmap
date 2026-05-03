@@ -33,12 +33,7 @@ export type MapEditCommand =
       type: "updateFeature";
       level: number;
       featureId: string;
-      updates: Partial<
-        Pick<
-          Feature,
-          "gmLabel" | "hidden" | "kind" | "labelRevealed" | "playerLabel"
-        >
-      >;
+      updates: Partial<Pick<Feature, "hidden">>;
     }
   | { type: "setFeatureHidden"; featureId: string; hidden: boolean }
   | { type: "removeFeature"; featureId: string }

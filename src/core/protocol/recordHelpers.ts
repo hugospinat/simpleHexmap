@@ -95,20 +95,8 @@ export function removeFactionTerritory(
 export function sanitizeFeaturePatch(patch: FeaturePatch): FeaturePatch {
   const next: FeaturePatch = {};
 
-  if (typeof patch.kind === "string") {
-    next.kind = patch.kind;
-  }
   if (typeof patch.hidden === "boolean") {
     next.hidden = patch.hidden;
-  }
-  if (typeof patch.gmLabel === "string" || patch.gmLabel === null) {
-    next.gmLabel = patch.gmLabel;
-  }
-  if (typeof patch.playerLabel === "string" || patch.playerLabel === null) {
-    next.playerLabel = patch.playerLabel;
-  }
-  if (typeof patch.labelRevealed === "boolean") {
-    next.labelRevealed = patch.labelRevealed;
   }
 
   return next;

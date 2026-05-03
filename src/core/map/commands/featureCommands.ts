@@ -18,12 +18,10 @@ function featureToRecord(
   return {
     id: feature.id,
     kind: feature.kind,
+    featureLevel: feature.featureLevel,
     q: axial.q,
     r: axial.r,
     hidden: feature.hidden,
-    gmLabel: feature.gmLabel ?? null,
-    playerLabel: feature.playerLabel ?? null,
-    labelRevealed: feature.labelRevealed ?? false,
   };
 }
 
@@ -56,31 +54,12 @@ export function commandUpdateFeature(
   world: MapState,
   level: number,
   featureId: string,
-  updates: Partial<
-    Pick<
-      Feature,
-      "gmLabel" | "hidden" | "kind" | "labelRevealed" | "playerLabel"
-    >
-  >,
+  updates: Partial<Pick<Feature, "hidden">>,
 ): MapEditCommandResult {
   const patch: Extract<MapOperation, { type: "update_feature" }>["patch"] = {};
 
-  if (level === SOURCE_LEVEL && typeof updates.kind === "string") {
-    patch.kind = updates.kind;
-  }
   if (typeof updates.hidden === "boolean") {
     patch.hidden = updates.hidden;
-  }
-  if ("gmLabel" in updates) {
-    patch.gmLabel = updates.gmLabel?.trim() ? updates.gmLabel : null;
-  }
-  if ("playerLabel" in updates) {
-    patch.playerLabel = updates.playerLabel?.trim()
-      ? updates.playerLabel
-      : null;
-  }
-  if (typeof updates.labelRevealed === "boolean") {
-    patch.labelRevealed = updates.labelRevealed;
   }
 
   if (Object.keys(patch).length === 0) {

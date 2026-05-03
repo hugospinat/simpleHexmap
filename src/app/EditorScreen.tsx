@@ -1,6 +1,5 @@
 import { AppShell } from "./AppShell";
 import { BottomBar } from "@/ui/components/BottomBar/BottomBar";
-import { FeatureLabelPopup } from "@/ui/components/FeatureLabelPopup/FeatureLabelPopup";
 import { MapPane } from "@/ui/components/MapCanvas/MapPane";
 import { PlayerControls } from "@/ui/components/PlayerControls/PlayerControls";
 import { Sidebar } from "@/ui/components/Sidebar/Sidebar";
@@ -71,13 +70,6 @@ export function EditorScreen({ initialWorld, mapId, mapName, workspaceMembers, u
           onUndo={editor.undoLastOperationBatch}
         />
         <MapPane {...editor.canvasProps} />
-        {editor.selectedFeature ? (
-          <FeatureLabelPopup
-            feature={editor.selectedFeature}
-            onChange={editor.updateSelectedFeatureLabels}
-            onClose={editor.clearSelectedFeature}
-          />
-        ) : null}
         <BottomBar
           center={editor.view.center}
           hoveredHex={editor.hoveredHex}

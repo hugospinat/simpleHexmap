@@ -23,6 +23,7 @@ import type {
 import type {
   Feature,
   FeatureKind,
+  FeatureLevel,
   FeatureLevelMap,
 } from "@/core/map/features";
 import type { FactionLevelMap, FactionMap } from "@/core/map/factions";
@@ -61,12 +62,10 @@ function serializeFeatures(world: MapState): MapFeatureRecord[] {
       return {
         id: feature.id,
         kind: feature.kind,
+        featureLevel: feature.featureLevel,
         q: axial.q,
         r: axial.r,
         hidden: feature.hidden,
-        gmLabel: feature.gmLabel ?? null,
-        playerLabel: feature.playerLabel ?? null,
-        labelRevealed: feature.labelRevealed ?? false,
       };
     })
     .sort(
@@ -184,11 +183,9 @@ export function deserializeWorld(savedMap: MapDocument): MapState {
     features.set(hexId, {
       id: feature.id,
       kind: feature.kind as FeatureKind,
+      featureLevel: feature.featureLevel as FeatureLevel,
       hexId,
       hidden: feature.hidden,
-      gmLabel: feature.gmLabel ?? undefined,
-      playerLabel: feature.playerLabel ?? undefined,
-      labelRevealed: feature.labelRevealed,
     } satisfies Feature);
   }
 

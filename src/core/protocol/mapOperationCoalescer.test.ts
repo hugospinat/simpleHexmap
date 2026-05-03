@@ -34,12 +34,12 @@ describe("coalesceMapOperations", () => {
       {
         type: "update_feature",
         featureId: "feature-1",
-        patch: { gmLabel: "A" },
+        patch: { hidden: true },
       },
       {
         type: "update_feature",
         featureId: "feature-1",
-        patch: { gmLabel: "B", playerLabel: "C" },
+        patch: { hidden: false },
       },
       {
         type: "update_faction",
@@ -57,7 +57,7 @@ describe("coalesceMapOperations", () => {
       {
         type: "update_feature",
         featureId: "feature-1",
-        patch: { gmLabel: "B", playerLabel: "C" },
+        patch: { hidden: false },
       },
       {
         type: "update_faction",

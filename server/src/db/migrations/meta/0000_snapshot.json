@@ -1,5 +1,5 @@
 {
-  "id": "2ea3b94d-b827-4d59-ba6b-ba468b018d68",
+  "id": "3f163fcd-552a-446f-9bf6-5caf48377276",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -198,6 +198,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "feature_level": {
+          "name": "feature_level",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
         "q": {
           "name": "q",
           "type": "integer",
@@ -212,24 +218,6 @@
         },
         "hidden": {
           "name": "hidden",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "gm_label": {
-          "name": "gm_label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "player_label": {
-          "name": "player_label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "label_revealed": {
-          "name": "label_revealed",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true

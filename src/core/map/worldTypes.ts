@@ -1,8 +1,8 @@
-import type { Axial, HexId } from "@/core/geometry/hex";
-import type { FeatureLevelMap } from "@/core/map/features";
-import type { FactionLevelMap, FactionMap } from "@/core/map/factions";
-import type { RoadLevelMap } from "@/core/map/roads";
-import type { TerrainType } from "@/core/map/terrainTypes";
+import type { Axial, HexId } from "../geometry/hex.js";
+import type { FeatureLevelMap } from "./features.js";
+import type { FactionLevelMap, FactionMap } from "./factions.js";
+import type { RoadLevelMap } from "./roads.js";
+import type { TerrainType } from "./terrainTypes.js";
 
 export type { Axial, RoadLevelMap };
 export type { HexId };
@@ -35,7 +35,12 @@ export type MapState = {
   versions: MapStateVersions;
 };
 
-export type MapStateVersionKey = "terrain" | "features" | "factions" | "roads" | "rivers";
+export type MapStateVersionKey =
+  | "terrain"
+  | "features"
+  | "factions"
+  | "roads"
+  | "rivers";
 
 export type MapStateVersions = Record<MapStateVersionKey, number>;
 
@@ -45,13 +50,16 @@ export function createInitialMapStateVersions(): MapStateVersions {
     features: 0,
     factions: 0,
     roads: 0,
-    rivers: 0
+    rivers: 0,
   };
 }
 
-export function bumpMapStateVersion(world: MapState, key: MapStateVersionKey): MapStateVersions {
+export function bumpMapStateVersion(
+  world: MapState,
+  key: MapStateVersionKey,
+): MapStateVersions {
   return {
     ...(world.versions ?? createInitialMapStateVersions()),
-    [key]: (world.versions?.[key] ?? 0) + 1
+    [key]: (world.versions?.[key] ?? 0) + 1,
   };
 }

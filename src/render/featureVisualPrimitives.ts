@@ -13,15 +13,15 @@ import { getLoadedImage } from "./assetImages";
 import { drawMaskedHexImage } from "./maskedHexSprites";
 
 export const featureGlyphs: Record<FeatureKind, string> = {
+  camp: "^",
+  citadel: "#",
   city: "o",
+  donjon: "D",
+  megadungeon: "M",
   capital: "*",
   village: "^",
   fort: "[]",
   ruin: "x",
-  tower: "|",
-  dungeon: "[]",
-  marker: "+",
-  label: "Aa",
 };
 
 export const featureImagePadding = 0.08;

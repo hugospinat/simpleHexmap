@@ -19,12 +19,10 @@ CREATE TABLE "features" (
 	"map_id" uuid NOT NULL,
 	"id" text NOT NULL,
 	"kind" text NOT NULL,
+	"feature_level" integer NOT NULL,
 	"q" integer NOT NULL,
 	"r" integer NOT NULL,
 	"hidden" boolean NOT NULL,
-	"gm_label" text,
-	"player_label" text,
-	"label_revealed" boolean NOT NULL,
 	"created_at" timestamp with time zone NOT NULL,
 	"updated_at" timestamp with time zone NOT NULL,
 	CONSTRAINT "features_map_id_id_pk" PRIMARY KEY("map_id","id")

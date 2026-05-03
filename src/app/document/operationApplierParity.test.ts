@@ -31,16 +31,12 @@ function createSampleWorld(): MapState {
     kind: "city",
     hexId: "0,0",
     hidden: false,
-    labelRevealed: true,
-    gmLabel: "GM",
-    playerLabel: "City",
   });
   world = addFeature(world, 3, {
     id: "feature-2",
     kind: "village",
     hexId: "1,0",
     hidden: false,
-    labelRevealed: false,
   });
   world = addRiverEdge(world, 3, {
     axial: { q: 0, r: 0 },
@@ -104,30 +100,17 @@ describe("operation applier parity", () => {
       type: "add_feature",
       feature: {
         id: "feature-new",
-        kind: "tower",
+        kind: "citadel",
+        featureLevel: 3,
         q: 2,
         r: 0,
         hidden: false,
-        gmLabel: "Watch",
-        playerLabel: null,
-        labelRevealed: false,
       },
     });
     expectDirectParity(world, {
       type: "update_feature",
       featureId: "feature-1",
       patch: { hidden: true },
-    });
-    expectDirectParity(world, {
-      type: "update_feature",
-      featureId: "feature-1",
-      patch: {
-        kind: "capital",
-        hidden: true,
-        gmLabel: null,
-        playerLabel: "Capital",
-        labelRevealed: false,
-      },
     });
     expectDirectParity(world, {
       type: "remove_feature",
@@ -199,13 +182,11 @@ describe("operation applier parity", () => {
         type: "add_feature",
         feature: {
           id: "feature-seq",
-          kind: "marker",
+          kind: "camp",
+          featureLevel: 1,
           q: 2,
           r: -1,
           hidden: false,
-          gmLabel: "A",
-          playerLabel: null,
-          labelRevealed: false,
         },
       },
       {
@@ -260,19 +241,17 @@ describe("operation applier parity", () => {
         type: "add_feature",
         feature: {
           id: "feature-seq",
-          kind: "marker",
+          kind: "camp",
+          featureLevel: 1,
           q: 2,
           r: -1,
           hidden: false,
-          gmLabel: "A",
-          playerLabel: null,
-          labelRevealed: false,
         },
       },
       {
         type: "update_feature",
         featureId: "feature-seq",
-        patch: { gmLabel: "B" },
+        patch: { hidden: true },
       },
       {
         type: "set_faction_territories",

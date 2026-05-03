@@ -826,6 +826,18 @@ input::placeholder {
   grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
+.workspace-invite-create-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.workspace-invite-create-row input {
+  min-width: 0;
+}
+
+.workspace-invite-link-block {
+  padding-top: 8px;
+}
+
 .workspace-row-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

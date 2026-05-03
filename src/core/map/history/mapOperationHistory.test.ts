@@ -113,9 +113,6 @@ describe("map operation history", () => {
       kind: "city",
       hexId: "0,0",
       hidden: true,
-      gmLabel: "GM",
-      playerLabel: "Player",
-      labelRevealed: true,
     });
 
     expectUndoRestoresWorld(worldBefore, [
@@ -196,7 +193,6 @@ describe("map operation history", () => {
         type: "update_feature",
         featureId: "feature-1",
         patch: {
-          gmLabel: "New label",
           hidden: true,
         },
       },

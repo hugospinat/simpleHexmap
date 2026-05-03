@@ -27,6 +27,7 @@ import {
   updateFaction,
   updateFeature,
   type FeatureKind,
+  type FeatureLevel,
   type LevelMap,
   type TerrainType,
   type MapState,
@@ -64,11 +65,9 @@ function applyFeatureRecordToWorld(
   return addFeature(world, SOURCE_LEVEL, {
     id: feature.id,
     kind: feature.kind as FeatureKind,
+    featureLevel: feature.featureLevel as FeatureLevel,
     hexId: hexKey({ q: feature.q, r: feature.r }),
     hidden: feature.hidden,
-    gmLabel: feature.gmLabel ?? undefined,
-    playerLabel: feature.playerLabel ?? undefined,
-    labelRevealed: feature.labelRevealed,
   });
 }
 
@@ -280,23 +279,8 @@ function applyFeaturePatchToWorld(
   const sanitized = sanitizeFeaturePatch(patch);
   const updates: Parameters<typeof updateFeature>[3] = {};
 
-  if (typeof sanitized.kind === "string") {
-    updates.kind = sanitized.kind as FeatureKind;
-  }
   if (typeof sanitized.hidden === "boolean") {
     updates.hidden = sanitized.hidden;
-  }
-  if (typeof sanitized.gmLabel === "string" || sanitized.gmLabel === null) {
-    updates.gmLabel = sanitized.gmLabel ?? undefined;
-  }
-  if (
-    typeof sanitized.playerLabel === "string" ||
-    sanitized.playerLabel === null
-  ) {
-    updates.playerLabel = sanitized.playerLabel ?? undefined;
-  }
-  if (typeof sanitized.labelRevealed === "boolean") {
-    updates.labelRevealed = sanitized.labelRevealed;
   }
 
   return updateFeature(world, SOURCE_LEVEL, featureId, updates);

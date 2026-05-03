@@ -11,12 +11,10 @@ export type MapTileRecord = {
 export type MapFeatureRecord = {
   id: string;
   kind: string;
+  featureLevel: 1 | 2 | 3;
   q: number;
   r: number;
   hidden: boolean;
-  gmLabel: string | null;
-  playerLabel: string | null;
-  labelRevealed: boolean;
 };
 
 export type MapRiverRecord = {
@@ -83,12 +81,7 @@ export type MapTokenOperation =
   | { type: "remove_map_token"; userId: string }
   | { type: "set_map_token_color"; userId: string; color: string };
 
-export type FeaturePatch = Partial<
-  Pick<
-    MapFeatureRecord,
-    "gmLabel" | "hidden" | "kind" | "labelRevealed" | "playerLabel"
-  >
->;
+export type FeaturePatch = Partial<Pick<MapFeatureRecord, "hidden">>;
 
 export type FactionPatch = Partial<Pick<MapFactionRecord, "color" | "name">>;
 

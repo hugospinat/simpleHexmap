@@ -56,15 +56,10 @@ export function filterMapDocumentForPlayer(document: MapDocument): MapDocument {
   return {
     ...document,
     tiles,
-    features: document.features
-      .filter(
-        (feature) =>
-          visibleCellKeys.has(cellKey(feature)) && feature.hidden === false,
-      )
-      .map((feature) => ({
-        ...feature,
-        gmLabel: null,
-      })),
+    features: document.features.filter(
+      (feature) =>
+        visibleCellKeys.has(cellKey(feature)) && feature.hidden === false,
+    ),
     rivers: document.rivers.filter((river) => {
       if (!visibleCellKeys.has(cellKey(river))) {
         return false;

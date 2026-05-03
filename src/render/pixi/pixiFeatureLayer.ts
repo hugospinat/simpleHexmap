@@ -1,28 +1,20 @@
 import { Text, TextStyle, type Container, type Texture } from "pixi.js";
 import {
-  getFeatureLabel,
   isFeatureVisible,
-  type FeatureVisibilityMode
+  type FeatureVisibilityMode,
 } from "@/core/map/features";
 import { featureGlyphs } from "@/render/featureVisualPrimitives";
 import { scaleWorldLength } from "./pixiLayers";
-import type { PixiAssetCatalog, PixiObjectPools, PixiSceneRenderFrame } from "./pixiTypes";
+import type {
+  PixiAssetCatalog,
+  PixiObjectPools,
+  PixiSceneRenderFrame,
+} from "./pixiTypes";
 
 type PixiFeatureStats = {
   features: number;
   hexes: number;
 };
-
-const featureLabelStyle = new TextStyle({
-  align: "center",
-  fill: "#111111",
-  fontFamily: "Georgia, Times New Roman, serif",
-  fontSize: 12,
-  stroke: {
-    color: "#ffffff",
-    width: 2.2
-  }
-});
 
 const featureGlyphStyle = new TextStyle({
   align: "center",
@@ -31,25 +23,26 @@ const featureGlyphStyle = new TextStyle({
   fontSize: 20,
   stroke: {
     color: "#ffffff",
-    width: 2.2
-  }
+    width: 2.2,
+  },
 });
 
 function updateText(text: Text, value: string, fontSize: number): void {
-  const nextStyle = fontSize >= 20 ? featureGlyphStyle : featureLabelStyle;
-
   if (text.text !== value) {
     text.text = value;
   }
 
-  if (text.style !== nextStyle) {
-    text.style = nextStyle;
+  if (text.style !== featureGlyphStyle) {
+    text.style = featureGlyphStyle;
   }
 
   text.anchor.set(0.5);
 }
 
-function getFeatureTexture(kind: string, assets: PixiAssetCatalog): Texture | null {
+function getFeatureTexture(
+  kind: string,
+  assets: PixiAssetCatalog,
+): Texture | null {
   return assets.featureTextures.get(kind) ?? null;
 }
 
@@ -60,7 +53,7 @@ export function drawPixiFeatureLayer(
   parent: Container,
   excludedHexes: ReadonlySet<string>,
   visibilityMode: FeatureVisibilityMode,
-  emphasizeHidden: boolean
+  emphasizeHidden: boolean,
 ): PixiFeatureStats {
   const visibleSpriteKeys = new Set<string>();
   const visibleTextKeys = new Set<string>();
@@ -71,27 +64,18 @@ export function drawPixiFeatureLayer(
   for (const cell of frame.visibleTerrainCells) {
     const feature = cell.feature;
 
-    if (!feature || excludedHexes.has(cell.key) || !isFeatureVisible(feature, visibilityMode)) {
+    if (
+      !feature ||
+      excludedHexes.has(cell.key) ||
+      !isFeatureVisible(feature, visibilityMode)
+    ) {
       continue;
     }
 
     visibleHexes += 1;
     visibleFeatures += 1;
-    const alpha = visibilityMode === "gm" && emphasizeHidden && feature.hidden ? 0.5 : 1;
-    const label = getFeatureLabel(feature, visibilityMode);
-
-    if (feature.kind === "label") {
-      if (label) {
-        const labelKey = `feature-label:${cell.key}`;
-        visibleTextKeys.add(labelKey);
-        const text = pools.labelTexts.acquire(labelKey, parent);
-        updateText(text, label, 12);
-        text.position.set(cell.worldCenter.x, cell.worldCenter.y);
-        text.scale.set(featureScale);
-        text.alpha = alpha;
-      }
-      continue;
-    }
+    const alpha =
+      visibilityMode === "gm" && emphasizeHidden && feature.hidden ? 0.5 : 1;
 
     const texture = getFeatureTexture(feature.kind, assets);
 
@@ -115,16 +99,6 @@ export function drawPixiFeatureLayer(
       glyph.scale.set(featureScale);
       glyph.alpha = alpha;
     }
-
-    if (label) {
-      const labelKey = `feature-label:${cell.key}`;
-      visibleTextKeys.add(labelKey);
-      const text = pools.labelTexts.acquire(labelKey, parent);
-      updateText(text, label, 12);
-      text.position.set(cell.worldCenter.x, cell.worldCenter.y + 16 * featureScale);
-      text.scale.set(featureScale);
-      text.alpha = alpha;
-    }
   }
 
   pools.featureSprites.releaseUnused(visibleSpriteKeys);
@@ -132,6 +106,6 @@ export function drawPixiFeatureLayer(
 
   return {
     features: visibleFeatures,
-    hexes: visibleHexes
+    hexes: visibleHexes,
   };
 }
