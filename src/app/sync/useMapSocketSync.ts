@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { deserializeWorld } from "@/app/document/worldMapCodec";
 import type {
   MapTokenUpdateRequest,
   MapOperationMessage,
@@ -22,17 +21,14 @@ import {
   enqueueSessionOperation,
   getSessionUnsentOperationBatches,
   isSessionReadyForSend,
-  markSessionError,
   markSessionOperationsSent,
   markSessionSocketClosed,
   markSessionSocketOpened,
-  resetSessionAfterSyncError,
-  resetSessionFromSnapshot,
   type MapSyncSessionStatus,
 } from "@/app/sync/mapSyncSession";
-import { parseMapSyncSocketMessage } from "@/app/sync/mapSyncMessages";
+import { startMapSocketLifecycle } from "@/app/sync/mapSocketLifecycle";
+import { handleParsedMapSocketMessage } from "@/app/sync/mapSocketMessageHandler";
 import {
-  createMapSocketTransport,
   type MapSocketTransport,
 } from "@/app/sync/mapSocketTransport";
 import {
@@ -330,218 +326,42 @@ export function useMapSocketSync({
     const socketUrl = buildWebSocketUrl(
       `/api/maps/${encodeURIComponent(mapId)}/ws`,
     );
-    let disposed = false;
-    let reconnectTimer: number | null = null;
-    let reconnectAttempt = 0;
-    let activeTransport: MapSocketTransport | null = null;
-
-    const clearReconnectTimer = () => {
-      if (reconnectTimer !== null) {
-        window.clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-      }
-    };
-
-    const scheduleReconnect = () => {
-      if (disposed) {
-        return;
-      }
-
-      const delayMs = Math.min(5000, 250 * 2 ** Math.min(reconnectAttempt, 4));
-      reconnectAttempt += 1;
-      clearReconnectTimer();
-      setSyncStatus("connecting");
-      logMapSync("reconnect_scheduled", {
-        delayMs,
-        mapId,
-        reconnectAttempt,
-        socketUrl,
-      });
-      reconnectTimer = window.setTimeout(connect, delayMs);
-    };
-
-    const connect = () => {
-      if (disposed) {
-        return;
-      }
-
-      if (
-        activeTransport &&
-        (activeTransport.socket.readyState === WebSocket.CONNECTING ||
-          activeTransport.socket.readyState === WebSocket.OPEN)
-      ) {
-        return;
-      }
-
-      const transport = createMapSocketTransport(socketUrl);
-      const socket = transport.socket;
-      activeTransport = transport;
-      transportRef.current = transport;
-      setSyncStatus("connecting");
-
-      socket.onopen = () => {
-        if (disposed || transportRef.current !== transport) {
-          return;
-        }
-
-        reconnectAttempt = 0;
-        markSessionSocketOpened(sessionRef.current);
-        publishSessionState();
-        logMapSync("open", { mapId, socketUrl });
-      };
-
-      socket.onmessage = (event) => {
-        if (disposed || transportRef.current !== transport) {
-          return;
-        }
-
-        const parsed = parseMapSyncSocketMessage(event.data);
-
-        if (parsed.type === "sync_error") {
-          console.error("[MapSync] sync_error", parsed.payload);
-          resetSessionAfterSyncError(sessionRef.current);
-          publishRenderWorldPatch({ type: "snapshot" });
-          clearPreview();
-          onAuthoritativeResync?.();
-          publishSessionState();
-          // Browsers only allow client close codes 1000 or 3000-4999.
-          transport.close(4001, "sync_error_resync");
-          return;
-        }
-
-        if (parsed.type === "sync_snapshot") {
-          const payload = parsed.payload;
-
-          if (
-            !Number.isInteger(payload.lastSequence) ||
-            payload.lastSequence < 0
-          ) {
-            console.error("[MapSync] invalid_snapshot_sequence", payload);
-            markSessionError(sessionRef.current);
-            publishSessionState();
-            return;
-          }
-
-          try {
-            const snapshotWorld = deserializeWorld(payload.document);
-            resetSessionFromSnapshot(
-              sessionRef.current,
-              snapshotWorld,
-              payload.lastSequence,
-            );
-            confirmedTokenPlacementsRef.current = payload.tokenPlacements;
-            confirmedWorkspaceMembersRef.current = payload.workspaceMembers;
-            setTokenPlacements(payload.tokenPlacements);
-            setWorkspaceMembers(payload.workspaceMembers);
-            publishRenderWorldPatch({ type: "snapshot" });
-            clearPreview();
-            onAuthoritativeResync?.();
-            publishSessionState();
-            logMapSync("snapshot_loaded", {
-              lastSequence: payload.lastSequence,
-              mapId,
-              pendingLocal: sessionRef.current.pendingOperations.length,
-            });
-            flushOperations();
-          } catch (error) {
-            console.error("[MapSync] invalid_snapshot", error);
-            markSessionError(sessionRef.current);
-            publishSessionState();
-          }
-          return;
-        }
-
-        if (parsed.type === "map_token_updated") {
-          const nextPlacements = applyMapTokenOperation(
-            confirmedTokenPlacementsRef.current,
-            parsed.payload.operation,
-          );
-          confirmedTokenPlacementsRef.current = nextPlacements;
-          const nextMembers = applyTokenOperationToWorkspaceMembers(
-            confirmedWorkspaceMembersRef.current,
-            parsed.payload.operation,
-          );
-          confirmedWorkspaceMembersRef.current = nextMembers;
-          setTokenPlacements(nextPlacements);
-          setWorkspaceMembers(nextMembers);
-          return;
-        }
-
-        if (parsed.type === "map_token_error") {
-          console.warn("[MapSync] token_error", parsed.payload);
-          setTokenPlacements(confirmedTokenPlacementsRef.current);
-          setWorkspaceMembers(confirmedWorkspaceMembersRef.current);
-          return;
-        }
-
-        if (parsed.type === "map_operation_applied") {
-          enqueueAppliedOperation(parsed.payload);
-          applyQueuedReceivedOperations();
-          return;
-        }
-
-        if (parsed.type === "unknown") {
-          logMapSync("unknown_message_ignored", { mapId });
-        }
-
-        if (parsed.type === "invalid_message") {
-          console.error("[MapSync] invalid_message", {
-            error: parsed.error,
-            mapId,
-          });
-          markSessionError(sessionRef.current);
-          publishSessionState();
-        }
-
-        if (parsed.type === "invalid_json") {
-          console.error("[MapSync] invalid_json", { mapId });
-          markSessionError(sessionRef.current);
-          publishSessionState();
-        }
-      };
-
-      socket.onerror = (event) => {
-        if (!disposed && transportRef.current === transport) {
-          console.error("[MapSync] error", { event, mapId, socketUrl });
-        }
-      };
-
-      socket.onclose = (event) => {
-        const isCurrentSocket = transportRef.current === transport;
-
-        if (isCurrentSocket) {
-          transportRef.current = null;
-        }
-
-        if (activeTransport === transport) {
-          activeTransport = null;
-        }
-
-        if (disposed || !isCurrentSocket) {
-          return;
-        }
-
-        console.warn("[MapSync] close", {
-          code: event.code,
-          mapId,
-          reason: event.reason,
-          socketUrl,
-          wasClean: event.wasClean,
-        });
+    const stopSocketLifecycle = startMapSocketLifecycle({
+      mapId,
+      onClose: () => {
         markSessionSocketClosed(sessionRef.current);
         publishSessionState();
-        scheduleReconnect();
-      };
-    };
-
-    reconnectTimer = window.setTimeout(connect, 0);
+      },
+      onMessage: (parsed, transport) => {
+        handleParsedMapSocketMessage(parsed, {
+          applyQueuedReceivedOperations,
+          clearPreview,
+          confirmedTokenPlacementsRef,
+          confirmedWorkspaceMembersRef,
+          enqueueAppliedOperation,
+          flushOperations,
+          mapId,
+          onAuthoritativeResync,
+          publishRenderWorldPatch,
+          publishSessionState,
+          sessionRef,
+          setTokenPlacements,
+          setWorkspaceMembers,
+          transport,
+        });
+      },
+      onOpen: () => {
+        setSyncStatus("connecting");
+        markSessionSocketOpened(sessionRef.current);
+        publishSessionState();
+      },
+      socketUrl,
+      transportRef,
+    });
 
     return () => {
-      disposed = true;
-      clearReconnectTimer();
       clearMapSyncSession(sessionRef.current);
-      activeTransport?.close();
-      transportRef.current = null;
+      stopSocketLifecycle();
     };
   }, [
     applyQueuedReceivedOperations,

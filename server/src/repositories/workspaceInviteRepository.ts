@@ -26,6 +26,11 @@ import {
   type WorkspaceSummary,
 } from "./workspaceRepository.js";
 import { serverLimits } from "../serverConfig.js";
+import {
+  logWorkspaceInviteCreatedAudit,
+  logWorkspaceInviteJoinedAudit,
+  logWorkspaceInviteRevokedAudit,
+} from "../services/auditLog.js";
 
 type InviteRow = typeof workspaceInvites.$inferSelect;
 
@@ -167,8 +172,12 @@ export async function createWorkspaceInvite(input: {
   });
   await touchWorkspaceUpdatedAt(input.workspaceId);
 
-  console.info("[workspace_invites] created", {
+  logWorkspaceInviteCreatedAudit({
+    actorUserId: input.actorUserId,
+    expiresAt: expiresAt.toISOString(),
     inviteId,
+    maxUses,
+    role: inviteRole,
     workspaceId: input.workspaceId,
   });
 
@@ -219,7 +228,8 @@ export async function revokeWorkspaceInvite(input: {
 
   await touchWorkspaceUpdatedAt(input.workspaceId);
 
-  console.info("[workspace_invites] revoked", {
+  logWorkspaceInviteRevokedAudit({
+    actorUserId: input.actorUserId,
     inviteId: input.inviteId,
     workspaceId: input.workspaceId,
   });
@@ -308,8 +318,9 @@ export async function joinWorkspaceByInviteToken(input: {
     input.userId,
   );
 
-  console.info("[workspace_invites] joined", {
+  logWorkspaceInviteJoinedAudit({
     alreadyMember: result.alreadyMember,
+    inviteId: inviteRow.invite.id,
     userId: input.userId,
     workspaceId: inviteRow.invite.workspaceId,
   });

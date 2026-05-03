@@ -1,4 +1,5 @@
 import type { WebSocket } from "ws";
+import type { MemoryRateLimiter } from "./security/rateLimiter.js";
 import type {
   MapDocument,
   MapOperation,
@@ -57,6 +58,7 @@ export type MapSessionClient = {
 export type MapSession = {
   mapId: string;
   clients: Map<WebSocket, MapSessionClient>;
+  operationRateLimiter: MemoryRateLimiter;
 };
 
 export type { UserRecord, WorkspaceRole };

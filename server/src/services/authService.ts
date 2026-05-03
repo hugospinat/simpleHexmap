@@ -22,12 +22,16 @@ import type { UserRecord } from "../../../src/core/auth/authTypes.js";
 import { signupBodySchema, loginBodySchema } from "../validation/httpSchemas.js";
 import { AuthRequiredError } from "../errors.js";
 import { getClientIp } from "../security/requestSecurity.js";
-import { MemoryRateLimiter } from "../security/rateLimiter.js";
-import { serverLimits } from "../serverConfig.js";
+import {
+  createServerRateLimiter,
+  serverLimits,
+  serverRuntimeConfig,
+} from "../serverConfig.js";
+import { logAuthFailureAudit } from "./auditLog.js";
 
 const sessionCookieName = "simplehex_session";
 const passwordKeyLength = 64;
-const authRateLimiter = new MemoryRateLimiter();
+const authRateLimiter = createServerRateLimiter();
 let lastSessionCleanupAt = 0;
 
 function scryptAsync(password: string, salt: string, keyLength: number, options: ScryptOptions): Promise<Buffer> {
@@ -52,18 +56,43 @@ function hashSessionToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-function assertAuthRateLimit(request: IncomingMessage, action: "login" | "signup"): void {
-  const result = authRateLimiter.consume(
-    `${action}:${getClientIp(request)}`,
+export function buildAuthRateLimitKeys(
+  request: IncomingMessage,
+  action: "login" | "signup",
+  input: unknown,
+): string[] {
+  const ipKey = `${action}:ip:${getClientIp(request)}`;
+  const username =
+    input && typeof input === "object" && "username" in input
+      ? normalizeUsername(sanitizeUsername(input.username))
+      : "";
+  const usernameKey = `${action}:username:${username || "unknown"}`;
+
+  return [ipKey, usernameKey];
+}
+
+function assertAuthRateLimit(
+  request: IncomingMessage,
+  action: "login" | "signup",
+  input: unknown,
+): void {
+  const username =
+    input && typeof input === "object" && "username" in input
+      ? normalizeUsername(sanitizeUsername(input.username))
+      : "unknown";
+  const result = authRateLimiter.consumeMany(
+    buildAuthRateLimitKeys(request, action, input),
     serverLimits.authRateLimitMaxAttempts,
     serverLimits.authRateLimitWindowMs,
   );
 
   if (!result.allowed) {
-    console.warn("[auth] rate_limited", {
+    logAuthFailureAudit({
       action,
       ip: getClientIp(request),
+      reason: "rate_limited",
       retryAfterMs: result.retryAfterMs,
+      username,
     });
     throw new Error("Too many requests.");
   }
@@ -134,7 +163,7 @@ function appendSetCookie(response: ServerResponse, cookie: string): void {
 }
 
 function isSecureCookie(): boolean {
-  return process.env.NODE_ENV === "production";
+  return serverRuntimeConfig.secureCookies;
 }
 
 function createSessionToken(): string {
@@ -266,7 +295,7 @@ export async function signupUserFromRequest(
   input: unknown,
   response: ServerResponse,
 ): Promise<UserRecord> {
-  assertAuthRateLimit(request, "signup");
+  assertAuthRateLimit(request, "signup", input);
   return signupUser(input, response);
 }
 
@@ -297,14 +326,22 @@ export async function loginUserFromRequest(
   input: unknown,
   response: ServerResponse,
 ): Promise<UserRecord> {
-  assertAuthRateLimit(request, "login");
+  assertAuthRateLimit(request, "login", input);
 
   try {
     return await loginUser(input, response);
   } catch (error) {
     if (error instanceof Error && error.message === "Invalid username or password.") {
-      console.warn("[auth] login_failed", {
+      const username =
+        input && typeof input === "object" && "username" in input
+          ? normalizeUsername(sanitizeUsername(input.username))
+          : "unknown";
+
+      logAuthFailureAudit({
+        action: "login",
         ip: getClientIp(request),
+        reason: "invalid_credentials",
+        username,
       });
     }
 

@@ -1,15 +1,10 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { serverDatabaseConfig } from "../serverConfig.js";
 import * as schema from "./schema.js";
 
-const defaultDatabaseUrl = "postgres://simplehex:simplehex@localhost:5432/simplehex";
-
-export function getDatabaseUrl(): string {
-  return process.env.DATABASE_URL?.trim() || defaultDatabaseUrl;
-}
-
-export const postgresClient = postgres(getDatabaseUrl(), {
-  max: Number(process.env.DB_POOL_SIZE ?? 10)
+export const postgresClient = postgres(serverDatabaseConfig.url, {
+  max: serverDatabaseConfig.poolSize,
 });
 
 export const db = drizzle(postgresClient, { schema });

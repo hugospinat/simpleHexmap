@@ -8,7 +8,7 @@ import {
 } from "../repositories/mapRepository.js";
 import { filterMapRecordForVisibilityMode } from "../repositories/mapVisibility.js";
 import { listWorkspaceMaps } from "../repositories/workspaceRepository.js";
-import { closeSession } from "../sessionStore.js";
+import { closeSession } from "../services/realtime/index.js";
 import {
   defaultMapContent,
   parseContentInput,

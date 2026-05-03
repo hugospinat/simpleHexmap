@@ -21,6 +21,7 @@ import type {
   WorkspaceRole,
 } from "../../../src/core/auth/authTypes.js";
 import { ForbiddenError, NotFoundError } from "../errors.js";
+import { logMapDeletedAudit } from "../services/auditLog.js";
 
 async function getMapRowForUser(mapId: string, userId: UserId) {
   const rows = await db
@@ -166,6 +167,15 @@ export async function deleteWorkspaceMap(input: {
     .delete(maps)
     .where(eq(maps.id, input.mapId))
     .returning({ id: maps.id });
+
+  if (deleted.length > 0) {
+    logMapDeletedAudit({
+      actorUserId: input.actorUserId,
+      mapId: map.id,
+      mapName: map.name,
+      workspaceId: map.workspaceId,
+    });
+  }
 
   return deleted.length > 0;
 }

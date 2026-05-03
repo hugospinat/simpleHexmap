@@ -1,16 +1,15 @@
 import { performance } from "node:perf_hooks";
 import { WebSocket } from "ws";
-import { broadcastRoleAwareSessionPayloads } from "./sessionDelivery.js";
+import {
+  broadcastRoleAwareSessionPayloads,
+  getOrCreateSession,
+} from "./services/realtime/index.js";
+import { shouldLogServerPerf } from "./serverConfig.js";
 import { sendSyncSnapshot } from "./syncSnapshotService.js";
-import { getOrCreateSession } from "./sessionStore.js";
 import { assertActorCanEditMap, getWorkspaceRecordForActor } from "./services/mapAccessService.js";
 import { persistOperationBatch } from "./services/operationBatchPersistence.js";
 import type { MapRecord, OperationEnvelope } from "./types.js";
 import type { MapOperation } from "../../src/core/protocol/index.js";
-
-function shouldLogServerPerf(durationMs: number): boolean {
-  return process.env.HEXMAP_PERF_DEBUG === "1" || durationMs >= 16;
-}
 
 function logServerPerf(
   event: string,

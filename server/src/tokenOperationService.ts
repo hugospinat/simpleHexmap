@@ -6,8 +6,10 @@ import {
   getMapRoleForUser,
 } from "./repositories/mapRepository.js";
 import { canOpenAsGm } from "./repositories/workspaceRepository.js";
-import { getOrCreateSession } from "./sessionStore.js";
-import { broadcastRoleAwareSessionPayloads } from "./sessionDelivery.js";
+import {
+  broadcastRoleAwareSessionPayloads,
+  getOrCreateSession,
+} from "./services/realtime/index.js";
 import { sendSyncSnapshot } from "./syncSnapshotService.js";
 import {
   validateMapTokenOperation,

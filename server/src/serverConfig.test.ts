@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { resolveServerLimits } from "./serverConfig.js";
+import {
+  createServerRateLimiter,
+  resolveServerDatabaseConfig,
+  resolveServerLimits,
+  resolveServerRuntimeConfig,
+  shouldLogServerPerf,
+} from "./serverConfig.js";
 
 describe("serverConfig", () => {
   it("returns the low-resource defaults", () => {
@@ -26,6 +32,8 @@ describe("serverConfig", () => {
       workspaceInviteDefaultMaxUses: 1,
       workspaceInviteMaxExpiresDays: 30,
       workspaceInviteMaxUses: 100,
+      wsOperationRateLimitMaxAttempts: 120,
+      wsOperationRateLimitWindowMs: 1_000,
       wsUpgradeRateLimitMaxAttempts: 60,
       wsUpgradeRateLimitWindowMs: 60_000,
     });
@@ -52,6 +60,8 @@ describe("serverConfig", () => {
       HEXMAP_INVITE_DEFAULT_MAX_USES: "3",
       HEXMAP_INVITE_MAX_EXPIRES_DAYS: "44",
       HEXMAP_INVITE_MAX_USES: "55",
+      HEXMAP_WS_OPERATION_RATE_LIMIT_MAX_ATTEMPTS: "77",
+      HEXMAP_WS_OPERATION_RATE_LIMIT_WINDOW_MS: "1800",
       HEXMAP_WS_UPGRADE_RATE_LIMIT_MAX_ATTEMPTS: "66",
       HEXMAP_WS_UPGRADE_RATE_LIMIT_WINDOW_MS: "77000",
       PORT: "9999",
@@ -78,6 +88,8 @@ describe("serverConfig", () => {
       workspaceInviteDefaultMaxUses: 3,
       workspaceInviteMaxExpiresDays: 44,
       workspaceInviteMaxUses: 55,
+      wsOperationRateLimitMaxAttempts: 77,
+      wsOperationRateLimitWindowMs: 1_800,
       wsUpgradeRateLimitMaxAttempts: 66,
       wsUpgradeRateLimitWindowMs: 77_000,
     });
@@ -104,11 +116,59 @@ describe("serverConfig", () => {
       HEXMAP_INVITE_DEFAULT_MAX_USES: "0",
       HEXMAP_INVITE_MAX_EXPIRES_DAYS: "",
       HEXMAP_INVITE_MAX_USES: "NaN",
+      HEXMAP_WS_OPERATION_RATE_LIMIT_MAX_ATTEMPTS: "bad",
+      HEXMAP_WS_OPERATION_RATE_LIMIT_WINDOW_MS: "-1",
       HEXMAP_WS_UPGRADE_RATE_LIMIT_MAX_ATTEMPTS: "0",
       HEXMAP_WS_UPGRADE_RATE_LIMIT_WINDOW_MS: "wat",
       PORT: "abc",
     });
 
     expect(limits).toEqual(resolveServerLimits({}));
+  });
+
+  it("centralizes database and runtime configuration", () => {
+    expect(
+      resolveServerDatabaseConfig({
+        DATABASE_URL: "postgres://db.example.com/simplehex",
+        DB_POOL_SIZE: "14",
+      }),
+    ).toEqual({
+      poolSize: 14,
+      url: "postgres://db.example.com/simplehex",
+    });
+
+    expect(
+      resolveServerRuntimeConfig({
+        HEXMAP_PERF_DEBUG: "1",
+        HEXMAP_PERF_SLOW_OPERATION_MS: "24",
+        NODE_ENV: "production",
+      }),
+    ).toEqual({
+      isProduction: true,
+      perfDebug: true,
+      perfSlowOperationThresholdMs: 24,
+      secureCookies: true,
+    });
+  });
+
+  it("provides shared helpers for rate limiters and perf logging", () => {
+    const limiter = createServerRateLimiter(() => 1000);
+
+    expect(limiter.consume("key", 1, 1000)).toMatchObject({
+      allowed: true,
+      remaining: 0,
+    });
+    expect(shouldLogServerPerf(8, {
+      isProduction: false,
+      perfDebug: false,
+      perfSlowOperationThresholdMs: 16,
+      secureCookies: false,
+    })).toBe(false);
+    expect(shouldLogServerPerf(8, {
+      isProduction: false,
+      perfDebug: true,
+      perfSlowOperationThresholdMs: 16,
+      secureCookies: false,
+    })).toBe(true);
   });
 });

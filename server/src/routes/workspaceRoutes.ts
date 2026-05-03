@@ -12,7 +12,7 @@ import {
   renameWorkspace,
   updateWorkspaceMemberRole,
 } from "../repositories/workspaceRepository.js";
-import { closeSession } from "../sessionStore.js";
+import { closeSession } from "../services/realtime/index.js";
 import { readBody, sendJson } from "./httpHelpers.js";
 import {
   addWorkspaceMemberBodySchema,
