@@ -3,6 +3,7 @@ import { parseMapDocument } from "@/core/document/savedMapCodec";
 import type { MapDocument, MapTokenPlacement } from "@/core/protocol";
 import type {
   MapOpenMode,
+  WorkspaceInviteSummary,
   WorkspaceMember,
   WorkspaceRole,
 } from "@/core/auth/authTypes";
@@ -40,6 +41,14 @@ export type WorkspaceMapsPayload = {
   workspace: WorkspaceSummary;
 };
 
+export type WorkspaceInviteLookup = {
+  invite: WorkspaceInviteSummary;
+};
+
+export type WorkspaceInvitesPayload = {
+  invites: WorkspaceInviteSummary[];
+};
+
 type CreateWorkspaceInput = {
   name: string;
 };
@@ -47,6 +56,11 @@ type CreateWorkspaceInput = {
 type CreateWorkspaceMapInput = {
   content?: MapDocument;
   name: string;
+};
+
+type CreateWorkspaceInviteInput = {
+  expiresInDays?: number;
+  maxUses?: number;
 };
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -150,6 +164,34 @@ function parseWorkspaceMapRecord(raw: unknown): WorkspaceMapRecord {
     document: parseMapDocument(raw.document),
     tokenPlacements: raw.tokenPlacements.map(parseTokenPlacement),
     workspaceMembers: raw.workspaceMembers.map(parseWorkspaceMember),
+    workspaceName: raw.workspaceName,
+  };
+}
+
+function parseWorkspaceInviteSummary(raw: unknown): WorkspaceInviteSummary {
+  if (
+    !isObject(raw)
+    || typeof raw.id !== "string"
+    || typeof raw.workspaceId !== "string"
+    || typeof raw.workspaceName !== "string"
+    || typeof raw.createdAt !== "string"
+    || typeof raw.expiresAt !== "string"
+    || typeof raw.maxUses !== "number"
+    || typeof raw.usedCount !== "number"
+    || typeof raw.role !== "string"
+  ) {
+    throw new Error("Invalid workspace invite response.");
+  }
+
+  return {
+    createdAt: raw.createdAt,
+    expiresAt: raw.expiresAt,
+    id: raw.id,
+    maxUses: raw.maxUses,
+    revokedAt: typeof raw.revokedAt === "string" ? raw.revokedAt : null,
+    role: "player",
+    usedCount: raw.usedCount,
+    workspaceId: raw.workspaceId,
     workspaceName: raw.workspaceName,
   };
 }
@@ -309,6 +351,108 @@ export async function removeWorkspaceMemberById(
       },
     ),
   );
+}
+
+export async function listWorkspaceInvitesById(
+  workspaceId: string,
+): Promise<WorkspaceInvitesPayload> {
+  const payload = await requestJson(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/invites`,
+    {
+      method: "GET",
+    },
+  );
+
+  if (!isObject(payload) || !Array.isArray(payload.invites)) {
+    throw new Error("Invalid workspace invites response.");
+  }
+
+  return {
+    invites: payload.invites.map(parseWorkspaceInviteSummary),
+  };
+}
+
+export async function createWorkspaceInviteById(
+  workspaceId: string,
+  input: CreateWorkspaceInviteInput,
+): Promise<{ invite: WorkspaceInviteSummary; token: string }> {
+  const payload = await requestJson(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/invites`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+  );
+
+  if (
+    !isObject(payload)
+    || typeof payload.token !== "string"
+    || !("invite" in payload)
+  ) {
+    throw new Error("Invalid workspace invite create response.");
+  }
+
+  return {
+    invite: parseWorkspaceInviteSummary(payload.invite),
+    token: payload.token,
+  };
+}
+
+export async function revokeWorkspaceInviteById(
+  workspaceId: string,
+  inviteId: string,
+): Promise<void> {
+  const payload = await requestJson(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/invites/${encodeURIComponent(inviteId)}`,
+    {
+      method: "DELETE",
+    },
+  );
+
+  if (!isObject(payload) || payload.deleted !== true) {
+    throw new Error("Invalid workspace invite delete response.");
+  }
+}
+
+export async function getWorkspaceInviteByToken(
+  token: string,
+): Promise<WorkspaceInviteLookup> {
+  const payload = await requestJson(`/api/invites/${encodeURIComponent(token)}`, {
+    method: "GET",
+  });
+
+  if (!isObject(payload) || !("invite" in payload)) {
+    throw new Error("Invalid workspace invite lookup response.");
+  }
+
+  return {
+    invite: parseWorkspaceInviteSummary(payload.invite),
+  };
+}
+
+export async function joinWorkspaceByInviteToken(
+  token: string,
+): Promise<{ alreadyMember: boolean; workspace: WorkspaceSummary }> {
+  const payload = await requestJson(
+    `/api/invites/${encodeURIComponent(token)}/join`,
+    {
+      body: JSON.stringify({}),
+      method: "POST",
+    },
+  );
+
+  if (
+    !isObject(payload)
+    || typeof payload.alreadyMember !== "boolean"
+    || !("workspace" in payload)
+  ) {
+    throw new Error("Invalid workspace invite join response.");
+  }
+
+  return {
+    alreadyMember: payload.alreadyMember,
+    workspace: parseWorkspaceSummary(payload.workspace),
+  };
 }
 
 export async function listWorkspaceMapsById(

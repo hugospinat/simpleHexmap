@@ -8,6 +8,13 @@
       "when": 1776721646939,
       "tag": "0000_nosy_captain_cross",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777762328105,
+      "tag": "0001_deep_albert_cleary",
+      "breakpoints": true
     }
   ]
 }

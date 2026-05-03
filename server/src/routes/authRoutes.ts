@@ -1,8 +1,8 @@
 import {
   getAuthContext,
-  loginUser,
+  loginUserFromRequest,
   logoutUser,
-  signupUser,
+  signupUserFromRequest,
 } from "../services/authService.js";
 import { readBody, sendJson } from "./httpHelpers.js";
 
@@ -27,13 +27,13 @@ export async function handleAuthRequest(request, response, url): Promise<boolean
   }
 
   if (url.pathname === "/api/auth/signup" && request.method === "POST") {
-    const user = await signupUser(await readBody(request), response);
+    const user = await signupUserFromRequest(request, await readBody(request), response);
     sendJson(response, 201, { user });
     return true;
   }
 
   if (url.pathname === "/api/auth/login" && request.method === "POST") {
-    const user = await loginUser(await readBody(request), response);
+    const user = await loginUserFromRequest(request, await readBody(request), response);
     sendJson(response, 200, { user });
     return true;
   }
