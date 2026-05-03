@@ -1,3 +1,4 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   getServerHealthSnapshot,
   getServerMetricsSnapshot,
@@ -5,9 +6,9 @@ import {
 import { sendJson } from "./httpHelpers.js";
 
 export async function handleMonitoringRequest(
-  request,
-  response,
-  url,
+  request: IncomingMessage,
+  response: ServerResponse,
+  url: URL,
 ): Promise<boolean> {
   if (url.pathname === "/healthz" && request.method === "GET") {
     sendJson(response, 200, getServerHealthSnapshot());

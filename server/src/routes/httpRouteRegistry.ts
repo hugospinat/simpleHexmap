@@ -1,3 +1,4 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { handleAuthRequest } from "./authRoutes.js";
 import {
   handleInviteJoinRequest,
@@ -32,14 +33,19 @@ import {
 import { handleMonitoringRequest } from "./monitoringRoutes.js";
 
 type RouteHandler = (
-  request: unknown,
-  response: unknown,
+  request: IncomingMessage,
+  response: ServerResponse,
   url: URL,
 ) => Promise<boolean>;
 
 function createRegexRoute(
   pattern: RegExp,
-  handler: (request: unknown, response: unknown, match: RegExpMatchArray, url: URL) => Promise<boolean>,
+  handler: (
+    request: IncomingMessage,
+    response: ServerResponse,
+    match: RegExpMatchArray,
+    url: URL,
+  ) => Promise<boolean>,
 ): RouteHandler {
   return async (request, response, url) => {
     const match = url.pathname.match(pattern);
@@ -93,8 +99,8 @@ const httpRouteHandlers: RouteHandler[] = [
 ];
 
 export async function handleRegisteredHttpRoute(
-  request: unknown,
-  response: unknown,
+  request: IncomingMessage,
+  response: ServerResponse,
   url: URL,
 ): Promise<boolean> {
   for (const route of httpRouteHandlers) {
