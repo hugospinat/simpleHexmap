@@ -146,7 +146,7 @@ Hard rules:
 
 ### Canonical data model
 
-### Document
+#### Document
 
 `MapDocument` is the only persisted map content shape.
 
@@ -170,7 +170,7 @@ Important document rules:
 - factions are map-local records identified by `(mapId, id)` in persistence
 - document JSON version `2` is the import/export contract
 
-### Overlay view
+#### Overlay view
 
 `MapView` is the authoritative snapshot shape used across HTTP and WebSocket reads.
 
@@ -187,7 +187,7 @@ Token rules:
 - token color is resolved from workspace membership, not token rows
 - player snapshots include only placements on visible cells
 
-### Workspace membership
+#### Workspace membership
 
 Workspace membership is now the single authority for access and token presentation.
 
@@ -246,7 +246,7 @@ Current design choices:
 
 ### End-to-end flow
 
-### GM edit flow
+#### GM edit flow
 
 ```text
 User gesture
@@ -262,7 +262,7 @@ User gesture
 -> render from MapState plus token overlay
 ```
 
-### Player view flow
+#### Player view flow
 
 ```text
 HTTP or WebSocket request
