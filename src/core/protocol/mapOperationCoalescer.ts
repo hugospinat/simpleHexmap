@@ -1,5 +1,5 @@
 import type { MapOperation } from "./types.js";
-import { riverKey, roadKey } from "./recordHelpers.js";
+import { riverKey, roadKey, tileKey } from "./recordHelpers.js";
 
 function mergeTilesByLastWrite(
   left: Extract<MapOperation, { type: "set_tiles" }>["tiles"],
@@ -67,7 +67,7 @@ function coalesceAdjacentOperation(
         : null;
     case "set_note":
       return previous.type === "set_note" &&
-        `${previous.note.q},${previous.note.r}` === `${next.note.q},${next.note.r}`
+        tileKey(previous.note) === tileKey(next.note)
         ? next
         : null;
     case "update_feature":

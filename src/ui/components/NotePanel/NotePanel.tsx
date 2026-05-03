@@ -26,7 +26,7 @@ export function NotePanel({
   const hasDraft = draft.trim().length > 0;
   const isDirty = draft !== noteMarkdown;
   const statusLabel = useMemo(
-    () => (hasSavedNote ? "Note enregistrée" : "Aucune note"),
+    () => (hasSavedNote ? "Saved note" : "No note"),
     [hasSavedNote],
   );
 

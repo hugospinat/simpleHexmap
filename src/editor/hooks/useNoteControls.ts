@@ -19,14 +19,13 @@ export function useNoteControls({
   visibleDocument,
   visibleWorld,
 }: UseNoteControlsOptions) {
+  const sourceLevel = visibleWorld.levels[SOURCE_LEVEL] ?? new Map();
+
   useEffect(() => {
-    if (
-      activeNoteHex &&
-      !(visibleWorld.levels[SOURCE_LEVEL] ?? new Map()).has(hexKey(activeNoteHex))
-    ) {
+    if (activeNoteHex && !sourceLevel.has(hexKey(activeNoteHex))) {
       setActiveNoteHex(null);
     }
-  }, [activeNoteHex, setActiveNoteHex, visibleWorld]);
+  }, [activeNoteHex, setActiveNoteHex, sourceLevel]);
 
   const selectedNoteMarkdown = useMemo(() => {
     if (!activeNoteHex) {
