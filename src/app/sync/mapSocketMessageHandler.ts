@@ -15,6 +15,7 @@ import {
 import type { RenderWorldPatchInput } from "@/app/sync/renderWorldPatchState";
 import {
   applyMapTokenOperation,
+  type MapDocument,
   type MapTokenPlacement,
 } from "@/core/protocol";
 import type { WorkspaceMember } from "@/core/auth/authTypes";
@@ -22,6 +23,7 @@ import type { WorkspaceMember } from "@/core/auth/authTypes";
 type HandleParsedMapSocketMessageOptions = {
   applyQueuedReceivedOperations: () => void;
   clearPreview: () => void;
+  confirmedDocumentRef: MutableRefObject<MapDocument>;
   confirmedTokenPlacementsRef: MutableRefObject<MapTokenPlacement[]>;
   confirmedWorkspaceMembersRef: MutableRefObject<WorkspaceMember[]>;
   enqueueAppliedOperation: (payload: Extract<ParsedMapSyncMessage, { type: "map_operation_applied" }>["payload"]) => void;
@@ -41,6 +43,7 @@ export function handleParsedMapSocketMessage(
   {
     applyQueuedReceivedOperations,
     clearPreview,
+    confirmedDocumentRef,
     confirmedTokenPlacementsRef,
     confirmedWorkspaceMembersRef,
     enqueueAppliedOperation,
@@ -76,9 +79,10 @@ export function handleParsedMapSocketMessage(
       return;
     }
 
-    try {
-      const snapshotWorld = deserializeWorld(payload.document);
-      resetSessionFromSnapshot(
+      try {
+        const snapshotWorld = deserializeWorld(payload.document);
+        confirmedDocumentRef.current = payload.document;
+        resetSessionFromSnapshot(
         sessionRef.current,
         snapshotWorld,
         payload.lastSequence,

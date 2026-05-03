@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { editorConfig } from "@/config/editorConfig";
 import { useMapSocketSync } from "@/app/sync";
 import { getFactionById, getFactions, type MapState } from "@/core/map/world";
-import type { MapOperation } from "@/core/protocol";
+import type { MapDocument, MapOperation } from "@/core/protocol";
 import type {
   MapOpenMode,
   UserRecord,
@@ -15,10 +15,12 @@ import { useEditorOperationHistory } from "./useEditorOperationHistory";
 import { useEditorToolState } from "./useEditorToolState";
 import { useFactionControls } from "./useFactionControls";
 import { useKeyboardNavigation } from "./useKeyboardNavigation";
+import { useNoteControls } from "./useNoteControls";
 import { useTokenControls } from "./useTokenControls";
 import { getInteractionLabel } from "@/editor/presentation/interactionLabels";
 
 type UseEditorControllerOptions = {
+  initialDocument: MapDocument;
   initialWorld: MapState;
   mapId: string;
   profile: UserRecord;
@@ -27,6 +29,7 @@ type UseEditorControllerOptions = {
 };
 
 export function useEditorController({
+  initialDocument,
   initialWorld,
   mapId,
   profile,
@@ -74,6 +77,7 @@ export function useEditorController({
 
   const syncState = useMapSocketSync({
     clearPreview: () => clearPreviewHandlerRef.current(),
+    initialDocument,
     initialWorld,
     mapId,
     onAuthoritativeResync: () => authoritativeResyncHandlerRef.current(),
@@ -90,6 +94,7 @@ export function useEditorController({
     renderWorldPatch: activeRenderWorldPatch,
     sendTokenOperation: dispatchTokenOperation,
     syncStatus: currentSyncStatus,
+    visibleDocument,
     workspaceMembers: currentWorkspaceMembers,
     visibleWorld: world,
   } = syncState;
@@ -104,6 +109,7 @@ export function useEditorController({
     createFeatureId,
     publishToolPreviewOperations: handleToolPreviewOperations,
     submitLocalOperations: operationHistory.submitLocalOperations,
+    visibleDocument,
     viewLevel: view.level,
     visibleWorld: world,
   });
@@ -158,10 +164,17 @@ export function useEditorController({
 
   const submitVisibleWorldOperations = useCallback(
     (operations: MapOperation[]) => {
-      operationHistory.submitLocalOperations(operations, world);
+      operationHistory.submitLocalOperations(operations, world, visibleDocument);
     },
-    [operationHistory, world],
+    [operationHistory, visibleDocument, world],
   );
+  const noteControls = useNoteControls({
+    activeNoteHex: toolState.activeNoteHex,
+    setActiveNoteHex: toolState.setActiveNoteHex,
+    submitLocalOperations: submitVisibleWorldOperations,
+    visibleDocument,
+    visibleWorld: world,
+  });
 
   const { createFaction, deleteFaction, recolorFaction, renameFaction } =
     useFactionControls({
@@ -231,6 +244,8 @@ export function useEditorController({
     level: view.level,
     onRenderWorldPatchApplied: acknowledgePatch,
     previewOperations: toolPreviewOperations,
+    selectedHex:
+      toolState.activeMode === "notes" ? noteControls.selectedNoteHex : null,
     tokenPlacements: activeTokenPlacements,
     onToolStep: canEdit ? toolState.changeToolByDelta : undefined,
     role,
@@ -239,6 +254,7 @@ export function useEditorController({
     setHoveredHex: toolState.setHoveredHex,
     onGmTokenPlace: tokenControls.placeSelectedMapToken,
     onGmTokenRemove: tokenControls.removeMapToken,
+    onNoteHexSelect: noteControls.setSelectedNoteHex,
     onPlayerTokenPlace: tokenControls.placePlayerToken,
     showCoordinates: toolState.showCoordinates,
     startEditGesture: editorGestures.startEditGesture,
@@ -251,6 +267,7 @@ export function useEditorController({
     activeFeatureKind: toolState.activeFeatureKind,
     activeFactionId: toolState.activeFactionId,
     activeMode: toolState.activeMode,
+    selectedNoteHex: noteControls.selectedNoteHex,
     activeTokenUserId: tokenControls.activeTokenUserId,
     activeType: toolState.activeType,
     factions,
@@ -263,11 +280,15 @@ export function useEditorController({
     chooseFeatureKind: toolState.chooseFeatureKind,
     deleteFaction,
     maxLevels,
+    clearSelectedNote: noteControls.clearSelectedNote,
+    closeSelectedNote: noteControls.closeSelectedNote,
     createFaction,
     renameFaction,
     recolorFaction,
     selectFaction: toolState.setActiveFactionId,
     clearMapTokenSelection: tokenControls.clearMapTokenSelection,
+    selectedNoteMarkdown: noteControls.selectedNoteMarkdown,
+    saveSelectedNote: noteControls.saveSelectedNote,
     selectWorkspaceMember: tokenControls.selectWorkspaceMember,
     setPlayerTokenColor: tokenControls.setPlayerTokenColor,
     setActiveMode: toolState.setActiveMode,

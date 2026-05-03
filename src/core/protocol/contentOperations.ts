@@ -4,6 +4,7 @@ import type {
   MapFactionRecord,
   MapFactionTerritoryRecord,
   MapFeatureRecord,
+  MapNoteRecord,
   MapOperation,
   MapRiverRecord,
   MapRoadRecord,
@@ -25,6 +26,7 @@ export function applyOperationToMapDocument<TSnapshot extends MapDocument>(
   switch (operation.type) {
     case "set_tiles":
     case "set_faction_territories":
+    case "set_note":
       return applyOperationsToMapDocumentIndexed(snapshot, [operation]);
     case "add_feature": {
       if (
@@ -170,6 +172,7 @@ export type MapDocumentIndex = {
   factionTerritoriesByHex: Map<string, MapFactionTerritoryRecord>;
   factionsById: Map<string, MapFactionRecord>;
   featuresById: Map<string, MapFeatureRecord>;
+  notesByHex: Map<string, MapNoteRecord>;
   riversByKey: Map<string, MapRiverRecord>;
   roads: MapRoadRecord[];
   tilesByHex: Map<string, MapTileRecord>;
@@ -189,6 +192,7 @@ export function indexMapDocument(snapshot: MapDocument): MapDocumentIndex {
     featuresById: new Map(
       snapshot.features.map((feature) => [feature.id, feature]),
     ),
+    notesByHex: new Map(snapshot.notes.map((note) => [tileKey(note), note])),
     riversByKey: new Map(
       snapshot.rivers.map((river) => [riverKey(river), river]),
     ),
@@ -209,6 +213,7 @@ export function materializeMapDocument<TSnapshot extends MapDocument>(
     roads: index.roads,
     factions: Array.from(index.factionsById.values()),
     factionTerritories: Array.from(index.factionTerritoriesByHex.values()),
+    notes: Array.from(index.notesByHex.values()),
   };
 }
 
@@ -223,6 +228,7 @@ export function applyOperationToMapDocumentIndex(
         index.tilesByHex.delete(key);
 
         if (tile.terrain === null) {
+          index.notesByHex.delete(key);
           index.factionTerritoriesByHex.delete(key);
           continue;
         }
@@ -248,6 +254,24 @@ export function applyOperationToMapDocumentIndex(
             factionId: territory.factionId,
           });
         }
+      }
+      return;
+    }
+    case "set_note": {
+      const key = tileKey(operation.note);
+
+      if (!index.tilesByHex.has(key)) {
+        return;
+      }
+
+      index.notesByHex.delete(key);
+
+      if (operation.note.markdown !== null) {
+        index.notesByHex.set(key, {
+          q: operation.note.q,
+          r: operation.note.r,
+          markdown: operation.note.markdown,
+        });
       }
       return;
     }

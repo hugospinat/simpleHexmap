@@ -269,5 +269,6 @@ export function serializeWorld(world: MapState): MapDocument {
     roads: serializeRoads(world),
     factions: serializeFactions(world),
     factionTerritories: serializeFactionTerritories(world),
+    notes: [],
   };
 }

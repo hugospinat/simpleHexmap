@@ -19,10 +19,15 @@ import type { MapOperation } from "@/core/protocol";
 
 function expectUndoRestoresWorld(
   worldBefore: MapState,
+  documentBefore: ReturnType<typeof serializeWorld>,
   operations: MapOperation[],
 ) {
   const worldAfter = applyOperationsToWorld(worldBefore, operations);
-  const undoOperations = invertOperationBatch(worldBefore, operations);
+  const undoOperations = invertOperationBatch(
+    worldBefore,
+    documentBefore,
+    operations,
+  );
 
   expect(undoOperations.length).toBeGreaterThan(0);
   expect(
@@ -39,7 +44,7 @@ describe("map operation history", () => {
       "plain",
     );
 
-    expectUndoRestoresWorld(worldBefore, [
+    expectUndoRestoresWorld(worldBefore, serializeWorld(worldBefore), [
       {
         type: "set_tiles",
         tiles: [
@@ -69,7 +74,7 @@ describe("map operation history", () => {
       "f-1",
     );
 
-    expectUndoRestoresWorld(worldBefore, [
+    expectUndoRestoresWorld(worldBefore, serializeWorld(worldBefore), [
       {
         type: "set_faction_territories",
         territories: [
@@ -99,7 +104,7 @@ describe("map operation history", () => {
       "f-1",
     );
 
-    expectUndoRestoresWorld(worldBefore, [
+    expectUndoRestoresWorld(worldBefore, serializeWorld(worldBefore), [
       {
         type: "set_tiles",
         tiles: [{ q: 0, r: 0, terrain: null, hidden: false }],
@@ -115,7 +120,7 @@ describe("map operation history", () => {
       hidden: true,
     });
 
-    expectUndoRestoresWorld(worldBefore, [
+    expectUndoRestoresWorld(worldBefore, serializeWorld(worldBefore), [
       {
         type: "remove_feature",
         featureId: "feature-1",
@@ -137,7 +142,7 @@ describe("map operation history", () => {
       { q: 0, r: 1 },
     );
 
-    expectUndoRestoresWorld(worldBefore, [
+    expectUndoRestoresWorld(worldBefore, serializeWorld(worldBefore), [
       {
         type: "set_road_edges",
         cell: { q: 0, r: 0 },
@@ -172,7 +177,7 @@ describe("map operation history", () => {
     expect(
       serializeWorld(applyOperationsToWorld(worldBefore, [operation])),
     ).toEqual(serializeWorld(removeFaction(worldBefore, "f-1")));
-    expectUndoRestoresWorld(worldBefore, [operation]);
+    expectUndoRestoresWorld(worldBefore, serializeWorld(worldBefore), [operation]);
   });
 
   it("inverts mixed batches in reverse order", () => {
@@ -211,6 +216,27 @@ describe("map operation history", () => {
         removeFeatureAt(worldBefore, SOURCE_LEVEL, { q: 0, r: 0 }),
       ),
     ).not.toEqual(serializeWorld(worldBefore));
-    expectUndoRestoresWorld(worldBefore, operations);
+    expectUndoRestoresWorld(worldBefore, serializeWorld(worldBefore), operations);
+  });
+
+  it("inverts note updates against the document state", () => {
+    const worldBefore = addTile(
+      createEmptyWorld(),
+      SOURCE_LEVEL,
+      { q: 0, r: 0 },
+      "plain",
+    );
+    const documentBefore = {
+      ...serializeWorld(worldBefore),
+      notes: [{ q: 0, r: 0, markdown: "Old note" }],
+    };
+
+    expect(
+      invertOperationBatch(worldBefore, documentBefore, [
+        { type: "set_note", note: { q: 0, r: 0, markdown: "New note" } },
+      ]),
+    ).toEqual([
+      { type: "set_note", note: { q: 0, r: 0, markdown: "Old note" } },
+    ]);
   });
 });

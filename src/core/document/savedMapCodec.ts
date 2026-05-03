@@ -215,6 +215,25 @@ export function parseMapDocument(raw: unknown): MapDocument {
     },
   );
 
+  const notes = (Array.isArray(raw.notes) ? raw.notes : []).map(
+    (note, index) => {
+      if (
+        !isObject(note) ||
+        !isInteger(note.q) ||
+        !isInteger(note.r) ||
+        typeof note.markdown !== "string"
+      ) {
+        throw new Error(`Invalid note entry at index ${index}.`);
+      }
+
+      return {
+        q: note.q,
+        r: note.r,
+        markdown: note.markdown,
+      };
+    },
+  );
+
   return {
     version: mapFileVersion,
     tiles,
@@ -223,6 +242,7 @@ export function parseMapDocument(raw: unknown): MapDocument {
     roads,
     factions,
     factionTerritories,
+    notes,
   };
 }
 

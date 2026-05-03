@@ -7,7 +7,7 @@ import {
   takeUndoOperations,
 } from "@/core/map/history/mapOperationHistory";
 import type { MapState } from "@/core/map/world";
-import type { MapOperation } from "@/core/protocol";
+import type { MapDocument, MapOperation } from "@/core/protocol";
 
 export function useEditorOperationHistory(
   canEdit: boolean,
@@ -24,12 +24,21 @@ export function useEditorOperationHistory(
   }, []);
 
   const submitLocalOperations = useCallback(
-    (operations: MapOperation[], worldBefore: MapState) => {
+    (
+      operations: MapOperation[],
+      worldBefore: MapState,
+      documentBefore: MapDocument,
+    ) => {
       if (operations.length === 0) {
         return;
       }
 
-      recordOperationHistory(operationHistoryRef.current, worldBefore, operations);
+      recordOperationHistory(
+        operationHistoryRef.current,
+        worldBefore,
+        documentBefore,
+        operations,
+      );
       commitLocalOperations(operations);
     },
     [commitLocalOperations],

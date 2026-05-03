@@ -80,6 +80,10 @@ input::placeholder {
   background: #ffffff;
 }
 
+.app-shell.has-right-panel {
+  grid-template-columns: 380px minmax(0, 1fr) 360px;
+}
+
 .app-shell.is-player-mode {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
@@ -198,7 +202,8 @@ input::placeholder {
 .road-panel p,
 .fog-panel p,
 .faction-panel p,
-.token-panel p {
+.token-panel p,
+.note-tool-panel p {
   margin: 0;
   color: #5b5b5b;
   font-size: 13px;
@@ -430,6 +435,62 @@ input::placeholder {
   height: 100%;
   overflow: hidden;
   background: #ffffff;
+}
+
+.note-panel {
+  grid-column: 3;
+  grid-row: 1;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+  min-height: 0;
+  padding: 18px 22px 18px;
+  border-left: 1px solid #bdbdbd;
+  background: #ffffff;
+  overflow-y: auto;
+}
+
+.note-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.note-panel-header h2 {
+  margin: 6px 0 4px;
+  font-size: 26px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.note-panel-header p {
+  margin: 0;
+  color: #666666;
+  font-size: 13px;
+}
+
+.note-field {
+  display: grid;
+  gap: 8px;
+  color: #555555;
+  font-size: 12px;
+}
+
+.note-textarea {
+  min-height: 260px;
+  resize: vertical;
+  border: 1px solid #c9c9c9;
+  padding: 10px 12px;
+  font: inherit;
+  line-height: 1.4;
+}
+
+.note-panel-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 .app-shell.is-player-mode .map-pane {
@@ -932,6 +993,10 @@ input::placeholder {
     grid-template-columns: 320px minmax(0, 1fr);
   }
 
+  .app-shell.has-right-panel {
+    grid-template-columns: 320px minmax(0, 1fr) 300px;
+  }
+
   .sidebar {
     width: 320px;
     padding: 16px 18px;
@@ -962,10 +1027,18 @@ input::placeholder {
     grid-template-columns: 260px minmax(0, 1fr);
   }
 
+  .app-shell.has-right-panel {
+    grid-template-columns: 260px minmax(0, 1fr) 240px;
+  }
+
   .sidebar {
     width: 260px;
     padding: 14px 14px;
     gap: 14px;
+  }
+
+  .note-panel {
+    padding: 14px;
   }
 
   .tile-palette,

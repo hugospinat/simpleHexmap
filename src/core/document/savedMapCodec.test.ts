@@ -9,6 +9,7 @@ const baseValidInput = {
   roads: [],
   factions: [],
   factionTerritories: [],
+  notes: [],
 };
 
 describe("saved map codec", () => {
@@ -16,6 +17,7 @@ describe("saved map codec", () => {
     const parsed = parseMapDocument({
       ...baseValidInput,
       tiles: [{ q: 0, r: 0, terrain: "plain", hidden: false }],
+      notes: [{ q: 0, r: 0, markdown: "# Camp" }],
       features: [
         {
           id: "feature-1",
@@ -31,6 +33,7 @@ describe("saved map codec", () => {
     expect(parsed.tiles).toEqual([
       { q: 0, r: 0, terrain: "plain", hidden: false },
     ]);
+    expect(parsed.notes).toEqual([{ q: 0, r: 0, markdown: "# Camp" }]);
     expect(parsed.features[0].kind).toBe("city");
   });
 
@@ -106,5 +109,14 @@ describe("saved map codec", () => {
         factions: [{ id: "f-1", name: "Faction", color: "blue" }],
       }),
     ).toThrow("Invalid faction color");
+  });
+
+  test("rejects invalid note records", () => {
+    expect(() =>
+      parseMapDocument({
+        ...baseValidInput,
+        notes: [{ q: 0, r: 0, markdown: 42 }],
+      }),
+    ).toThrow("Invalid note entry");
   });
 });

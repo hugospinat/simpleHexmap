@@ -1,11 +1,13 @@
 import { AppShell } from "./AppShell";
 import { MapAssetsProvider } from "@/editor/context";
 import { useEditorController } from "@/editor/hooks";
-import { BottomBar, MapPane, PlayerControls, Sidebar } from "@/ui/components";
+import { BottomBar, MapPane, NotePanel, PlayerControls, Sidebar } from "@/ui/components";
 import type { MapState } from "@/core/map/world";
+import type { MapDocument } from "@/core/protocol";
 import type { MapOpenMode, UserRecord, WorkspaceMember } from "@/core/auth/authTypes";
 
 type EditorScreenProps = {
+  initialDocument: MapDocument;
   initialWorld: MapState;
   mapId: string;
   mapName: string;
@@ -15,13 +17,23 @@ type EditorScreenProps = {
   onBackToMaps: () => void;
 };
 
-export function EditorScreen({ initialWorld, mapId, mapName, workspaceMembers, user, role, onBackToMaps }: EditorScreenProps) {
+export function EditorScreen({
+  initialDocument,
+  initialWorld,
+  mapId,
+  mapName,
+  workspaceMembers,
+  user,
+  role,
+  onBackToMaps,
+}: EditorScreenProps) {
   const editor = useEditorController({
+    initialDocument,
     initialWorld,
     mapId,
     profile: user,
     role,
-    workspaceMembers
+    workspaceMembers,
   });
 
   if (role === "player") {
@@ -39,9 +51,12 @@ export function EditorScreen({ initialWorld, mapId, mapName, workspaceMembers, u
     );
   }
 
+  const showNotePanel =
+    editor.activeMode === "notes" && editor.selectedNoteHex !== null;
+
   return (
     <MapAssetsProvider>
-      <AppShell appRef={editor.appRef}>
+      <AppShell appRef={editor.appRef} rightPanelOpen={showNotePanel}>
         <Sidebar
           activeFactionId={editor.activeFactionId}
           activeFeatureKind={editor.activeFeatureKind}
@@ -67,6 +82,15 @@ export function EditorScreen({ initialWorld, mapId, mapName, workspaceMembers, u
           onUndo={editor.undoLastOperationBatch}
         />
         <MapPane {...editor.canvasProps} />
+        {showNotePanel && editor.selectedNoteHex ? (
+          <NotePanel
+            noteMarkdown={editor.selectedNoteMarkdown}
+            selectedHex={editor.selectedNoteHex}
+            onClear={editor.clearSelectedNote}
+            onClose={editor.closeSelectedNote}
+            onSave={editor.saveSelectedNote}
+          />
+        ) : null}
         <BottomBar
           center={editor.view.center}
           hoveredHex={editor.hoveredHex}

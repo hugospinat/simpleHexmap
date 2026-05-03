@@ -6,7 +6,9 @@ import type {
 } from "@/app/api/mapApi";
 import { buildWebSocketUrl } from "@/app/api/apiBase";
 import {
+  applyMapDocumentOperations,
   applyMapTokenOperation,
+  type MapDocument,
   type MapOperation,
   type MapTokenOperation,
   type MapTokenPlacement,
@@ -47,6 +49,7 @@ export type MapSyncStatus = MapSyncSessionStatus;
 
 type UseMapSyncOptions = {
   clearPreview: () => void;
+  initialDocument: MapDocument;
   initialWorld: MapState;
   initialWorkspaceMembers: WorkspaceMember[];
   mapId: string;
@@ -63,6 +66,7 @@ export type UseMapSocketSyncResult = {
   renderWorldPatch: RenderWorldPatch;
   sendTokenOperation: (operation: MapTokenOperation) => void;
   syncStatus: MapSyncStatus;
+  visibleDocument: MapDocument;
   workspaceMembers: WorkspaceMember[];
   visibleWorld: MapState;
 };
@@ -71,6 +75,7 @@ const maxOperationsPerBatch = 500;
 
 export function useMapSocketSync({
   clearPreview,
+  initialDocument,
   initialWorld,
   initialWorkspaceMembers,
   mapId,
@@ -83,6 +88,7 @@ export function useMapSocketSync({
     createMapSyncSession(clientIdRef.current, initialWorld),
   );
   const transportRef = useRef<MapSocketTransport | null>(null);
+  const confirmedDocumentRef = useRef(initialDocument);
   const [confirmedWorld, setConfirmedWorld] = useState(initialWorld);
   const renderWorldPatchRevisionRef = useRef(0);
   const acknowledgedRenderWorldPatchRevisionRef = useRef(0);
@@ -91,6 +97,7 @@ export function useMapSocketSync({
     type: "snapshot",
   });
   const [visibleWorld, setVisibleWorld] = useState(initialWorld);
+  const [visibleDocument, setVisibleDocument] = useState(initialDocument);
   const [tokenPlacements, setTokenPlacements] = useState<MapTokenPlacement[]>(
     [],
   );
@@ -130,6 +137,12 @@ export function useMapSocketSync({
     const session = sessionRef.current;
     setConfirmedWorld(session.confirmedWorld);
     setVisibleWorld(session.visibleWorld);
+    setVisibleDocument(
+      applyMapDocumentOperations(
+        confirmedDocumentRef.current,
+        session.pendingOperations.map((envelope) => envelope.operation),
+      ),
+    );
     setSyncStatus(session.status);
   }, []);
 
@@ -247,6 +260,10 @@ export function useMapSocketSync({
     const appliedOperations = applyReadySessionOperations(sessionRef.current);
 
     if (appliedOperations.length > 0) {
+      confirmedDocumentRef.current = applyMapDocumentOperations(
+        confirmedDocumentRef.current,
+        appliedOperations.map(({ message }) => message.operation),
+      );
       const remoteOperations = appliedOperations
         .filter(({ acknowledgedLocal }) => !acknowledgedLocal)
         .map(({ message }) => message.operation);
@@ -336,6 +353,7 @@ export function useMapSocketSync({
         handleParsedMapSocketMessage(parsed, {
           applyQueuedReceivedOperations,
           clearPreview,
+          confirmedDocumentRef,
           confirmedTokenPlacementsRef,
           confirmedWorkspaceMembersRef,
           enqueueAppliedOperation,
@@ -383,6 +401,7 @@ export function useMapSocketSync({
     renderWorldPatch,
     sendTokenOperation,
     syncStatus,
+    visibleDocument,
     workspaceMembers,
     visibleWorld,
   };

@@ -1,4 +1,5 @@
 import type { MapState } from "@/core/map/world";
+import type { MapDocument } from "@/core/protocol";
 import type {
   MapOpenMode,
   UserRecord,
@@ -19,6 +20,7 @@ export type OpenMapState = {
   tokenPlacements: { userId: string; q: number; r: number }[];
   updatedAt: string;
   workspaceId: string;
+  document: MapDocument;
   world: MapState;
 };
 

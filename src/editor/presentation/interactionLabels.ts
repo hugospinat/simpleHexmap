@@ -72,6 +72,10 @@ export function getInteractionLabel({
       : "Select a workspace member to place their token. Right click removes clicked visible tokens. Middle drag pans.";
   }
 
+  if (activeMode === "notes") {
+    return "Left click selects a hex to edit its GM note. Save from the right panel when you are done. Middle drag pans.";
+  }
+
   if (level !== SOURCE_LEVEL) {
     return "Rivers are derived here. Use A/E to switch to level 3 and edit river edges.";
   }

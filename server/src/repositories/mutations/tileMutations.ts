@@ -1,6 +1,7 @@
 import { and, eq, or } from "drizzle-orm";
 import { hexCells } from "../../db/schema.js";
 import { deleteFactionTerritoriesForCells } from "./factionMutations.js";
+import { deleteMapNotesForCells } from "./noteMutations.js";
 import {
   chunkValues,
   mutationChunkSize,
@@ -91,6 +92,7 @@ export const setTiles: IncrementalOperationHandler<"set_tiles"> = async (
   if (deletions.length > 0) {
     await deleteHexCellsForCells(tx, mapId, deletions);
     await deleteFactionTerritoriesForCells(tx, mapId, deletions);
+    await deleteMapNotesForCells(tx, mapId, deletions);
   }
 
   await upsertHexCells(tx, mapId, upserts, updatedAt);

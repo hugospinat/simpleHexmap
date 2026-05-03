@@ -65,6 +65,11 @@ function coalesceAdjacentOperation(
       return previous.type === "set_faction_territories"
         ? mergeTerritoriesByLastWrite(previous.territories, next.territories)
         : null;
+    case "set_note":
+      return previous.type === "set_note" &&
+        `${previous.note.q},${previous.note.r}` === `${next.note.q},${next.note.r}`
+        ? next
+        : null;
     case "update_feature":
       return previous.type === "update_feature" &&
         previous.featureId === next.featureId

@@ -44,6 +44,10 @@ describe("mapVisibility", () => {
         { q: 0, r: 0, edges: [0, 5] },
         { q: 1, r: 0, edges: [2] },
       ],
+      notes: [
+        { q: 0, r: 0, markdown: "Visible for GM only" },
+        { q: 1, r: 0, markdown: "Still hidden" },
+      ],
       factions: [
         { id: "visible-faction", name: "North", color: "#112233" },
         { id: "hidden-faction", name: "South", color: "#445566" },
@@ -80,5 +84,6 @@ describe("mapVisibility", () => {
     expect(filtered.factionTerritories).toEqual([
       { q: 0, r: 0, factionId: "visible-faction" },
     ]);
+    expect(filtered.notes).toEqual([]);
   });
 });

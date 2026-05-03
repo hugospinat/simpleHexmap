@@ -2,6 +2,7 @@ import { createReadStream, promises as fs } from "node:fs";
 import type { IncomingMessage } from "node:http";
 import path from "node:path";
 import { parseMapDocument } from "../../../src/core/document/savedMapCodec.js";
+import { mapFileVersion } from "../../../src/core/document/savedMapCodec.js";
 import { serverLimits } from "../serverConfig.js";
 
 const staticRoot = path.resolve(process.cwd(), "dist");
@@ -17,13 +18,14 @@ const staticContentTypes = new Map([
 ]);
 
 export const defaultMapContent = {
-  version: 1,
+  version: mapFileVersion,
   tiles: [{ q: 0, r: 0, terrain: "plain", hidden: true }],
   features: [],
   rivers: [],
   roads: [],
   factions: [],
   factionTerritories: [],
+  notes: [],
 };
 
 export function isObject(value: unknown): value is Record<string, unknown> {

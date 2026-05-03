@@ -5,6 +5,7 @@ import {
   factions,
   features,
   hexCells,
+  mapNotes,
   mapTokens,
   rivers,
   roads,
@@ -14,6 +15,7 @@ import type {
   MapFactionRecord,
   MapFactionTerritoryRecord,
   MapFeatureRecord,
+  MapNoteRecord,
   MapRiverRecord,
   MapRoadRecord,
   MapTileRecord,
@@ -33,6 +35,7 @@ export const emptyMapDocument: MapDocument = {
   roads: [],
   factions: [],
   factionTerritories: [],
+  notes: [],
 };
 
 async function insertInBatches<T>(
@@ -55,6 +58,7 @@ export async function materializeMapDocument(
     roadRows,
     factionRows,
     territoryRows,
+    noteRows,
   ] = await Promise.all([
     database.select().from(hexCells).where(eq(hexCells.mapId, mapId)),
     database.select().from(features).where(eq(features.mapId, mapId)),
@@ -65,6 +69,7 @@ export async function materializeMapDocument(
       .select()
       .from(factionTerritories)
       .where(eq(factionTerritories.mapId, mapId)),
+    database.select().from(mapNotes).where(eq(mapNotes.mapId, mapId)),
   ]);
 
   return {
@@ -115,6 +120,13 @@ export async function materializeMapDocument(
         r: territory.r,
       }),
     ),
+    notes: noteRows.map(
+      (note): MapNoteRecord => ({
+        q: note.q,
+        r: note.r,
+        markdown: note.markdown,
+      }),
+    ),
   };
 }
 
@@ -150,6 +162,7 @@ export async function replaceMapDocument(
   await database.delete(roads).where(eq(roads.mapId, mapId));
   await database.delete(features).where(eq(features.mapId, mapId));
   await database.delete(factions).where(eq(factions.mapId, mapId));
+  await database.delete(mapNotes).where(eq(mapNotes.mapId, mapId));
   await database.delete(hexCells).where(eq(hexCells.mapId, mapId));
 
   if (document.tiles.length > 0) {
@@ -239,6 +252,21 @@ export async function replaceMapDocument(
       })),
       async (batch) => {
         await database.insert(factionTerritories).values(batch);
+      },
+    );
+  }
+
+  if (document.notes.length > 0) {
+    await insertInBatches(
+      document.notes.map((note) => ({
+        markdown: note.markdown,
+        mapId,
+        q: note.q,
+        r: note.r,
+        updatedAt: now,
+      })),
+      async (batch) => {
+        await database.insert(mapNotes).values(batch);
       },
     );
   }

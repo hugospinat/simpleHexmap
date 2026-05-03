@@ -17,6 +17,7 @@ import {
   removeFeature,
   updateFeature,
 } from "./mutations/featureMutations.js";
+import { setNote } from "./mutations/noteMutations.js";
 import { setRoadEdges } from "./mutations/roadMutations.js";
 import { addRiverData, removeRiverData } from "./mutations/riverMutations.js";
 
@@ -25,6 +26,7 @@ const incrementalOperationHandlers: {
 } = {
   set_tiles: setTiles,
   set_faction_territories: setFactionTerritories,
+  set_note: setNote,
   add_faction: addFaction,
   update_faction: updateFaction,
   remove_faction: removeFaction,
