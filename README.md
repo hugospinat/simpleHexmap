@@ -228,6 +228,7 @@ Rules:
 - `src/editor` orchestrates interaction but does not define the domain model.
 - `src/render` consumes derived world data and never owns business rules.
 - `server/src` owns transport, authorization, persistence, visibility filtering, and broadcast.
+- cross-slice imports outside `core` must use explicit slice entrypoints such as `@/app/api`, `@/app/document`, `@/app/sync`, `@/editor/hooks`, `@/editor/context`, `@/render/pixi`, and `@/ui/components`.
 
 ## Server and transport
 
