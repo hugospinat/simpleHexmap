@@ -26,4 +26,38 @@ describe("MemoryRateLimiter", () => {
       remaining: 1,
     });
   });
+
+  it("can atomically rate limit multiple keys together", () => {
+    let now = 1_000;
+    const limiter = new MemoryRateLimiter(() => now);
+
+    expect(
+      limiter.consumeMany(["login:ip:127.0.0.1", "login:username:alice"], 2, 1000),
+    ).toMatchObject({
+      allowed: true,
+      remaining: 1,
+    });
+    expect(
+      limiter.consumeMany(["login:ip:127.0.0.1", "login:username:alice"], 2, 1000),
+    ).toMatchObject({
+      allowed: true,
+      remaining: 0,
+    });
+    expect(
+      limiter.consumeMany(["login:ip:127.0.0.1", "login:username:alice"], 2, 1000),
+    ).toMatchObject({
+      allowed: false,
+      remaining: 0,
+      retryAfterMs: 1000,
+    });
+
+    now += 1_001;
+
+    expect(
+      limiter.consumeMany(["login:ip:127.0.0.1", "login:username:alice"], 2, 1000),
+    ).toMatchObject({
+      allowed: true,
+      remaining: 1,
+    });
+  });
 });

@@ -52,9 +52,28 @@ function hashSessionToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-function assertAuthRateLimit(request: IncomingMessage, action: "login" | "signup"): void {
-  const result = authRateLimiter.consume(
-    `${action}:${getClientIp(request)}`,
+export function buildAuthRateLimitKeys(
+  request: IncomingMessage,
+  action: "login" | "signup",
+  input: unknown,
+): string[] {
+  const ipKey = `${action}:ip:${getClientIp(request)}`;
+  const username =
+    input && typeof input === "object" && "username" in input
+      ? normalizeUsername(sanitizeUsername(input.username))
+      : "";
+  const usernameKey = `${action}:username:${username || "unknown"}`;
+
+  return [ipKey, usernameKey];
+}
+
+function assertAuthRateLimit(
+  request: IncomingMessage,
+  action: "login" | "signup",
+  input: unknown,
+): void {
+  const result = authRateLimiter.consumeMany(
+    buildAuthRateLimitKeys(request, action, input),
     serverLimits.authRateLimitMaxAttempts,
     serverLimits.authRateLimitWindowMs,
   );
@@ -266,7 +285,7 @@ export async function signupUserFromRequest(
   input: unknown,
   response: ServerResponse,
 ): Promise<UserRecord> {
-  assertAuthRateLimit(request, "signup");
+  assertAuthRateLimit(request, "signup", input);
   return signupUser(input, response);
 }
 
@@ -297,7 +316,7 @@ export async function loginUserFromRequest(
   input: unknown,
   response: ServerResponse,
 ): Promise<UserRecord> {
-  assertAuthRateLimit(request, "login");
+  assertAuthRateLimit(request, "login", input);
 
   try {
     return await loginUser(input, response);

@@ -349,7 +349,7 @@ Authentication is cookie/session-based.
 - every HTTP and WebSocket request is role-checked on the server
 - player payloads are filtered before serialization — hidden tiles, features, roads, rivers, faction territories, and hidden-cell tokens never reach player clients
 - GM-only labels are stripped from player-facing feature records
-- login, signup, invite join, and WebSocket upgrades are rate-limited per client IP (process-local, intentional for low-resource deployments)
+- login and signup are rate-limited by both client IP and normalized username; invite join and WebSocket upgrades remain rate-limited per client IP (process-local, intentional for low-resource deployments)
 - re-authentication rotates the active session and revokes previously active sessions for the same user
 - idle, expired, and revoked sessions are cleaned up opportunistically during auth access and session issuance
 - workspace invite links are stored as hashed tokens only, with expiry, usage caps, and explicit revocation
@@ -458,7 +458,6 @@ The scripts under `scripts/` authenticate, provision an isolated workspace and m
 
 **Security and server operations**
 
-- add login and signup rate limiting keyed by IP and username
 - add structured audit logs for auth failures, workspace invites, and map deletion
 - add per-user WebSocket operation throttling so one client cannot flood a room
 
