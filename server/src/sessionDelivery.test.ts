@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
+import { MemoryRateLimiter } from "./security/rateLimiter.js";
 import { broadcastRoleAwareSessionPayloads } from "./sessionDelivery.js";
 import type { MapSession } from "./types.js";
 
@@ -28,6 +29,7 @@ describe("sessionDelivery", () => {
         ],
       ]),
       mapId: "map-1",
+      operationRateLimiter: new MemoryRateLimiter(),
     };
 
     await broadcastRoleAwareSessionPayloads(
@@ -65,6 +67,7 @@ describe("sessionDelivery", () => {
         ],
       ]),
       mapId: "map-1",
+      operationRateLimiter: new MemoryRateLimiter(),
     };
 
     await broadcastRoleAwareSessionPayloads(

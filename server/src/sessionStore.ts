@@ -1,4 +1,5 @@
 import { WebSocket } from "ws";
+import { MemoryRateLimiter } from "./security/rateLimiter.js";
 import type { MapSession } from "./types.js";
 
 const sessionsByMapId = new Map<string, MapSession>();
@@ -18,6 +19,7 @@ export function getOrCreateSession(mapId: string): MapSession {
   const session: MapSession = {
     mapId,
     clients: new Map(),
+    operationRateLimiter: new MemoryRateLimiter(),
   };
   sessionsByMapId.set(mapId, session);
   return session;

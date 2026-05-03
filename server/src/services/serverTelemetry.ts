@@ -33,6 +33,8 @@ export type ServerMetricsSnapshot = {
     maxConnections: number;
     maxConnectionsPerMap: number;
     maxPayloadBytes: number;
+    operationRateLimitMaxAttempts: number;
+    operationRateLimitWindowMs: number;
   };
 };
 
@@ -91,6 +93,8 @@ export function getServerMetricsSnapshot(
       maxConnections: serverLimits.maxWebSocketConnections,
       maxConnectionsPerMap: serverLimits.maxWebSocketConnectionsPerMap,
       maxPayloadBytes: serverLimits.maxWebSocketPayloadBytes,
+      operationRateLimitMaxAttempts: serverLimits.wsOperationRateLimitMaxAttempts,
+      operationRateLimitWindowMs: serverLimits.wsOperationRateLimitWindowMs,
     },
     http: {
       headersTimeoutMs: serverLimits.headersTimeoutMs,

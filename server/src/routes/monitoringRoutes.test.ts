@@ -75,6 +75,8 @@ describe("monitoringRoutes", () => {
         maxConnections: expect.any(Number),
         maxConnectionsPerMap: expect.any(Number),
         maxPayloadBytes: expect.any(Number),
+        operationRateLimitMaxAttempts: expect.any(Number),
+        operationRateLimitWindowMs: expect.any(Number),
       },
     });
   });

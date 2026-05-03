@@ -19,6 +19,8 @@ export type ServerLimits = {
   workspaceInviteDefaultMaxUses: number;
   workspaceInviteMaxExpiresDays: number;
   workspaceInviteMaxUses: number;
+  wsOperationRateLimitMaxAttempts: number;
+  wsOperationRateLimitWindowMs: number;
   wsUpgradeRateLimitMaxAttempts: number;
   wsUpgradeRateLimitWindowMs: number;
 };
@@ -44,6 +46,8 @@ const defaultServerLimits: ServerLimits = {
   workspaceInviteDefaultMaxUses: 1,
   workspaceInviteMaxExpiresDays: 30,
   workspaceInviteMaxUses: 100,
+  wsOperationRateLimitMaxAttempts: 120,
+  wsOperationRateLimitWindowMs: 1_000,
   wsUpgradeRateLimitMaxAttempts: 60,
   wsUpgradeRateLimitWindowMs: 60_000,
 };
@@ -187,6 +191,16 @@ export function resolveServerLimits(
       env,
       "HEXMAP_INVITE_MAX_USES",
       defaultServerLimits.workspaceInviteMaxUses,
+    ),
+    wsOperationRateLimitMaxAttempts: readPositiveInteger(
+      env,
+      "HEXMAP_WS_OPERATION_RATE_LIMIT_MAX_ATTEMPTS",
+      defaultServerLimits.wsOperationRateLimitMaxAttempts,
+    ),
+    wsOperationRateLimitWindowMs: readPositiveInteger(
+      env,
+      "HEXMAP_WS_OPERATION_RATE_LIMIT_WINDOW_MS",
+      defaultServerLimits.wsOperationRateLimitWindowMs,
     ),
     wsUpgradeRateLimitMaxAttempts: readPositiveInteger(
       env,

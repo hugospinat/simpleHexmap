@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
+import { MemoryRateLimiter } from "./security/rateLimiter.js";
 import {
   closeSession,
   getOrCreateSession,
@@ -55,5 +56,13 @@ describe("sessionStore", () => {
 
     closeSession(firstMapId);
     closeSession(secondMapId);
+  });
+
+  it("creates sessions with a per-user operation limiter", () => {
+    const session = getOrCreateSession("limiter-map");
+
+    expect(session.operationRateLimiter).toBeInstanceOf(MemoryRateLimiter);
+
+    closeSession("limiter-map");
   });
 });

@@ -235,7 +235,7 @@ Design rules:
 **Operational visibility**
 
 - `GET /healthz` — returns `{ status, startedAt, timestamp, uptimeMs }`
-- `GET /metrics` — returns lightweight JSON with process memory, HTTP limits, and active WebSocket session/client counts
+- `GET /metrics` — returns lightweight JSON with process memory, HTTP limits, active WebSocket session/client counts, and realtime rate-limit budgets
 
 **Invitations**
 
@@ -300,6 +300,8 @@ The default server profile is intentionally conservative for low-resource single
 | `HEXMAP_MAX_WS_PAYLOAD_BYTES` | `262144` (256 KiB) |
 | `HEXMAP_MAX_WS_CONNECTIONS` | `100` |
 | `HEXMAP_MAX_WS_CONNECTIONS_PER_MAP` | `24` |
+| `HEXMAP_WS_OPERATION_RATE_LIMIT_MAX_ATTEMPTS` | `120` |
+| `HEXMAP_WS_OPERATION_RATE_LIMIT_WINDOW_MS` | `1000` |
 | `HEXMAP_REQUEST_TIMEOUT_MS` | `15000` |
 | `HEXMAP_HEADERS_TIMEOUT_MS` | `20000` |
 | `HEXMAP_KEEP_ALIVE_TIMEOUT_MS` | `5000` |
@@ -350,6 +352,8 @@ Authentication is cookie/session-based.
 - player payloads are filtered before serialization — hidden tiles, features, roads, rivers, faction territories, and hidden-cell tokens never reach player clients
 - GM-only labels are stripped from player-facing feature records
 - login and signup are rate-limited by both client IP and normalized username; invite join and WebSocket upgrades remain rate-limited per client IP (process-local, intentional for low-resource deployments)
+- accepted WebSocket map and token operations are rate-limited per user within each map session
+- structured audit logs cover auth failures, workspace invite lifecycle events, and map deletion
 - re-authentication rotates the active session and revokes previously active sessions for the same user
 - idle, expired, and revoked sessions are cleaned up opportunistically during auth access and session issuance
 - workspace invite links are stored as hashed tokens only, with expiry, usage caps, and explicit revocation
@@ -457,9 +461,6 @@ The scripts under `scripts/` authenticate, provision an isolated workspace and m
 ### Product improvement backlog
 
 **Security and server operations**
-
-- add structured audit logs for auth failures, workspace invites, and map deletion
-- add per-user WebSocket operation throttling so one client cannot flood a room
 
 **Features**
 

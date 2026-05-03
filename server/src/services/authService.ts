@@ -24,6 +24,7 @@ import { AuthRequiredError } from "../errors.js";
 import { getClientIp } from "../security/requestSecurity.js";
 import { MemoryRateLimiter } from "../security/rateLimiter.js";
 import { serverLimits } from "../serverConfig.js";
+import { logAuthFailureAudit } from "./auditLog.js";
 
 const sessionCookieName = "simplehex_session";
 const passwordKeyLength = 64;
@@ -72,6 +73,10 @@ function assertAuthRateLimit(
   action: "login" | "signup",
   input: unknown,
 ): void {
+  const username =
+    input && typeof input === "object" && "username" in input
+      ? normalizeUsername(sanitizeUsername(input.username))
+      : "unknown";
   const result = authRateLimiter.consumeMany(
     buildAuthRateLimitKeys(request, action, input),
     serverLimits.authRateLimitMaxAttempts,
@@ -79,10 +84,12 @@ function assertAuthRateLimit(
   );
 
   if (!result.allowed) {
-    console.warn("[auth] rate_limited", {
+    logAuthFailureAudit({
       action,
       ip: getClientIp(request),
+      reason: "rate_limited",
       retryAfterMs: result.retryAfterMs,
+      username,
     });
     throw new Error("Too many requests.");
   }
@@ -322,8 +329,16 @@ export async function loginUserFromRequest(
     return await loginUser(input, response);
   } catch (error) {
     if (error instanceof Error && error.message === "Invalid username or password.") {
-      console.warn("[auth] login_failed", {
+      const username =
+        input && typeof input === "object" && "username" in input
+          ? normalizeUsername(sanitizeUsername(input.username))
+          : "unknown";
+
+      logAuthFailureAudit({
+        action: "login",
         ip: getClientIp(request),
+        reason: "invalid_credentials",
+        username,
       });
     }
 

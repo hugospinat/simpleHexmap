@@ -4,11 +4,16 @@ import type {
   MapTokenOperation,
 } from "../../../src/core/protocol/index.js";
 import { applyOperationToSession } from "../operationService.js";
+import { getOrCreateSession } from "../sessionStore.js";
 import { applyTokenOperationToSession } from "../tokenOperationService.js";
 import {
   wsMapOperationMessageSchema,
   wsTokenUpdateMessageSchema,
 } from "../validation/httpSchemas.js";
+import {
+  consumeSessionOperationAllowance,
+  sendRateLimitedOperationError,
+} from "./operationRateLimit.js";
 
 export async function handleClientMessage(
   mapId: string,
@@ -17,10 +22,22 @@ export async function handleClientMessage(
   userId: string,
 ): Promise<void> {
   const message = JSON.parse(raw.toString("utf8"));
-
+  const session = getOrCreateSession(mapId);
   const tokenResult = wsTokenUpdateMessageSchema.safeParse(message);
 
   if (tokenResult.success) {
+    const allowance = consumeSessionOperationAllowance(session, userId);
+
+    if (!allowance.allowed) {
+      console.warn("[ws] operation_rate_limited", {
+        mapId,
+        retryAfterMs: allowance.retryAfterMs,
+        userId,
+      });
+      sendRateLimitedOperationError(client, "map_token_error");
+      return;
+    }
+
     try {
       await applyTokenOperationToSession(
         mapId,
@@ -45,6 +62,18 @@ export async function handleClientMessage(
       mapId,
       raw: raw.toString("utf8"),
     });
+    return;
+  }
+
+  const allowance = consumeSessionOperationAllowance(session, userId);
+
+  if (!allowance.allowed) {
+    console.warn("[ws] operation_rate_limited", {
+      mapId,
+      retryAfterMs: allowance.retryAfterMs,
+      userId,
+    });
+    sendRateLimitedOperationError(client, "sync_error");
     return;
   }
 
