@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { FeatureKind } from "@/core/map/features";
 import type { Faction, TerrainType } from "@/core/map/world";
-import type { EditorMode } from "@/editor/tools/editorTypes";
+import type { EditorMode } from "@/editor/tools";
 import type { MapTokenPlacement } from "@/core/protocol";
 import type { WorkspaceMember } from "@/core/auth/authTypes";
 import { FeaturePalette } from "../FeaturePalette/FeaturePalette";

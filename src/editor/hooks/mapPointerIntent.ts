@@ -1,7 +1,6 @@
 import type { Axial, Pixel } from "@/core/geometry/hex";
 import type { RiverEdgeRef } from "@/core/map/world";
-import type { EditGestureAction } from "@/editor/tools/editGesture";
-import type { EditorMode } from "@/editor/tools/editorTypes";
+import type { EditGestureAction, EditorMode } from "@/editor/tools";
 
 export type PointerAction = EditGestureAction | "pan";
 export type PointerTarget = "cells" | "river";

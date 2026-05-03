@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { drawTilePreview } from "@/render/tileVisuals";
 import type { TerrainType } from "@/core/map/world";
-import { useMapAssetsVersion } from "@/editor/hooks/useMapAssetsVersion";
+import { useMapAssetsVersion } from "@/editor/hooks";
 
 type TerrainTilePreviewProps = {
   selected: boolean;

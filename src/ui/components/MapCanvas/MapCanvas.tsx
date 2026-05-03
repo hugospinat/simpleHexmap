@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { editorConfig } from "@/config/editorConfig";
 import { hexKey } from "@/core/geometry/hex";
-import { useCanvasViewport } from "@/editor/hooks/useCanvasViewport";
-import { useCanvasWheelZoom } from "@/editor/hooks/useCanvasWheelZoom";
-import { useMapInteraction } from "@/editor/hooks/useMapInteraction";
-import { createPixiMapRenderer, type PixiMapRenderer } from "@/render/pixi/pixiMapRenderer";
-import type { MapInteractionOverlay, PixiRenderStats } from "@/render/pixi/pixiTypes";
+import {
+  useCanvasViewport,
+  useCanvasWheelZoom,
+  useMapInteraction,
+} from "@/editor/hooks";
+import { createPixiMapRenderer, type MapInteractionOverlay, type PixiMapRenderer, type PixiRenderStats } from "@/render/pixi";
 import type { MapCanvasProps } from "@/ui/components/MapCanvas/types";
 import type { MapLevel } from "@/core/map/mapRules";
 

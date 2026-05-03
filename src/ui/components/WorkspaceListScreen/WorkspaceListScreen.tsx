@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 import type { UserRecord } from "@/core/auth/authTypes";
-import type { WorkspaceSummary } from "@/app/api/workspaceApi";
+import type { WorkspaceSummary } from "@/app/api";
 
 type WorkspaceListScreenProps = {
   errorMessage: string | null;

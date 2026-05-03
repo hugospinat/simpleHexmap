@@ -2,9 +2,8 @@ import { useMemo } from "react";
 import type { Axial } from "@/core/geometry/hex";
 import type { RiverEdgeRef, MapState } from "@/core/map/world";
 import type { FeatureVisibilityMode } from "@/core/map/features";
-import type { EditGestureAction } from "@/editor/tools/editGesture";
-import type { EditorMode } from "@/editor/tools/editorTypes";
-import type { MapCanvasProps } from "@/ui/components/MapCanvas/types";
+import type { EditGestureAction, EditorMode } from "@/editor/tools";
+import type { MapCanvasProps } from "@/ui/components";
 import type { RenderWorldPatch } from "@/render/renderWorldPatch";
 import type { MapOperation, MapTokenPlacement } from "@/core/protocol";
 

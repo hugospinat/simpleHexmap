@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { canOpenWorkspaceAsGM, type MapOpenMode, type UserRecord, type WorkspaceInviteSummary, type WorkspaceMember } from "@/core/auth/authTypes";
-import type { WorkspaceMapSummary, WorkspaceSummary } from "@/app/api/workspaceApi";
+import type { WorkspaceMapSummary, WorkspaceSummary } from "@/app/api";
 
 type WorkspaceManagementScreenProps = {
   currentUser: UserRecord;

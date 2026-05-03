@@ -39,6 +39,11 @@ import {
   mergeRenderWorldPatch,
   type RenderWorldPatchInput,
 } from "@/app/sync/renderWorldPatchState";
+import {
+  applyTokenOperationToWorkspaceMembers,
+  createClientId,
+  logMapSync,
+} from "@/app/sync/mapSyncSupport";
 import type { RenderWorldPatch } from "@/render/renderWorldPatch";
 import type { WorkspaceMember } from "@/core/auth/authTypes";
 
@@ -67,46 +72,6 @@ export type UseMapSocketSyncResult = {
 };
 
 const maxOperationsPerBatch = 500;
-
-function createClientId(): string {
-  return typeof crypto !== "undefined" &&
-    typeof crypto.randomUUID === "function"
-    ? `client-${crypto.randomUUID()}`
-    : `client-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function isMapSyncDebugEnabled(): boolean {
-  if (!import.meta.env.DEV) {
-    return false;
-  }
-
-  try {
-    return window.localStorage.getItem("hexmap:sync-debug") === "1";
-  } catch {
-    return false;
-  }
-}
-
-function logMapSync(event: string, payload: Record<string, unknown>): void {
-  if (isMapSyncDebugEnabled()) {
-    console.info(`[MapSync] ${event}`, payload);
-  }
-}
-
-function applyTokenOperationToTokenMembers(
-  workspaceMembers: readonly WorkspaceMember[],
-  operation: MapTokenOperation,
-): WorkspaceMember[] {
-  if (operation.type === "set_map_token_color") {
-    return workspaceMembers.map((member) =>
-      member.userId === operation.userId
-        ? { ...member, tokenColor: operation.color }
-        : member,
-    );
-  }
-
-  return [...workspaceMembers];
-}
 
 export function useMapSocketSync({
   clearPreview,
@@ -266,7 +231,7 @@ export function useMapSocketSync({
   const sendTokenOperation = useCallback((operation: MapTokenOperation) => {
     setTokenPlacements((current) => applyMapTokenOperation(current, operation));
     setWorkspaceMembers((current) =>
-      applyTokenOperationToTokenMembers(current, operation),
+      applyTokenOperationToWorkspaceMembers(current, operation),
     );
 
     const transport = transportRef.current;
@@ -492,7 +457,7 @@ export function useMapSocketSync({
             parsed.payload.operation,
           );
           confirmedTokenPlacementsRef.current = nextPlacements;
-          const nextMembers = applyTokenOperationToTokenMembers(
+          const nextMembers = applyTokenOperationToWorkspaceMembers(
             confirmedWorkspaceMembersRef.current,
             parsed.payload.operation,
           );

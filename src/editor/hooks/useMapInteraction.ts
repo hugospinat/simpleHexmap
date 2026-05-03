@@ -22,8 +22,7 @@ import {
   type Axial,
   type Pixel,
 } from "@/core/geometry/hex";
-import type { EditGestureAction } from "@/editor/tools/editGesture";
-import type { EditorMode } from "@/editor/tools/editorTypes";
+import type { EditGestureAction, EditorMode } from "@/editor/tools";
 import type { RiverEdgeRef, MapState } from "@/core/map/world";
 import type { MapTokenPlacement } from "@/core/protocol";
 import { useLatestRef } from "./useLatestRef";
