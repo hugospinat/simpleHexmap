@@ -305,6 +305,8 @@ The default server profile is intentionally conservative for low-resource single
 | `HEXMAP_REQUEST_TIMEOUT_MS` | `15000` |
 | `HEXMAP_HEADERS_TIMEOUT_MS` | `20000` |
 | `HEXMAP_KEEP_ALIVE_TIMEOUT_MS` | `5000` |
+| `HEXMAP_PERF_SLOW_OPERATION_MS` | `16` |
+| `DB_POOL_SIZE` | `10` |
 
 ---
 
@@ -396,7 +398,7 @@ server/
     db/           Drizzle schema and generated migrations
     repositories/ persistence mapping and visibility filtering
     routes/       thin HTTP handlers
-    services/     auth and server orchestration helpers
+    services/     auth, realtime, and server orchestration helpers
     validation/   HTTP and WebSocket schemas
     wsRoutes.ts   WebSocket entrypoint
     index.ts      server bootstrap
@@ -467,9 +469,3 @@ The scripts under `scripts/` authenticate, provision an isolated workspace and m
 - add autosaved local draft state so reconnects feel instant
 - add read-only share links for players joining a prepared view
 - obsidian plugin / integration
-
-**Organization**
-
-- keep splitting large sync/editor/render orchestration files into narrower modules
-- centralize runtime configuration under `server/src/serverConfig.ts`
-- add a dedicated `server/src/services/realtime/` slice if WebSocket orchestration keeps growing

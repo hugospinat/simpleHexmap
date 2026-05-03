@@ -22,13 +22,16 @@ import type { UserRecord } from "../../../src/core/auth/authTypes.js";
 import { signupBodySchema, loginBodySchema } from "../validation/httpSchemas.js";
 import { AuthRequiredError } from "../errors.js";
 import { getClientIp } from "../security/requestSecurity.js";
-import { MemoryRateLimiter } from "../security/rateLimiter.js";
-import { serverLimits } from "../serverConfig.js";
+import {
+  createServerRateLimiter,
+  serverLimits,
+  serverRuntimeConfig,
+} from "../serverConfig.js";
 import { logAuthFailureAudit } from "./auditLog.js";
 
 const sessionCookieName = "simplehex_session";
 const passwordKeyLength = 64;
-const authRateLimiter = new MemoryRateLimiter();
+const authRateLimiter = createServerRateLimiter();
 let lastSessionCleanupAt = 0;
 
 function scryptAsync(password: string, salt: string, keyLength: number, options: ScryptOptions): Promise<Buffer> {
@@ -160,7 +163,7 @@ function appendSetCookie(response: ServerResponse, cookie: string): void {
 }
 
 function isSecureCookie(): boolean {
-  return process.env.NODE_ENV === "production";
+  return serverRuntimeConfig.secureCookies;
 }
 
 function createSessionToken(): string {

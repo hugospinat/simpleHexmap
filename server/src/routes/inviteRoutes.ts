@@ -1,14 +1,13 @@
 import { requireAuth } from "../services/authService.js";
+import { createServerRateLimiter, serverLimits } from "../serverConfig.js";
 import { getClientIp } from "../security/requestSecurity.js";
-import { MemoryRateLimiter } from "../security/rateLimiter.js";
-import { serverLimits } from "../serverConfig.js";
 import {
   getWorkspaceInviteByToken,
   joinWorkspaceByInviteToken,
 } from "../repositories/workspaceInviteRepository.js";
 import { sendJson } from "./httpHelpers.js";
 
-const inviteRateLimiter = new MemoryRateLimiter();
+const inviteRateLimiter = createServerRateLimiter();
 const inviteTokenPattern = "[a-zA-Z0-9_-]{16,120}";
 
 export const invitePathPattern = new RegExp(

@@ -1,10 +1,13 @@
 import { defineConfig } from "drizzle-kit";
+import { resolveServerDatabaseConfig } from "./server/src/serverConfig";
+
+const databaseConfig = resolveServerDatabaseConfig(process.env);
 
 export default defineConfig({
   dialect: "postgresql",
   out: "./server/src/db/migrations",
   schema: "./server/src/db/schema.ts",
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? "postgres://simplehex:simplehex@localhost:5432/simplehex"
-  }
+    url: databaseConfig.url,
+  },
 });

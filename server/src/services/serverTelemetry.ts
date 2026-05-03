@@ -1,4 +1,4 @@
-import { getSessionStoreMetrics } from "../sessionStore.js";
+import { getSessionStoreMetrics } from "./realtime/index.js";
 import { serverLimits } from "../serverConfig.js";
 
 const serverStartedAt = Date.now();

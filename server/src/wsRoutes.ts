@@ -2,20 +2,19 @@ import { WebSocketServer } from "ws";
 import { getVisibilityModeForMapRole } from "./repositories/mapVisibility.js";
 import { getMapRecordForUser } from "./repositories/mapRepository.js";
 import { getAuthContext } from "./services/authService.js";
-import { serverLimits } from "./serverConfig.js";
-import { getClientIp, isOriginAllowed } from "./security/requestSecurity.js";
-import { MemoryRateLimiter } from "./security/rateLimiter.js";
-import { getSession } from "./sessionStore.js";
-import { attachClientHandlers } from "./ws/clientSession.js";
+import { createServerRateLimiter, serverLimits } from "./serverConfig.js";
 import {
+  attachClientHandlers,
+  getSession,
   mapSocketPattern,
   rejectUpgrade,
   resolveWebSocketUpgradeRejection,
-} from "./ws/upgradePolicy.js";
+} from "./services/realtime/index.js";
+import { getClientIp, isOriginAllowed } from "./security/requestSecurity.js";
 
-const wsUpgradeRateLimiter = new MemoryRateLimiter();
+const wsUpgradeRateLimiter = createServerRateLimiter();
 
-export { resolveWebSocketUpgradeRejection } from "./ws/upgradePolicy.js";
+export { resolveWebSocketUpgradeRejection } from "./services/realtime/index.js";
 
 export function attachWebSocketRoutes(server) {
   const webSocketServer = new WebSocketServer({

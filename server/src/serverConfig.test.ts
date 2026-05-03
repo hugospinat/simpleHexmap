@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { resolveServerLimits } from "./serverConfig.js";
+import {
+  createServerRateLimiter,
+  resolveServerDatabaseConfig,
+  resolveServerLimits,
+  resolveServerRuntimeConfig,
+  shouldLogServerPerf,
+} from "./serverConfig.js";
 
 describe("serverConfig", () => {
   it("returns the low-resource defaults", () => {
@@ -118,5 +124,51 @@ describe("serverConfig", () => {
     });
 
     expect(limits).toEqual(resolveServerLimits({}));
+  });
+
+  it("centralizes database and runtime configuration", () => {
+    expect(
+      resolveServerDatabaseConfig({
+        DATABASE_URL: "postgres://db.example.com/simplehex",
+        DB_POOL_SIZE: "14",
+      }),
+    ).toEqual({
+      poolSize: 14,
+      url: "postgres://db.example.com/simplehex",
+    });
+
+    expect(
+      resolveServerRuntimeConfig({
+        HEXMAP_PERF_DEBUG: "1",
+        HEXMAP_PERF_SLOW_OPERATION_MS: "24",
+        NODE_ENV: "production",
+      }),
+    ).toEqual({
+      isProduction: true,
+      perfDebug: true,
+      perfSlowOperationThresholdMs: 24,
+      secureCookies: true,
+    });
+  });
+
+  it("provides shared helpers for rate limiters and perf logging", () => {
+    const limiter = createServerRateLimiter(() => 1000);
+
+    expect(limiter.consume("key", 1, 1000)).toMatchObject({
+      allowed: true,
+      remaining: 0,
+    });
+    expect(shouldLogServerPerf(8, {
+      isProduction: false,
+      perfDebug: false,
+      perfSlowOperationThresholdMs: 16,
+      secureCookies: false,
+    })).toBe(false);
+    expect(shouldLogServerPerf(8, {
+      isProduction: false,
+      perfDebug: true,
+      perfSlowOperationThresholdMs: 16,
+      secureCookies: false,
+    })).toBe(true);
   });
 });
