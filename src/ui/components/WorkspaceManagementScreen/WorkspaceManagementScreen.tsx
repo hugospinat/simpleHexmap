@@ -58,8 +58,8 @@ export function WorkspaceManagementScreen({
   const [usernameToAdd, setUsernameToAdd] = useState("");
   const [roleToAdd, setRoleToAdd] = useState<"gm" | "player">("player");
   const [newMapName, setNewMapName] = useState("");
-  const [inviteExpiresInDays, setInviteExpiresInDays] = useState("");
-  const [inviteMaxUses, setInviteMaxUses] = useState("");
+  const [inviteExpiresInDays, setInviteExpiresInDays] = useState("7");
+  const [inviteMaxUses, setInviteMaxUses] = useState("1");
   const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const canManageMembers = workspace.currentUserRole === "owner";
@@ -151,12 +151,16 @@ export function WorkspaceManagementScreen({
       return;
     }
 
-    const maxUses = Number.parseInt(inviteMaxUses, 10);
-    const expiresInDays = Number.parseInt(inviteExpiresInDays, 10);
+    const maxUses = Number.parseInt(inviteMaxUses.trim(), 10);
+    const expiresInDays = Number.parseInt(inviteExpiresInDays.trim(), 10);
+
+    if (!Number.isInteger(maxUses) || !Number.isInteger(expiresInDays)) {
+      return;
+    }
 
     const inviteUrl = await onCreateInvite(workspace.id, expiresInDays, maxUses);
-    setInviteExpiresInDays("");
-    setInviteMaxUses("");
+    setInviteExpiresInDays("7");
+    setInviteMaxUses("1");
     setLastInviteUrl(inviteUrl);
   };
 
