@@ -58,7 +58,7 @@ Default database URL:
 postgres://simplehex:simplehex@localhost:5432/simplehex
 ```
 
-If startup fails with `password authentication failed for user "simplehex"`, the most common cause is that `localhost:5432` is owned by another PostgreSQL instance instead of the repository container.
+If startup fails with `password authentication failed for user "simplehex"`, the most common cause is that `localhost:5432` is owned by a different PostgreSQL instance instead of the repository container.
 
 ### Start the backend
 
