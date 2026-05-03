@@ -459,10 +459,9 @@ The scripts under `scripts/` authenticate, provision an isolated workspace and m
 
 **Features**
 
-- add hotkey-first quick actions for terrain, fog, and token placement
-- add one-click map templates for common tabletop setups
 - add autosaved local draft state so reconnects feel instant
 - add read-only share links for players joining a prepared view
+- obsidian plugin / integration
 
 **Organization**
 
