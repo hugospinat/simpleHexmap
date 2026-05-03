@@ -1,6 +1,15 @@
 # hexmap_editor
 
-Technical architecture guide for the repository. This file is the source of truth for runtime structure, persistence workflow, wire contracts, and system boundaries. Repository coding discipline belongs in `.github/copilot-instructions.md`; repository architecture belongs here.
+Collaborative hex-map editor for tabletop and strategy workflows with authoritative multiplayer sync.
+
+This README is the source of truth for runtime structure, persistence workflow, wire contracts, and system boundaries.
+
+## Read this README by profile
+
+- **Newcomer / first run**: start with [Product summary](#product-summary), [Quick start for newcomers](#quick-start-for-newcomers), [Repository map](#repository-map), and [Verification workflow](#verification-workflow).
+- **Architecture work**: read [Architecture source of truth](#architecture-source-of-truth), [Canonical data model](#canonical-data-model), [Operation surface](#operation-surface), [End-to-end flow](#end-to-end-flow), and [Dependency direction](#dependency-direction).
+- **Backend / persistence work**: read [Server, transport, and persistence](#server-transport-and-persistence), [Visibility and security](#visibility-and-security), and [Migration workflow](#migration-workflow).
+- **Operations / maintenance**: read [Local development](#local-development), [Operational hardening knobs](#operational-hardening-knobs), [Smoke scripts](#smoke-scripts), and [Roadmap and active follow-up](#roadmap-and-active-follow-up).
 
 ## Documentation contract
 
@@ -9,8 +18,6 @@ Technical architecture guide for the repository. This file is the source of trut
 - If the README and code disagree, the README is stale and must be rewritten immediately.
 
 ## Product summary
-
-`hexmap_editor` is a collaborative hex-map editor for tabletop and strategy workflows with authoritative multiplayer sync.
 
 Core capabilities:
 
@@ -25,158 +32,56 @@ Core capabilities:
 - PostgreSQL persistence through Drizzle
 - authoritative ordered updates over WebSocket
 
-## Non-negotiable model
+## Quick start for newcomers
 
-The rewrite is intentionally breaking. The codebase now has one canonical persisted document model and one explicit overlay view model.
+### What to understand first
 
-Canonical representations:
+- The app has one canonical persisted model (`MapDocument`) and one explicit overlay snapshot (`MapView`).
+- The client is optimistic, but the server owns validation, persistence, and authoritative ordering.
+- Player-visible state is filtered on the server before transport.
 
-- `MapState`: runtime editor world used by tools, reducers, and rendering
-- `MapDocument`: canonical persisted document used for import/export and SQL materialization
-- `MapView`: `{ document, tokenPlacements }`, the explicit server and client snapshot shape
-- `MapOperation`: semantic document mutation contract
-- `MapTokenOperation`: semantic token overlay mutation contract
+### Install dependencies
 
-Hard rules:
-
-- `MapState` is not persisted directly.
-- `MapDocument` does not contain tokens.
-- token placement lives only in `tokenPlacements`.
-- token color lives only on `WorkspaceMember.tokenColor`.
-- there are no compatibility shims for the removed legacy document model.
-- player-visible state is filtered on the server before transport.
-- the server owns sequence numbers and authoritative ordering.
-
-## Canonical data model
-
-### Document
-
-`MapDocument` is the only persisted map content shape.
-
-It contains:
-
-- `version`
-- `tiles`
-- `features`
-- `rivers`
-- `roads`
-- `factions`
-- `factionTerritories`
-
-Important document rules:
-
-- tiles carry both `terrain` and `hidden`
-- feature records carry `kind`, `featureLevel`, and `hidden: boolean`
-- feature labels do not exist anywhere in the canonical model
-- source features are placed only on level 3; level 2 shows feature levels 2-3 and level 1 shows feature level 3 only
-- terrain override is derived from visible feature kind; there is no persisted per-feature `overrideTerrainTile` boolean
-- factions are map-local records identified by `(mapId, id)` in persistence
-- document JSON version `2` is the import/export contract
-
-### Overlay view
-
-`MapView` is the authoritative snapshot shape used across HTTP and WebSocket reads.
-
-```ts
-type MapView = {
-  document: MapDocument;
-  tokenPlacements: MapTokenPlacement[];
-};
+```bash
+npm install
 ```
 
-Token rules:
+### Start the development database
 
-- `MapTokenPlacement` contains only `userId`, `q`, and `r`
-- token color is resolved from workspace membership, not token rows
-- player snapshots include only placements on visible cells
+```bash
+docker compose -f docker-compose.dev.yml up -d postgres
+```
 
-### Workspace membership
-
-Workspace membership is now the single authority for access and token presentation.
-
-`WorkspaceMember` contains:
-
-- `userId`
-- `username`
-- `role`
-- `tokenColor`
-
-There is no `ownerUserId` field in workspace summaries, map summaries, or map snapshots. Ownership is represented by the membership role `owner`.
-
-## Operation surface
-
-The live protocol is intentionally smaller than before. Removed operation families are not supported.
-
-Canonical document operations:
-
-- terrain: `set_tiles`
-- factions: `set_faction_territories`, `add_faction`, `update_faction`, `remove_faction`
-- features: `add_feature`, `update_feature`, `remove_feature`
-- rivers: `add_river_data`, `remove_river_data`
-- roads: `set_road_edges`
-
-Canonical token operations:
-
-- `set_map_token`
-- `remove_map_token`
-- `set_map_token_color`
-
-Removed operations:
-
-- `paint_cells`
-- `set_cells_hidden`
-- `assign_faction_cells`
-- `set_feature_hidden`
-- `rename_map`
-
-Current design choices:
-
-- editor commands emit only canonical operations
-- runtime reducers and document reducers apply the same document operation contract
-- token placement is reduced separately from document content
-- history inverts semantic batches rather than persistence-shaped diffs
-
-## Editor interaction rules
-
-- GM fog editing and GM token placement are separate tool tabs
-- fog left drag edits terrain hidden state only
-- fog right drag edits feature hidden state only
-- the first valid fog target in a drag locks the whole gesture to hide or reveal
-- feature placement and removal happen only on level 3; higher levels are derived read-only views
-- feature left click places the selected feature kind and never opens a popup editor
-- road add and road remove both work by dragging between neighboring hexes; removal clears only the traversed connections
-- visible feature kinds that support terrain override always replace terrain art; hidden features never do
-
-## End-to-end flow
-
-GM edit flow:
+Default database URL:
 
 ```text
-User gesture
--> editor tool / gesture state
--> domain command
--> MapOperation[] or MapTokenOperation
--> optimistic client session state
--> WebSocket send
--> server validation and authorization
--> transactional persistence
--> authoritative ordered broadcast
--> client authoritative apply or snapshot replace
--> render from MapState plus token overlay
+postgres://simplehex:simplehex@localhost:5432/simplehex
 ```
 
-Player view flow:
+If startup fails with `password authentication failed for user "simplehex"`, the most common cause is that `localhost:5432` is owned by a different PostgreSQL instance instead of the repository container.
 
-```text
-HTTP or WebSocket request
--> server role lookup
--> server visibility filtering
--> filtered MapView snapshot
--> client session replace
--> render only visible state
+### Start the backend
+
+```bash
+npm run server
 ```
 
-## Repository structure
+### Start the frontend
+
+```bash
+npm run dev
+```
+
+### Main checks
+
+```bash
+npm run typecheck
+npm run test
+npm run build
+npm run build:server
+```
+
+## Repository map
 
 ```text
 src/
@@ -215,7 +120,160 @@ scripts/
   authenticated smoke scripts for sync behavior
 ```
 
-## Dependency direction
+## Architecture source of truth
+
+### Non-negotiable model
+
+The rewrite is intentionally breaking. The codebase now has one canonical persisted document model and one explicit overlay view model.
+
+Canonical representations:
+
+- `MapState`: runtime editor world used by tools, reducers, and rendering
+- `MapDocument`: canonical persisted document used for import/export and SQL materialization
+- `MapView`: `{ document, tokenPlacements }`, the explicit server and client snapshot shape
+- `MapOperation`: semantic document mutation contract
+- `MapTokenOperation`: semantic token overlay mutation contract
+
+Hard rules:
+
+- `MapState` is not persisted directly.
+- `MapDocument` does not contain tokens.
+- token placement lives only in `tokenPlacements`.
+- token color lives only on `WorkspaceMember.tokenColor`.
+- there are no compatibility shims for the removed legacy document model.
+- player-visible state is filtered on the server before transport.
+- the server owns sequence numbers and authoritative ordering.
+
+### Canonical data model
+
+#### Document
+
+`MapDocument` is the only persisted map content shape.
+
+It contains:
+
+- `version`
+- `tiles`
+- `features`
+- `rivers`
+- `roads`
+- `factions`
+- `factionTerritories`
+
+Important document rules:
+
+- tiles carry both `terrain` and `hidden`
+- feature records carry `kind`, `featureLevel`, and `hidden: boolean`
+- feature labels do not exist anywhere in the canonical model
+- source features are placed only on level 3; level 2 shows feature levels 2-3 and level 1 shows feature level 3 only
+- terrain override is derived from visible feature kind; there is no persisted per-feature `overrideTerrainTile` boolean
+- factions are map-local records identified by `(mapId, id)` in persistence
+- document JSON version `2` is the import/export contract
+
+#### Overlay view
+
+`MapView` is the authoritative snapshot shape used across HTTP and WebSocket reads.
+
+```ts
+type MapView = {
+  document: MapDocument;
+  tokenPlacements: MapTokenPlacement[];
+};
+```
+
+Token rules:
+
+- `MapTokenPlacement` contains only `userId`, `q`, and `r`
+- token color is resolved from workspace membership, not token rows
+- player snapshots include only placements on visible cells
+
+#### Workspace membership
+
+Workspace membership is now the single authority for access and token presentation.
+
+`WorkspaceMember` contains:
+
+- `userId`
+- `username`
+- `role`
+- `tokenColor`
+
+There is no `ownerUserId` field in workspace summaries, map summaries, or map snapshots. Ownership is represented by the membership role `owner`.
+
+### Operation surface
+
+The live protocol is intentionally smaller than before. Removed operation families are not supported.
+
+Canonical document operations:
+
+- terrain: `set_tiles`
+- factions: `set_faction_territories`, `add_faction`, `update_faction`, `remove_faction`
+- features: `add_feature`, `update_feature`, `remove_feature`
+- rivers: `add_river_data`, `remove_river_data`
+- roads: `set_road_edges`
+
+Canonical token operations:
+
+- `set_map_token`
+- `remove_map_token`
+- `set_map_token_color`
+
+Removed operations:
+
+- `paint_cells`
+- `set_cells_hidden`
+- `assign_faction_cells`
+- `set_feature_hidden`
+- `rename_map`
+
+Current design choices:
+
+- editor commands emit only canonical operations
+- runtime reducers and document reducers apply the same document operation contract
+- token placement is reduced separately from document content
+- history inverts semantic batches rather than persistence-shaped diffs
+
+### Editor interaction rules
+
+- GM fog editing and GM token placement are separate tool tabs
+- fog left drag edits terrain hidden state only
+- fog right drag edits feature hidden state only
+- the first valid fog target in a drag locks the whole gesture to hide or reveal
+- feature placement and removal happen only on level 3; higher levels are derived read-only views
+- feature left click places the selected feature kind and never opens a popup editor
+- road add and road remove both work by dragging between neighboring hexes; removal clears only the traversed connections
+- visible feature kinds that support terrain override always replace terrain art; hidden features never do
+
+### End-to-end flow
+
+#### GM edit flow
+
+```text
+User gesture
+-> editor tool / gesture state
+-> domain command
+-> MapOperation[] or MapTokenOperation
+-> optimistic client session state
+-> WebSocket send
+-> server validation and authorization
+-> transactional persistence
+-> authoritative ordered broadcast
+-> client authoritative apply or snapshot replace
+-> render from MapState plus token overlay
+```
+
+#### Player view flow
+
+```text
+HTTP or WebSocket request
+-> server role lookup
+-> server visibility filtering
+-> filtered MapView snapshot
+-> client session replace
+-> render only visible state
+```
+
+### Dependency direction
 
 ```text
 ui -> editor/app/render -> core
@@ -229,7 +287,7 @@ Rules:
 - `src/render` consumes derived world data and never owns business rules.
 - `server/src` owns transport, authorization, persistence, visibility filtering, and broadcast.
 
-## Server and transport
+## Server, transport, and persistence
 
 ### HTTP contract
 
@@ -312,9 +370,9 @@ Important messages:
 - `document`
 - `tokenPlacements`
 
-## Persistence model
+### Persistence model
 
-Persistence is fully aligned to the canonical model.
+Persistence is PostgreSQL-first with generated Drizzle migrations and is fully aligned to the canonical model.
 
 Key schema decisions:
 
@@ -335,7 +393,23 @@ Explicit removals:
 - `owner_user_id`
 - `maps.settings`
 
-## Visibility and security
+Canonical workflow:
+
+```bash
+npm run db:generate
+npm run db:migrate
+```
+
+Rules:
+
+- edit `server/src/db/schema.ts`
+- generate SQL migrations into `server/src/db/migrations/`
+- apply them with Drizzle Kit
+- let server startup run the Drizzle runtime migrator against the generated migration folder
+- do not use hand-maintained runtime SQL arrays as the canonical migration path
+- do not treat `drizzle-kit push` as the repository workflow
+
+### Visibility and security
 
 - auth is cookie/session-based
 - cookie-authenticated browser access remains same-origin; `HEXMAP_ALLOWED_ORIGINS` only gates explicit origin validation and non-credentialed CORS responses
@@ -356,7 +430,7 @@ Primary implementation seam:
 
 - `server/src/repositories/mapVisibility.ts`
 
-## Migration workflow
+### Migration workflow
 
 Schema changes use generated Drizzle SQL, then manual review.
 
@@ -375,26 +449,29 @@ Current repository state:
 
 When the migration history is reset like this, treat the generated `0000` as the new canonical starting point for fresh databases.
 
-## Verification workflow
+## Development workflow
+
+### Verification workflow
 
 Primary checks:
 
 - `npm run typecheck`
+- `npm run test`
+- `npm run build`
 - `npm run build:server`
-- `npm test`
 - `npm run db:generate`
 
 Smoke scripts live under `scripts/` and are expected to speak the canonical operation and snapshot contract.
 
-## Practical boundaries
+### Practical boundaries
 
 - Fix problems at the representation boundary where they originate.
 - Keep document logic in document reducers and codecs.
 - Keep token overlay logic separate from document persistence.
 - Keep visibility filtering strictly server-side.
 - Do not reintroduce owner fields, legacy IDs, or compatibility adapters into the transport layer.
-- GM-only labels and hidden content must not be hidden only by rendering tricks
-- player token, terrain, feature, road, river, and faction visibility all derive from filtered server payloads
+- GM-only labels and hidden content must not be hidden only by rendering tricks.
+- player token, terrain, feature, road, river, and faction visibility all derive from filtered server payloads.
 
 Relevant server boundaries:
 
@@ -402,59 +479,14 @@ Relevant server boundaries:
 - `server/src/syncSnapshotService.ts`
 - `server/src/sessionDelivery.ts`
 
-## Persistence model
+### Local development
 
-Persistence is PostgreSQL-first with generated Drizzle migrations.
+The normal local workflow is:
 
-Canonical workflow:
-
-```bash
-npm run db:generate
-npm run db:migrate
-```
-
-Rules:
-
-- edit `server/src/db/schema.ts`
-- generate SQL migrations into `server/src/db/migrations/`
-- apply them with Drizzle Kit
-- let server startup run the Drizzle runtime migrator against the generated migration folder
-- do not use hand-maintained runtime SQL arrays as the canonical migration path
-- do not treat `drizzle-kit push` as the repository workflow
-
-## Local development
-
-Install dependencies:
-
-```bash
-npm install
-```
-
-Start the development database:
-
-```bash
-docker compose -f docker-compose.dev.yml up -d postgres
-```
-
-Default database URL:
-
-```text
-postgres://simplehex:simplehex@localhost:5432/simplehex
-```
-
-If startup fails with `password authentication failed for user "simplehex"`, the most common cause is that `localhost:5432` is owned by some other PostgreSQL instance instead of the repository container.
-
-Start the backend:
-
-```bash
-npm.cmd run server
-```
-
-Start the frontend:
-
-```bash
-npm.cmd run dev
-```
+1. `npm install`
+2. `docker compose -f docker-compose.dev.yml up -d postgres`
+3. `npm run server`
+4. `npm run dev`
 
 ## Operational hardening knobs
 
@@ -483,23 +515,9 @@ Available scripts:
 
 These scripts assume the backend is already running.
 
-## Verification
+## Roadmap and active follow-up
 
-Mandatory repository checks after meaningful changes:
-
-```bash
-npm run typecheck
-npm test
-npm run build:server
-```
-
-Current structural rules:
-
-- no critical source file should exceed 600 lines without an explicit temporary reason
-- keep sync, editor, and Pixi orchestration moving toward smaller modules
-- keep server routes thin and keep persistence logic out of transport handlers
-
-## Active refactor direction
+### Active refactor direction
 
 Priority themes still in flight:
 
@@ -509,25 +527,23 @@ Priority themes still in flight:
 - keep workspace and map terminology aligned across code, docs, and storage
 - reduce dead terminology and dead adapters instead of preserving historical naming compromises
 
-## Product improvement backlog
+### Product improvement backlog
 
-Shortlist aligned with the goal of an ultra-fast, low-friction GM tool:
-
-### Security and server operations
+#### Security and server operations
 
 - add login and signup rate limiting keyed by IP and username
 - add structured audit logs for auth failures, workspace invites, and map deletion
 - add per-user WebSocket operation throttling so one client cannot flood a room
 - expose lightweight health and metrics endpoints for deployment visibility
 
-### Features
+#### Features
 
 - add hotkey-first quick actions for terrain, fog, and token placement
 - add one-click map templates for common tabletop setups
 - add autosaved local draft state so reconnects feel instant
 - add read-only share links for players joining a prepared view
 
-### Organization
+#### Organization
 
 - keep splitting large sync/editor/render orchestration files into narrower modules
 - centralize runtime configuration under `server/src/serverConfig.ts`
