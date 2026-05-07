@@ -33,10 +33,12 @@ type UseEditorCanvasPropsOptions = {
   onToolStep?: (delta: 1 | -1) => void;
   role: "gm" | "player";
   renderWorldPatch?: RenderWorldPatch;
+  selectedHex: Axial | null;
   setCenter: (center: Axial) => void;
   setHoveredHex: (axial: Axial | null) => void;
   onGmTokenPlace: (axial: Axial) => void;
   onGmTokenRemove: (userId: string) => void;
+  onNoteHexSelect: (axial: Axial) => void;
   onPlayerTokenPlace: (axial: Axial) => void;
   showCoordinates: boolean;
   startEditGesture: (action: EditGestureAction, axials: Axial[]) => void;
@@ -64,10 +66,12 @@ export function useEditorCanvasProps({
   onToolStep,
   role,
   renderWorldPatch,
+  selectedHex,
   setCenter,
   setHoveredHex,
   onGmTokenPlace,
   onGmTokenRemove,
+  onNoteHexSelect,
   onPlayerTokenPlace,
   showCoordinates,
   startEditGesture,
@@ -96,6 +100,7 @@ export function useEditorCanvasProps({
       onHoveredHexChange: setHoveredHex,
       onGmTokenPlace,
       onGmTokenRemove,
+      onNoteHexSelect,
       onPlayerTokenPlace,
       onToolStep,
       onRenderWorldPatchApplied,
@@ -104,6 +109,7 @@ export function useEditorCanvasProps({
       tokenPlacements,
       renderWorldPatch,
       hoveredHex,
+      selectedHex,
       showCoordinates,
       visualZoom,
       world,
@@ -124,12 +130,14 @@ export function useEditorCanvasProps({
       onRenderWorldPatchApplied,
       onGmTokenPlace,
       onGmTokenRemove,
+      onNoteHexSelect,
       onPlayerTokenPlace,
       onToolStep,
       previewOperations,
       tokenPlacements,
       role,
       renderWorldPatch,
+      selectedHex,
       setCenter,
       setHoveredHex,
       showCoordinates,

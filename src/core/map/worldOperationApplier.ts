@@ -327,6 +327,8 @@ export function applyOperationToWorld(
           factionId: territory.factionId,
         })),
       );
+    case "set_note":
+      return world;
     case "add_feature":
       return applyFeatureRecordToWorld(world, operation.feature);
     case "update_feature":

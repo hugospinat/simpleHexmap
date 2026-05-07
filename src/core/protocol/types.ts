@@ -41,6 +41,12 @@ export type MapFactionTerritoryRecord = {
   factionId: string;
 };
 
+export type MapNoteRecord = {
+  q: number;
+  r: number;
+  markdown: string;
+};
+
 export type MapTokenPlacement = {
   userId: string;
   q: number;
@@ -69,6 +75,7 @@ export type MapDocument = {
   roads: MapRoadRecord[];
   factions: MapFactionRecord[];
   factionTerritories: MapFactionTerritoryRecord[];
+  notes: MapNoteRecord[];
 };
 
 export type MapView = {
@@ -90,6 +97,12 @@ export type MapOperation =
   | {
       type: "set_faction_territories";
       territories: MapFactionTerritoryUpdate[];
+    }
+  | {
+      type: "set_note";
+      note: MapCellRef & {
+        markdown: string | null;
+      };
     }
   | { type: "add_feature"; feature: MapFeatureRecord }
   | { type: "update_feature"; featureId: string; patch: FeaturePatch }

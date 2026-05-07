@@ -15,10 +15,12 @@ import { applyOperationToWorld } from "@/core/map/worldOperationApplier";
 import type {
   FactionPatch,
   FeaturePatch,
+  MapDocument,
   MapFeatureRecord,
   MapOperation,
   MapRoadRecord,
 } from "@/core/protocol";
+import { applyMapDocumentOperation } from "@/core/protocol";
 
 export type OperationHistoryEntry = {
   redoOperations: MapOperation[];
@@ -157,8 +159,19 @@ function factionPatchForPreviousValues(
   return inverse;
 }
 
+function noteMarkdownByCell(
+  document: MapDocument,
+  cell: { q: number; r: number },
+): string | null {
+  return (
+    document.notes.find((note) => note.q === cell.q && note.r === cell.r)?.markdown ??
+    null
+  );
+}
+
 function inverseForOperation(
   worldBefore: MapState,
+  documentBefore: MapDocument,
   operation: MapOperation,
 ): MapOperation[] {
   const sourceMap = worldBefore.levels[SOURCE_LEVEL] ?? new Map();
@@ -207,6 +220,33 @@ function inverseForOperation(
       return territories.length > 0
         ? [{ type: "set_faction_territories", territories }]
         : [];
+    }
+
+    case "set_note": {
+      const hasTile = documentBefore.tiles.some(
+        (tile) => tile.q === operation.note.q && tile.r === operation.note.r,
+      );
+
+      if (!hasTile) {
+        return [];
+      }
+
+      const previousMarkdown = noteMarkdownByCell(documentBefore, operation.note);
+
+      if (previousMarkdown === operation.note.markdown) {
+        return [];
+      }
+
+      return [
+        {
+          type: "set_note",
+          note: {
+            q: operation.note.q,
+            r: operation.note.r,
+            markdown: previousMarkdown,
+          },
+        },
+      ];
     }
 
     case "add_feature":
@@ -324,16 +364,19 @@ function inverseForOperation(
 
 export function invertOperationBatch(
   worldBefore: MapState,
+  documentBefore: MapDocument,
   operations: MapOperation[],
 ): MapOperation[] {
   const inverseByForwardOperation: MapOperation[][] = [];
   let currentWorld = worldBefore;
+  let currentDocument = documentBefore;
 
   for (const operation of operations) {
     inverseByForwardOperation.push(
-      inverseForOperation(currentWorld, operation),
+      inverseForOperation(currentWorld, currentDocument, operation),
     );
     currentWorld = applyOperationToWorld(currentWorld, operation);
+    currentDocument = applyMapDocumentOperation(currentDocument, operation);
   }
 
   return inverseByForwardOperation.reverse().flat();
@@ -342,13 +385,14 @@ export function invertOperationBatch(
 export function recordOperationHistory(
   history: OperationHistoryState,
   worldBefore: MapState,
+  documentBefore: MapDocument,
   operations: MapOperation[],
 ): void {
   if (operations.length === 0) {
     return;
   }
 
-  const undoOperations = invertOperationBatch(worldBefore, operations);
+  const undoOperations = invertOperationBatch(worldBefore, documentBefore, operations);
 
   if (undoOperations.length === 0) {
     return;

@@ -186,6 +186,15 @@ export function Sidebar({
         </section>
       ) : activeMode === "token" ? (
         tokenPanel
+      ) : activeMode === "notes" ? (
+        <section className="panel note-tool-panel">
+          <h2>Notes</h2>
+          <div className="active-tile">
+            <span>Mode</span>
+            <strong>GM markdown notes</strong>
+          </div>
+          <p>Left click a hex to open its note in the right panel. Save or clear the note from that panel.</p>
+        </section>
       ) : (
         <section className="panel faction-panel">
           <h2>Factions</h2>

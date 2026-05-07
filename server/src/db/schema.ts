@@ -149,6 +149,23 @@ export const hexCells = pgTable(
   }),
 );
 
+export const mapNotes = pgTable(
+  "map_notes",
+  {
+    mapId: uuid("map_id")
+      .notNull()
+      .references(() => maps.id, { onDelete: "cascade" }),
+    q: integer("q").notNull(),
+    r: integer("r").notNull(),
+    markdown: text("markdown").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.mapId, table.q, table.r] }),
+    mapIndex: index("map_notes_map_id_idx").on(table.mapId),
+  }),
+);
+
 export const features = pgTable(
   "features",
   {

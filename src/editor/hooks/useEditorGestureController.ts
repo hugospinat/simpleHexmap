@@ -11,7 +11,7 @@ import {
   commandAddFeature,
   commandRemoveFeature,
 } from "@/core/map/commands/mapEditCommands";
-import type { MapOperation } from "@/core/protocol";
+import type { MapDocument, MapOperation } from "@/core/protocol";
 import {
   applyEditGestureCells,
   createEditGesture,
@@ -41,11 +41,11 @@ import {
 import type { EditorMode } from "@/editor/tools";
 
 type ActiveEditorGesture =
-  | { kind: "terrain"; gesture: EditGesture; worldBefore: MapState }
-  | { kind: "faction"; gesture: FactionGesture; worldBefore: MapState }
-  | { kind: "river"; gesture: RiverGesture; worldBefore: MapState }
-  | { kind: "road"; gesture: RoadGesture; worldBefore: MapState }
-  | { kind: "fog"; gesture: FogGesture; worldBefore: MapState };
+  | { kind: "terrain"; gesture: EditGesture; worldBefore: MapState; documentBefore: MapDocument }
+  | { kind: "faction"; gesture: FactionGesture; worldBefore: MapState; documentBefore: MapDocument }
+  | { kind: "river"; gesture: RiverGesture; worldBefore: MapState; documentBefore: MapDocument }
+  | { kind: "road"; gesture: RoadGesture; worldBefore: MapState; documentBefore: MapDocument }
+  | { kind: "fog"; gesture: FogGesture; worldBefore: MapState; documentBefore: MapDocument };
 
 type UseEditorGestureControllerOptions = {
   activeFactionId: string | null;
@@ -55,8 +55,13 @@ type UseEditorGestureControllerOptions = {
   canEdit: boolean;
   createFeatureId: () => string;
   publishToolPreviewOperations: (operations: MapOperation[]) => void;
-  submitLocalOperations: (operations: MapOperation[], worldBefore: MapState) => void;
+  submitLocalOperations: (
+    operations: MapOperation[],
+    worldBefore: MapState,
+    documentBefore: MapDocument,
+  ) => void;
   viewLevel: number;
+  visibleDocument: MapDocument;
   visibleWorld: MapState;
 };
 
@@ -70,6 +75,7 @@ export function useEditorGestureController({
   publishToolPreviewOperations,
   submitLocalOperations,
   viewLevel,
+  visibleDocument,
   visibleWorld,
 }: UseEditorGestureControllerOptions) {
   const activeGestureRef = useRef<ActiveEditorGesture | null>(null);
@@ -198,7 +204,7 @@ export function useEditorGestureController({
             createFeature(createFeatureId(), activeFeatureKind, hexKey(axial)),
           );
 
-          submitLocalOperations(result.operations, visibleWorld);
+          submitLocalOperations(result.operations, visibleWorld, visibleDocument);
           return;
         }
 
@@ -207,7 +213,7 @@ export function useEditorGestureController({
         }
 
         const result = commandRemoveFeature(visibleWorld, existingFeature.id);
-        submitLocalOperations(result.operations, visibleWorld);
+        submitLocalOperations(result.operations, visibleWorld, visibleDocument);
         return;
       }
 
@@ -227,6 +233,7 @@ export function useEditorGestureController({
             visibleWorld,
             viewLevel,
           ),
+          documentBefore: visibleDocument,
           worldBefore: visibleWorld,
         };
         applyActiveGestureCells(axials);
@@ -242,6 +249,7 @@ export function useEditorGestureController({
             viewLevel,
             activeFactionId,
           ),
+          documentBefore: visibleDocument,
           worldBefore: visibleWorld,
         };
         applyActiveGestureCells(axials);
@@ -263,6 +271,7 @@ export function useEditorGestureController({
             viewLevel,
             initialAxial,
           ),
+          documentBefore: visibleDocument,
           worldBefore: visibleWorld,
         };
         applyActiveGestureCells(axials);
@@ -277,6 +286,7 @@ export function useEditorGestureController({
           viewLevel,
           activeType,
         ),
+        documentBefore: visibleDocument,
         worldBefore: visibleWorld,
       };
       applyActiveGestureCells(axials);
@@ -290,6 +300,7 @@ export function useEditorGestureController({
       canEdit,
       createFeatureId,
       submitLocalOperations,
+      visibleDocument,
       viewLevel,
       visibleWorld,
     ],
@@ -314,11 +325,12 @@ export function useEditorGestureController({
           visibleWorld,
           viewLevel,
         ),
+        documentBefore: visibleDocument,
         worldBefore: visibleWorld,
       };
       applyActiveRiverGestureEdges(edges);
     },
-    [applyActiveRiverGestureEdges, canEdit, viewLevel, visibleWorld],
+    [applyActiveRiverGestureEdges, canEdit, viewLevel, visibleDocument, visibleWorld],
   );
 
   const finishEditGesture = useCallback(() => {
@@ -328,7 +340,11 @@ export function useEditorGestureController({
     const operations = activeGesture?.gesture.operations ?? [];
 
     if (operations.length > 0 && activeGesture) {
-      submitLocalOperations(operations, activeGesture.worldBefore);
+      submitLocalOperations(
+        operations,
+        activeGesture.worldBefore,
+        activeGesture.documentBefore,
+      );
     }
   }, [submitLocalOperations]);
 

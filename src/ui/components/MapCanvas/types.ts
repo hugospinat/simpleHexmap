@@ -18,6 +18,7 @@ export type MapCanvasProps = {
   center: Axial;
   visualZoom: number;
   hoveredHex: Axial | null;
+  selectedHex: Axial | null;
   editMode: EditorMode;
   featureVisibilityMode: "gm" | "player";
   interactionLabel: string;
@@ -37,5 +38,6 @@ export type MapCanvasProps = {
   onGmTokenPlace: (axial: Axial) => void;
   onGmTokenRemove: (userId: string) => void;
   onPlayerTokenPlace: (axial: Axial) => void;
+  onNoteHexSelect: (axial: Axial) => void;
   onToolStep?: (delta: 1 | -1) => void;
 };

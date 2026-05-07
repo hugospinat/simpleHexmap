@@ -32,6 +32,7 @@ Core capabilities:
 - roads and rivers
 - factions and territories
 - per-user token placement with per-member token color
+- GM-only per-hex markdown notes
 - GM and player visibility modes with server-side filtering
 - PostgreSQL persistence through Drizzle ORM
 - authoritative ordered updates over WebSocket
@@ -83,7 +84,7 @@ The codebase has one canonical persisted document model and one explicit overlay
 | Type | Purpose |
 |---|---|
 | `MapState` | Runtime editor world used by tools, reducers, and rendering. Never persisted directly. |
-| `MapDocument` | Canonical persisted document used for import/export and SQL materialization. Does not contain tokens. |
+| `MapDocument` | Canonical persisted document used for import/export and SQL materialization. Does not contain tokens but does include per-hex GM notes. |
 | `MapView` | `{ document, tokenPlacements }` — the explicit snapshot shape used across HTTP and WebSocket. |
 | `MapOperation` | Semantic document mutation contract. |
 | `MapTokenOperation` | Semantic token overlay mutation contract. |
@@ -128,6 +129,7 @@ HTTP or WebSocket request
 - feature left click places the selected feature kind and never opens a popup editor
 - road add and road remove both work by dragging between neighboring hexes; removal clears only the traversed connections
 - visible feature kinds that support terrain override always replace terrain art; hidden features never do
+- note editing is a separate GM-only tool; left click selects a hex and opens the right-side markdown editor panel
 
 ### Contribution boundaries
 
@@ -161,10 +163,12 @@ Fields:
 - `roads`
 - `factions` — map-local records identified by `(mapId, id)` in persistence
 - `factionTerritories`
+- `notes` — per-hex GM markdown notes keyed by `(q, r)`
 
 Important rules:
 
 - feature labels do not exist anywhere in the canonical model
+- notes are GM-only content and are absent from player snapshots and player realtime updates
 - source features are placed only on level 3; level 2 shows feature levels 2–3; level 1 shows feature level 3 only
 - terrain override is derived from visible feature kind; there is no persisted per-feature `overrideTerrainTile` boolean
 
@@ -201,6 +205,7 @@ Canonical document operations:
 - features: `add_feature`, `update_feature`, `remove_feature`
 - rivers: `add_river_data`, `remove_river_data`
 - roads: `set_road_edges`
+- notes: `set_note`
 
 Canonical token operations:
 
@@ -351,7 +356,7 @@ Authentication is cookie/session-based.
 - cookie-authenticated browser access is same-origin; `HEXMAP_ALLOWED_ORIGINS` gates explicit origin validation and non-credentialed CORS responses only
 - mutating HTTP requests and WebSocket upgrades require an allowed `Origin` or same-origin `Referer`
 - every HTTP and WebSocket request is role-checked on the server
-- player payloads are filtered before serialization — hidden tiles, features, roads, rivers, faction territories, and hidden-cell tokens never reach player clients
+- player payloads are filtered before serialization — hidden tiles, features, roads, rivers, faction territories, GM notes, and hidden-cell tokens never reach player clients
 - GM-only labels are stripped from player-facing feature records
 - login and signup are rate-limited by both client IP and normalized username; invite join and WebSocket upgrades remain rate-limited per client IP (process-local, intentional for low-resource deployments)
 - accepted WebSocket map and token operations are rate-limited per user within each map session

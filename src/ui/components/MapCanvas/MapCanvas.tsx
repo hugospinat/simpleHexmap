@@ -35,6 +35,7 @@ export default function MapCanvas({
   center,
   visualZoom,
   hoveredHex,
+  selectedHex,
   editMode,
   featureVisibilityMode,
   interactionLabel,
@@ -50,6 +51,7 @@ export default function MapCanvas({
   onHoveredHexChange,
   onGmTokenPlace,
   onGmTokenRemove,
+  onNoteHexSelect,
   onPlayerTokenPlace,
   onToolStep,
   onRenderWorldPatchApplied
@@ -90,6 +92,7 @@ export default function MapCanvas({
     onHoveredHexChange,
     onGmTokenPlace,
     onGmTokenRemove,
+    onNoteHexSelect,
     onPlayerTokenPlace,
     mapTokens: tokenPlacements,
     playerMode,
@@ -336,7 +339,7 @@ export default function MapCanvas({
         highlightedHex: highlightedHex ? hexKey(highlightedHex) : null,
         hoverRiverEdge,
         previewCells: [],
-        selectedHexes: []
+        selectedHexes: selectedHex ? [hexKey(selectedHex)] : []
       };
 
       renderer.setOverlay(overlay);
@@ -353,6 +356,7 @@ export default function MapCanvas({
     editMode,
     hoverRiverEdge,
     hoveredHex,
+    selectedHex,
     level,
     rendererReady
   ]);

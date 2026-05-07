@@ -13,6 +13,7 @@ function createContent() {
     roads: [],
     factions: [],
     factionTerritories: [],
+    notes: [],
   };
 }
 
@@ -64,5 +65,39 @@ describe("protocol content operations", () => {
         tile: { q: 1, r: 0, tileId: "forest", hidden: false },
       }),
     ).toBe("Unknown operation type.");
+  });
+
+  it("validates and applies set_note operations", () => {
+    const operation = {
+      type: "set_note" as const,
+      note: { q: 0, r: 0, markdown: "# Scout camp" },
+    };
+
+    expect(validateMapOperation(operation)).toBeNull();
+
+    const content = applyOperationToContent(createContent(), operation);
+
+    expect(content.notes).toEqual([{ q: 0, r: 0, markdown: "# Scout camp" }]);
+  });
+
+  it("removes notes when markdown is null or the tile is deleted", () => {
+    const withNote = applyOperationToContent(createContent(), {
+      type: "set_note",
+      note: { q: 0, r: 0, markdown: "Hidden path" },
+    });
+
+    expect(
+      applyOperationToContent(withNote, {
+        type: "set_note",
+        note: { q: 0, r: 0, markdown: null },
+      }).notes,
+    ).toEqual([]);
+
+    expect(
+      applyOperationToContent(withNote, {
+        type: "set_tiles",
+        tiles: [{ q: 0, r: 0, terrain: null, hidden: false }],
+      }).notes,
+    ).toEqual([]);
   });
 });

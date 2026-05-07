@@ -66,6 +66,19 @@ export function validateMapOperation(operation: unknown): string | null {
     return null;
   }
 
+  if (candidate.type === "set_note") {
+    const note = candidate.note;
+
+    if (
+      !isValidCellRef(note) ||
+      !(note.markdown === null || typeof note.markdown === "string")
+    ) {
+      return "Invalid set_note operation.";
+    }
+
+    return null;
+  }
+
   if (candidate.type === "add_feature") {
     const feature = candidate.feature;
 

@@ -52,6 +52,7 @@ type UseMapInteractionOptions = {
   onHoveredHexChange: (axial: Axial | null) => void;
   onGmTokenPlace: (axial: Axial) => void;
   onGmTokenRemove: (userId: string) => void;
+  onNoteHexSelect: (axial: Axial) => void;
   onPlayerTokenPlace: (axial: Axial) => void;
   mapTokens: readonly MapTokenPlacement[];
   playerMode: boolean;
@@ -77,6 +78,7 @@ export function useMapInteraction({
   onHoveredHexChange,
   onGmTokenPlace,
   onGmTokenRemove,
+  onNoteHexSelect,
   onPlayerTokenPlace,
   mapTokens,
   playerMode,
@@ -429,6 +431,19 @@ export function useMapInteraction({
         return;
       }
 
+      if (editModeRef.current === "notes") {
+        if (event.button === 0) {
+          const axial = pointToAxial(point);
+          setHoveredHexIfChanged(axial);
+          onNoteHexSelect(axial);
+        }
+
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+        return;
+      }
+
       const action: EditGestureAction = playerPointerAction;
       const target = getPointerTarget(editModeRef.current, action);
 
@@ -484,6 +499,7 @@ export function useMapInteraction({
       onEditGestureStart,
       onGmTokenPlaceRef,
       onGmTokenRemoveRef,
+      onNoteHexSelect,
       onRiverGestureStart,
       onPlayerTokenPlace,
       pointToAxial,

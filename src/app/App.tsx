@@ -41,9 +41,10 @@ export default function App() {
 
   if (workspaceState.openMap && user) {
     return (
-      <EditorScreen
-        key={workspaceState.openMap.id}
-        initialWorld={workspaceState.openMap.world}
+        <EditorScreen
+          initialDocument={workspaceState.openMap.document}
+          key={workspaceState.openMap.id}
+          initialWorld={workspaceState.openMap.world}
         mapId={workspaceState.openMap.id}
         mapName={workspaceState.openMap.name}
         workspaceMembers={workspaceState.openMap.workspaceMembers}

@@ -5,6 +5,7 @@ export type {
   MapFactionRecord,
   MapFactionTerritoryRecord,
   MapFeatureRecord,
+  MapNoteRecord,
   MapOperation,
   MapRiverRecord,
   MapRoadRecord,

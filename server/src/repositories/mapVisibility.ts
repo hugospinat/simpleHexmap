@@ -56,6 +56,7 @@ export function filterMapDocumentForPlayer(document: MapDocument): MapDocument {
   return {
     ...document,
     tiles,
+    notes: [],
     features: document.features.filter(
       (feature) =>
         visibleCellKeys.has(cellKey(feature)) && feature.hidden === false,

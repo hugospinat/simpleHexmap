@@ -15,6 +15,13 @@
       "when": 1777762328105,
       "tag": "0001_deep_albert_cleary",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777850193899,
+      "tag": "0002_secret_trish_tilby",
+      "breakpoints": true
     }
   ]
 }

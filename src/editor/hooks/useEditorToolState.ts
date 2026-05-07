@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import type { Axial } from "@/core/geometry/hex";
 import { editorModeOrder, type EditorMode } from "@/editor/tools";
 import type { FeatureKind } from "@/core/map/features";
 import type { TerrainType } from "@/core/map/world";
@@ -9,6 +10,7 @@ export function useEditorToolState(canEdit: boolean) {
   const [activeFeatureKind, setActiveFeatureKind] =
     useState<FeatureKind>("city");
   const [activeFactionId, setActiveFactionId] = useState<string | null>(null);
+  const [activeNoteHex, setActiveNoteHex] = useState<Axial | null>(null);
   const [showCoordinates, setShowCoordinates] = useState(false);
   const [hoveredHex, setHoveredHex] = useState<import("@/core/geometry/hex").Axial | null>(null);
 
@@ -58,12 +60,14 @@ export function useEditorToolState(canEdit: boolean) {
       activeFactionId,
       activeFeatureKind,
       activeMode,
+      activeNoteHex,
       activeType,
       changeToolByDelta,
       chooseFeatureKind,
       hoveredHex,
       setActiveFactionId,
       setActiveMode,
+      setActiveNoteHex,
       setActiveType,
       setHoveredHex,
       showCoordinates,
@@ -73,12 +77,14 @@ export function useEditorToolState(canEdit: boolean) {
       activeFactionId,
       activeFeatureKind,
       activeMode,
+      activeNoteHex,
       activeType,
       changeToolByDelta,
       chooseFeatureKind,
       hoveredHex,
       setActiveFactionId,
       setActiveMode,
+      setActiveNoteHex,
       setActiveType,
       setHoveredHex,
       showCoordinates,

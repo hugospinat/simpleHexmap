@@ -393,6 +393,7 @@ export function useWorkspaceState({
         }
 
         setOpenMap({
+          document: loadedMap.document,
           id: loadedMap.id,
           name: loadedMap.name,
           role: mode,
