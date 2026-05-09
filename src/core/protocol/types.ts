@@ -44,7 +44,9 @@ export type MapFactionTerritoryRecord = {
 export type MapNoteRecord = {
   q: number;
   r: number;
-  markdown: string;
+  gmTitle: string | null;
+  playerTitle: string | null;
+  markdown: string | null;
 };
 
 export type MapTokenPlacement = {
@@ -101,6 +103,8 @@ export type MapOperation =
   | {
       type: "set_note";
       note: MapCellRef & {
+        gmTitle: string | null;
+        playerTitle: string | null;
         markdown: string | null;
       };
     }

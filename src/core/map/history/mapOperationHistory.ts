@@ -159,14 +159,11 @@ function factionPatchForPreviousValues(
   return inverse;
 }
 
-function noteMarkdownByCell(
+function noteRecordByCell(
   document: MapDocument,
   cell: { q: number; r: number },
-): string | null {
-  return (
-    document.notes.find((note) => note.q === cell.q && note.r === cell.r)?.markdown ??
-    null
-  );
+): MapDocument["notes"][number] | null {
+  return document.notes.find((note) => note.q === cell.q && note.r === cell.r) ?? null;
 }
 
 function inverseForOperation(
@@ -231,9 +228,13 @@ function inverseForOperation(
         return [];
       }
 
-      const previousMarkdown = noteMarkdownByCell(documentBefore, operation.note);
+      const previousNote = noteRecordByCell(documentBefore, operation.note);
 
-      if (previousMarkdown === operation.note.markdown) {
+      if (
+        previousNote?.gmTitle === operation.note.gmTitle &&
+        previousNote?.playerTitle === operation.note.playerTitle &&
+        previousNote?.markdown === operation.note.markdown
+      ) {
         return [];
       }
 
@@ -243,7 +244,9 @@ function inverseForOperation(
           note: {
             q: operation.note.q,
             r: operation.note.r,
-            markdown: previousMarkdown,
+            gmTitle: previousNote?.gmTitle ?? null,
+            playerTitle: previousNote?.playerTitle ?? null,
+            markdown: previousNote?.markdown ?? null,
           },
         },
       ];

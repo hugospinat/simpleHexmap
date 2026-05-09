@@ -266,10 +266,16 @@ export function applyOperationToMapDocumentIndex(
 
       index.notesByHex.delete(key);
 
-      if (operation.note.markdown !== null) {
+      if (
+        operation.note.gmTitle !== null ||
+        operation.note.playerTitle !== null ||
+        operation.note.markdown !== null
+      ) {
         index.notesByHex.set(key, {
           q: operation.note.q,
           r: operation.note.r,
+          gmTitle: operation.note.gmTitle,
+          playerTitle: operation.note.playerTitle,
           markdown: operation.note.markdown,
         });
       }

@@ -89,6 +89,14 @@ export function markSessionError(session: MapSyncSession): void {
   session.status = "error";
 }
 
+export function markSessionPendingOperationsUnsent(session: MapSyncSession): void {
+  session.pendingOperations = markAllPendingOperationsUnsent(
+    session.pendingOperations,
+  );
+  refreshVisibleWorld(session);
+  updateSessionSavedStatus(session);
+}
+
 export function resetSessionAfterSyncError(session: MapSyncSession): void {
   clearSyncReceiveQueue(session.receiveQueue);
   session.pendingOperations = [];

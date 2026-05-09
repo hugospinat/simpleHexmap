@@ -228,15 +228,41 @@ describe("map operation history", () => {
     );
     const documentBefore = {
       ...serializeWorld(worldBefore),
-      notes: [{ q: 0, r: 0, markdown: "Old note" }],
+      notes: [
+        {
+          q: 0,
+          r: 0,
+          gmTitle: "Ancien titre GM",
+          playerTitle: "Ancien titre joueur",
+          markdown: "Old note",
+        },
+      ],
     };
 
     expect(
       invertOperationBatch(worldBefore, documentBefore, [
-        { type: "set_note", note: { q: 0, r: 0, markdown: "New note" } },
+        {
+          type: "set_note",
+          note: {
+            q: 0,
+            r: 0,
+            gmTitle: "Nouveau titre GM",
+            playerTitle: "Nouveau titre joueur",
+            markdown: "New note",
+          },
+        },
       ]),
     ).toEqual([
-      { type: "set_note", note: { q: 0, r: 0, markdown: "Old note" } },
+      {
+        type: "set_note",
+        note: {
+          q: 0,
+          r: 0,
+          gmTitle: "Ancien titre GM",
+          playerTitle: "Ancien titre joueur",
+          markdown: "Old note",
+        },
+      },
     ]);
   });
 });

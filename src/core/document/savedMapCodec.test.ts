@@ -17,7 +17,15 @@ describe("saved map codec", () => {
     const parsed = parseMapDocument({
       ...baseValidInput,
       tiles: [{ q: 0, r: 0, terrain: "plain", hidden: false }],
-      notes: [{ q: 0, r: 0, markdown: "# Camp" }],
+      notes: [
+        {
+          q: 0,
+          r: 0,
+          gmTitle: "GM Camp",
+          playerTitle: "Camp",
+          markdown: "# Camp",
+        },
+      ],
       features: [
         {
           id: "feature-1",
@@ -33,8 +41,33 @@ describe("saved map codec", () => {
     expect(parsed.tiles).toEqual([
       { q: 0, r: 0, terrain: "plain", hidden: false },
     ]);
-    expect(parsed.notes).toEqual([{ q: 0, r: 0, markdown: "# Camp" }]);
+    expect(parsed.notes).toEqual([
+      {
+        q: 0,
+        r: 0,
+        gmTitle: "GM Camp",
+        playerTitle: "Camp",
+        markdown: "# Camp",
+      },
+    ]);
     expect(parsed.features[0].kind).toBe("city");
+  });
+
+  test("accepts legacy note records by defaulting titles to null", () => {
+    const parsed = parseMapDocument({
+      ...baseValidInput,
+      notes: [{ q: 0, r: 0, markdown: "# Camp" }],
+    });
+
+    expect(parsed.notes).toEqual([
+      {
+        q: 0,
+        r: 0,
+        gmTitle: null,
+        playerTitle: null,
+        markdown: "# Camp",
+      },
+    ]);
   });
 
   test("rejects payload missing required arrays", () => {
@@ -115,7 +148,7 @@ describe("saved map codec", () => {
     expect(() =>
       parseMapDocument({
         ...baseValidInput,
-        notes: [{ q: 0, r: 0, markdown: 42 }],
+        notes: [{ q: 0, r: 0, gmTitle: [], markdown: 42 }],
       }),
     ).toThrow("Invalid note entry");
   });

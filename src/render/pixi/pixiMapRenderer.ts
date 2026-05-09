@@ -32,6 +32,7 @@ import {
 import { drawPixiFactionLayer } from "./pixiFactionLayer";
 import { drawPixiFeatureLayer } from "./pixiFeatureLayer";
 import { drawPixiFogVisibilityLayer } from "./pixiFogVisibilityLayer";
+import { drawPixiNoteLayer } from "./pixiNoteLayer";
 import { drawPixiOverlayLayer } from "./pixiOverlayLayer";
 import {
   clearPixiPreviewLayer,
@@ -43,6 +44,7 @@ import { drawPixiTerrainLayer } from "./pixiTerrainLayer";
 import { drawPixiTokenLayer } from "./pixiTokenLayer";
 import type {
   MapInteractionOverlay,
+  MapNoteRenderable,
   MapTokenRenderable,
   PixiAssetCatalog,
   PixiCameraState,
@@ -139,6 +141,8 @@ type FeatureLayerCache = {
   stats: ReturnType<typeof drawPixiFeatureLayer>;
 };
 
+type NoteLayerCache = LayerCache;
+
 export type PixiMapRenderer = {
   destroy: () => void;
   mount: (container: HTMLElement) => Promise<void>;
@@ -146,6 +150,7 @@ export type PixiMapRenderer = {
   clearPreview: () => PixiRenderStats;
   setCamera: (camera: PixiCameraState) => PixiRenderStats;
   setOverlay: (overlay: MapInteractionOverlay) => PixiRenderStats;
+  setNoteLabels: (labels: readonly MapNoteRenderable[]) => PixiRenderStats;
   setPreviewOperations: (
     operations: readonly MapOperation[],
   ) => PixiRenderStats;
@@ -174,8 +179,10 @@ export function createPixiMapRenderer(): PixiMapRenderer {
   let fogCache: LayerCache | null = null;
   let roadCache: LayerCache | null = null;
   let featureCache: FeatureLayerCache | null = null;
+  let noteCache: NoteLayerCache | null = null;
   let tokenCache: LayerCache | null = null;
   let mapTokens: readonly MapTokenRenderable[] = [];
+  let mapNoteLabels: readonly MapNoteRenderable[] = [];
   let backgroundKey = "";
   let renderFrameId: number | null = null;
 
@@ -188,6 +195,7 @@ export function createPixiMapRenderer(): PixiMapRenderer {
     fogCache = null;
     roadCache = null;
     featureCache = null;
+    noteCache = null;
     tokenCache = null;
   }
 
@@ -450,6 +458,27 @@ export function createPixiMapRenderer(): PixiMapRenderer {
             return stats;
           });
 
+    const noteKey = [
+      activeFrame.transform.level,
+      activeWindow?.key ?? visibleCellHash,
+      cameraState.featureVisibilityMode,
+      cameraState.fogEditingActive,
+      mapNoteLabels.map((label) => `${label.q},${label.r}:${label.text}`).join(";"),
+    ].join("|");
+    const noteCount =
+      noteCache?.key === noteKey
+        ? noteCache.stats
+        : timeLayer(layerTimings, "notes", () => {
+            const stats = drawPixiNoteLayer(
+              activeFrame as PixiSceneRenderFrame,
+              mounted.pools,
+              mounted.layers.note,
+              mapNoteLabels,
+            );
+            noteCache = { key: noteKey, stats };
+            return stats;
+          });
+
     const fogVisibilityMode = cameraState.featureVisibilityMode;
     const fogEditingActive = cameraState.fogEditingActive;
     const fogKey = [
@@ -512,7 +541,7 @@ export function createPixiMapRenderer(): PixiMapRenderer {
       fogCacheHit,
       fogCells: fogCount,
       graphicsCount: 6,
-      labels: terrainStats.labels,
+      labels: terrainStats.labels + noteCount,
       layerPatchMs: Number(layerPatchMs.toFixed(2)),
       layerTimings,
       pixiRenderMs: 0,
@@ -678,6 +707,42 @@ export function createPixiMapRenderer(): PixiMapRenderer {
       return {
         ...createEmptyStats(layerTimings),
         graphicsCount: 1,
+        pixiUpdateMs: Number((nowForRenderTiming() - start).toFixed(2)),
+        spriteCount: countPixiRendererSprites(mounted.pools),
+        visibleCellCount: activeFrame.visibleTerrainCells.length,
+      };
+    },
+    setNoteLabels: (labels) => {
+      mapNoteLabels = labels;
+      noteCache = null;
+      const mounted = requireMounted();
+
+      if (!mounted || !activeFrame) {
+        return createEmptyStats();
+      }
+
+      const start = nowForRenderTiming();
+      const layerTimings: PixiLayerTimings = {};
+      const count = timeLayer(layerTimings, "notes", () =>
+        drawPixiNoteLayer(
+          activeFrame as PixiSceneRenderFrame,
+          mounted.pools,
+          mounted.layers.note,
+          mapNoteLabels,
+        ),
+      );
+      noteCache = {
+        key: `${activeFrame.transform.level}|manual|${mapNoteLabels
+          .map((label) => `${label.q},${label.r}:${label.text}`)
+          .join(";")}`,
+        stats: count,
+      };
+      scheduleRender();
+
+      return {
+        ...createEmptyStats(layerTimings),
+        graphicsCount: 0,
+        labels: count,
         pixiUpdateMs: Number((nowForRenderTiming() - start).toFixed(2)),
         spriteCount: countPixiRendererSprites(mounted.pools),
         visibleCellCount: activeFrame.visibleTerrainCells.length,

@@ -70,26 +70,52 @@ describe("protocol content operations", () => {
   it("validates and applies set_note operations", () => {
     const operation = {
       type: "set_note" as const,
-      note: { q: 0, r: 0, markdown: "# Scout camp" },
+      note: {
+        q: 0,
+        r: 0,
+        gmTitle: "Campement secret",
+        playerTitle: "Camp",
+        markdown: "# Scout camp",
+      },
     };
 
     expect(validateMapOperation(operation)).toBeNull();
 
     const content = applyOperationToContent(createContent(), operation);
 
-    expect(content.notes).toEqual([{ q: 0, r: 0, markdown: "# Scout camp" }]);
+    expect(content.notes).toEqual([
+      {
+        q: 0,
+        r: 0,
+        gmTitle: "Campement secret",
+        playerTitle: "Camp",
+        markdown: "# Scout camp",
+      },
+    ]);
   });
 
-  it("removes notes when markdown is null or the tile is deleted", () => {
+  it("removes notes when note fields are cleared or the tile is deleted", () => {
     const withNote = applyOperationToContent(createContent(), {
       type: "set_note",
-      note: { q: 0, r: 0, markdown: "Hidden path" },
+      note: {
+        q: 0,
+        r: 0,
+        gmTitle: "Sentier cache",
+        playerTitle: "Trail",
+        markdown: "Hidden path",
+      },
     });
 
     expect(
       applyOperationToContent(withNote, {
         type: "set_note",
-        note: { q: 0, r: 0, markdown: null },
+        note: {
+          q: 0,
+          r: 0,
+          gmTitle: null,
+          playerTitle: null,
+          markdown: null,
+        },
       }).notes,
     ).toEqual([]);
 

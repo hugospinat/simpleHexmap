@@ -1,13 +1,23 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
+const apiProxyTarget = "http://localhost:8787";
+const apiProxyOrigin = new URL(apiProxyTarget).origin;
+
 export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
       "/api": {
-        target: "http://localhost:8787",
-        ws: true
+        target: apiProxyTarget,
+        changeOrigin: true,
+        ws: true,
+        rewriteWsOrigin: true,
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq) => {
+            proxyReq.setHeader("origin", apiProxyOrigin);
+          });
+        }
       }
     }
   },

@@ -71,6 +71,8 @@ export function validateMapOperation(operation: unknown): string | null {
 
     if (
       !isValidCellRef(note) ||
+      !(note.gmTitle === null || typeof note.gmTitle === "string") ||
+      !(note.playerTitle === null || typeof note.playerTitle === "string") ||
       !(note.markdown === null || typeof note.markdown === "string")
     ) {
       return "Invalid set_note operation.";

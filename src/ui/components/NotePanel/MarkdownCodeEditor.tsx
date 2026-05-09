@@ -1,0 +1,83 @@
+import { markdown } from "@codemirror/lang-markdown";
+import { EditorState } from "@codemirror/state";
+import { EditorView, placeholder } from "@codemirror/view";
+import { basicSetup } from "codemirror";
+import { useEffect, useRef } from "react";
+
+type MarkdownCodeEditorProps = {
+  value: string;
+  onChange: (value: string) => void;
+  placeholderText: string;
+};
+
+export function MarkdownCodeEditor({
+  value,
+  onChange,
+  placeholderText,
+}: MarkdownCodeEditorProps) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const editorViewRef = useRef<EditorView | null>(null);
+  const onChangeRef = useRef(onChange);
+  const isApplyingExternalValueRef = useRef(false);
+
+  onChangeRef.current = onChange;
+
+  useEffect(() => {
+    if (!hostRef.current || editorViewRef.current) {
+      return;
+    }
+
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: value,
+        extensions: [
+          basicSetup,
+          markdown(),
+          EditorView.lineWrapping,
+          placeholder(placeholderText),
+          EditorView.updateListener.of((update) => {
+            if (!update.docChanged || isApplyingExternalValueRef.current) {
+              return;
+            }
+
+            onChangeRef.current(update.state.doc.toString());
+          }),
+        ],
+      }),
+      parent: hostRef.current,
+    });
+
+    editorViewRef.current = view;
+
+    return () => {
+      editorViewRef.current = null;
+      view.destroy();
+    };
+  }, [placeholderText]);
+
+  useEffect(() => {
+    const view = editorViewRef.current;
+
+    if (!view) {
+      return;
+    }
+
+    const currentValue = view.state.doc.toString();
+
+    if (currentValue === value) {
+      return;
+    }
+
+    isApplyingExternalValueRef.current = true;
+    view.dispatch({
+      changes: {
+        from: 0,
+        to: currentValue.length,
+        insert: value,
+      },
+    });
+    isApplyingExternalValueRef.current = false;
+  }, [value]);
+
+  return <div ref={hostRef} className="note-editor-host" />;
+}

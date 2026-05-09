@@ -31,7 +31,11 @@ export async function handleClientMessage(
         retryAfterMs: allowance.retryAfterMs,
         userId,
       });
-      sendRateLimitedOperationError(client, "map_token_error");
+      sendRateLimitedOperationError(
+        client,
+        "map_token_error",
+        allowance.retryAfterMs,
+      );
       return;
     }
 
@@ -70,7 +74,11 @@ export async function handleClientMessage(
       retryAfterMs: allowance.retryAfterMs,
       userId,
     });
-    sendRateLimitedOperationError(client, "sync_error");
+    sendRateLimitedOperationError(
+      client,
+      "map_operation_error",
+      allowance.retryAfterMs,
+    );
     return;
   }
 

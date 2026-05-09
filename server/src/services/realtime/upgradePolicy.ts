@@ -8,6 +8,27 @@ type UpgradeRejection = {
   statusCode: number;
 };
 
+export function resolveWebSocketAccessRejection(input: {
+  hasAuthenticatedUser: boolean;
+  hasMapAccess: boolean;
+}): UpgradeRejection | null {
+  if (!input.hasAuthenticatedUser) {
+    return {
+      reason: "Authentication required.",
+      statusCode: 401,
+    };
+  }
+
+  if (!input.hasMapAccess) {
+    return {
+      reason: "Map not found.",
+      statusCode: 404,
+    };
+  }
+
+  return null;
+}
+
 export function resolveWebSocketUpgradeRejection(input: {
   currentConnections: number;
   currentMapConnections: number;

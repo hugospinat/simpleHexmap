@@ -22,10 +22,17 @@ export type PixiLayerTimings = {
   roads?: number;
   factions?: number;
   features?: number;
+  notes?: number;
   fog?: number;
   overlay?: number;
   preview?: number;
   tokens?: number;
+};
+
+export type MapNoteRenderable = {
+  q: number;
+  r: number;
+  text: string;
 };
 
 export type PixiRenderStats = RenderStats & {
@@ -118,6 +125,7 @@ export type PixiObjectPools = {
   coordinateTexts: TextPool;
   featureSprites: SpritePool;
   labelTexts: TextPool;
+  noteTexts: TextPool;
   roadSprites: SpritePool;
   terrainSprites: SpritePool;
   previewTerrainSprites: SpritePool;
@@ -130,6 +138,7 @@ export type PixiStageLayers = {
   faction: Graphics;
   feature: Container;
   fog: Graphics;
+  note: Container;
   overlay: Graphics;
   preview: Container;
   river: Graphics;

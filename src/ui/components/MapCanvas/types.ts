@@ -4,12 +4,19 @@ import type { RiverEdgeRef, MapState } from "@/core/map/world";
 import type { MapOperation, MapTokenPlacement } from "@/core/protocol";
 import type { RenderWorldPatch } from "@/render/renderWorldPatch";
 
+export type MapNoteLabel = {
+  q: number;
+  r: number;
+  text: string;
+};
+
 export type MapCanvasProps = {
   world: MapState;
   renderWorldPatch?: RenderWorldPatch;
   onRenderWorldPatchApplied?: (revision: number) => void;
   previewOperations: MapOperation[];
   tokenPlacements: MapTokenPlacement[];
+  noteLabels: MapNoteLabel[];
   activeTokenUserId: string | null;
   canEdit: boolean;
   playerMode: boolean;

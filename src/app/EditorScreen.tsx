@@ -84,7 +84,7 @@ export function EditorScreen({
         <MapPane {...editor.canvasProps} />
         {showNotePanel && editor.selectedNoteHex ? (
           <NotePanel
-            noteMarkdown={editor.selectedNoteMarkdown}
+            note={editor.selectedNote}
             selectedHex={editor.selectedNoteHex}
             onClear={editor.clearSelectedNote}
             onClose={editor.closeSelectedNote}

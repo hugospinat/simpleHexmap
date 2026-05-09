@@ -15,7 +15,7 @@ describe("operationRateLimit", () => {
       operationRateLimiter: new MemoryRateLimiter(() => now),
     };
 
-    for (let attempt = 0; attempt < 120; attempt += 1) {
+    for (let attempt = 0; attempt < 1000; attempt += 1) {
       expect(consumeSessionOperationAllowance(session, "user-1")).toMatchObject({
         allowed: true,
       });
@@ -47,13 +47,14 @@ describe("operationRateLimit", () => {
       send: vi.fn(),
     } as unknown as WebSocket;
 
-    sendRateLimitedOperationError(openClient, "sync_error");
-    sendRateLimitedOperationError(closedClient, "map_token_error");
+    sendRateLimitedOperationError(openClient, "map_operation_error", 250);
+    sendRateLimitedOperationError(closedClient, "map_token_error", 250);
 
     expect(openClient.send).toHaveBeenCalledWith(
       JSON.stringify({
-        type: "sync_error",
+        type: "map_operation_error",
         error: "Too many operations.",
+        retryAfterMs: 250,
       }),
     );
     expect(closedClient.send).not.toHaveBeenCalled();

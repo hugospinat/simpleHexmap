@@ -4,6 +4,12 @@ import { SOURCE_LEVEL } from "@/core/map/mapRules";
 import type { MapState } from "@/core/map/world";
 import type { MapDocument, MapOperation } from "@/core/protocol";
 
+type NoteDraft = {
+  gmTitle: string;
+  playerTitle: string;
+  markdown: string;
+};
+
 type UseNoteControlsOptions = {
   activeNoteHex: Axial | null;
   setActiveNoteHex: (axial: Axial | null) => void;
@@ -27,31 +33,42 @@ export function useNoteControls({
     }
   }, [activeNoteHex, setActiveNoteHex, sourceLevel]);
 
-  const selectedNoteMarkdown = useMemo(() => {
+  const selectedNote = useMemo<NoteDraft>(() => {
     if (!activeNoteHex) {
-      return "";
+      return { gmTitle: "", playerTitle: "", markdown: "" };
     }
 
-    return (
-      visibleDocument.notes.find(
-        (note) => note.q === activeNoteHex.q && note.r === activeNoteHex.r,
-      )?.markdown ?? ""
+    const note = visibleDocument.notes.find(
+      (candidate) => candidate.q === activeNoteHex.q && candidate.r === activeNoteHex.r,
     );
+
+    return {
+      gmTitle: note?.gmTitle ?? "",
+      playerTitle: note?.playerTitle ?? "",
+      markdown: note?.markdown ?? "",
+    };
   }, [activeNoteHex, visibleDocument.notes]);
 
   const saveSelectedNote = useCallback(
-    (markdown: string) => {
+    (noteDraft: NoteDraft) => {
       if (!activeNoteHex) {
         return;
       }
 
-      const nextMarkdown = markdown.trim() ? markdown : null;
-      const currentMarkdown =
-        visibleDocument.notes.find(
-          (note) => note.q === activeNoteHex.q && note.r === activeNoteHex.r,
-        )?.markdown ?? null;
+      const nextGmTitle = noteDraft.gmTitle.trim() ? noteDraft.gmTitle.trim() : null;
+      const nextPlayerTitle = noteDraft.playerTitle.trim()
+        ? noteDraft.playerTitle.trim()
+        : null;
+      const nextMarkdown = noteDraft.markdown.trim() ? noteDraft.markdown : null;
+      const currentNote = visibleDocument.notes.find(
+        (note) => note.q === activeNoteHex.q && note.r === activeNoteHex.r,
+      );
 
-      if (currentMarkdown === nextMarkdown) {
+      if (
+        (currentNote?.gmTitle ?? null) === nextGmTitle &&
+        (currentNote?.playerTitle ?? null) === nextPlayerTitle &&
+        (currentNote?.markdown ?? null) === nextMarkdown
+      ) {
         return;
       }
 
@@ -61,6 +78,8 @@ export function useNoteControls({
           note: {
             q: activeNoteHex.q,
             r: activeNoteHex.r,
+            gmTitle: nextGmTitle,
+            playerTitle: nextPlayerTitle,
             markdown: nextMarkdown,
           },
         },
@@ -70,7 +89,12 @@ export function useNoteControls({
   );
 
   const clearSelectedNote = useCallback(() => {
-    if (!activeNoteHex || !selectedNoteMarkdown) {
+    if (
+      !activeNoteHex ||
+      (!selectedNote.gmTitle &&
+        !selectedNote.playerTitle &&
+        !selectedNote.markdown)
+    ) {
       return;
     }
 
@@ -80,18 +104,20 @@ export function useNoteControls({
         note: {
           q: activeNoteHex.q,
           r: activeNoteHex.r,
+          gmTitle: null,
+          playerTitle: null,
           markdown: null,
         },
       },
     ]);
-  }, [activeNoteHex, selectedNoteMarkdown, submitLocalOperations]);
+  }, [activeNoteHex, selectedNote, submitLocalOperations]);
 
   return {
     clearSelectedNote,
     closeSelectedNote: () => setActiveNoteHex(null),
     saveSelectedNote,
     selectedNoteHex: activeNoteHex,
-    selectedNoteMarkdown,
+    selectedNote,
     setSelectedNoteHex: setActiveNoteHex,
   };
 }

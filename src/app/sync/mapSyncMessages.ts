@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type {
+  MapOperationErrorMessage,
   MapOperationMessage,
   MapSyncSnapshotMessage,
   MapTokenErrorMessage,
@@ -10,6 +11,7 @@ export type ParsedMapSyncMessage =
   | { type: "invalid_json" }
   | { type: "invalid_message"; error: string }
   | { type: "unknown" }
+  | { type: "map_operation_error"; payload: MapOperationErrorMessage }
   | { type: "sync_error"; payload: Record<string, unknown> }
   | { type: "sync_snapshot"; payload: MapSyncSnapshotMessage }
   | { type: "map_operation_applied"; payload: MapOperationMessage }
@@ -26,6 +28,14 @@ const operationPayloadSchema = z.object({ type: z.string() }).passthrough();
 
 const syncErrorSchema = z
   .object({ type: z.literal("sync_error") })
+  .passthrough();
+
+const mapOperationErrorSchema = z
+  .object({
+    type: z.literal("map_operation_error"),
+    error: z.string(),
+    retryAfterMs: z.number().int().nonnegative().optional(),
+  })
   .passthrough();
 
 const syncSnapshotSchema = z
@@ -98,6 +108,11 @@ export function parseMapSyncSocketMessage(raw: unknown): ParsedMapSyncMessage {
   }
 
   switch (message.type) {
+    case "map_operation_error":
+      return matchEnvelope(mapOperationErrorSchema, message, (data) => ({
+        type: "map_operation_error",
+        payload: data as unknown as MapOperationErrorMessage,
+      }));
     case "sync_error":
       return matchEnvelope(syncErrorSchema, message, (data) => ({
         type: "sync_error",

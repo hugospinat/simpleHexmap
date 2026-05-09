@@ -38,13 +38,19 @@ export const setNote: IncrementalOperationHandler<"set_note"> = async (
 ) => {
   await deleteMapNotesForCells(tx, mapId, [operation.note]);
 
-  if (operation.note.markdown === null) {
+  if (
+    operation.note.gmTitle === null &&
+    operation.note.playerTitle === null &&
+    operation.note.markdown === null
+  ) {
     return;
   }
 
   await tx.insert(mapNotes).values({
+    gmTitle: operation.note.gmTitle,
     markdown: operation.note.markdown,
     mapId,
+    playerTitle: operation.note.playerTitle,
     q: operation.note.q,
     r: operation.note.r,
     updatedAt,

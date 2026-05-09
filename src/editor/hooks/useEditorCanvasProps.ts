@@ -2,16 +2,40 @@ import { useMemo } from "react";
 import type { Axial } from "@/core/geometry/hex";
 import type { RiverEdgeRef, MapState } from "@/core/map/world";
 import type { FeatureVisibilityMode } from "@/core/map/features";
+import { isSourceLevel } from "@/core/map/mapRules";
 import type { EditGestureAction, EditorMode } from "@/editor/tools";
 import type { MapCanvasProps } from "@/ui/components";
 import type { RenderWorldPatch } from "@/render/renderWorldPatch";
-import type { MapOperation, MapTokenPlacement } from "@/core/protocol";
+import type { MapDocument, MapOperation, MapTokenPlacement } from "@/core/protocol";
 
 export function shouldShowFogVisibilityOverlay(
   activeMode: EditorMode,
   role: "gm" | "player",
 ): boolean {
   return role === "gm" && (activeMode === "fog" || activeMode === "token");
+}
+
+export function resolveNoteLabelsForCanvas(
+  notes: readonly MapDocument["notes"][number][],
+  level: number,
+  role: "gm" | "player",
+  fogEditingActive: boolean,
+): MapCanvasProps["noteLabels"] {
+  if (!isSourceLevel(level)) {
+    return [];
+  }
+
+  return notes.flatMap((note) => {
+    const text = role === "player"
+      ? note.playerTitle
+      : fogEditingActive
+        ? note.playerTitle
+        : note.gmTitle;
+
+    return text && text.trim()
+      ? [{ q: note.q, r: note.r, text: text.trim() }]
+      : [];
+  });
 }
 
 type UseEditorCanvasPropsOptions = {
@@ -30,6 +54,7 @@ type UseEditorCanvasPropsOptions = {
   onRenderWorldPatchApplied?: (revision: number) => void;
   previewOperations: MapOperation[];
   tokenPlacements: MapTokenPlacement[];
+  visibleDocument: MapDocument;
   onToolStep?: (delta: 1 | -1) => void;
   role: "gm" | "player";
   renderWorldPatch?: RenderWorldPatch;
@@ -63,6 +88,7 @@ export function useEditorCanvasProps({
   onRenderWorldPatchApplied,
   previewOperations,
   tokenPlacements,
+  visibleDocument,
   onToolStep,
   role,
   renderWorldPatch,
@@ -80,40 +106,51 @@ export function useEditorCanvasProps({
   world,
 }: UseEditorCanvasPropsOptions): MapCanvasProps {
   return useMemo(
-    () => ({
-      activeTokenUserId,
-      center,
-      canEdit,
-      playerMode: role === "player",
-      editMode: activeMode,
-      featureVisibilityMode,
-      fogEditingActive: shouldShowFogVisibilityOverlay(activeMode, role),
-      interactionLabel,
-      level,
-      onCenterChange: setCenter,
-      onEditGestureEnd: finishEditGesture,
-      onEditGestureMove: applyActiveGestureCells,
-      onEditGestureStart: startEditGesture,
-      onRiverGestureEnd: finishEditGesture,
-      onRiverGestureMove: applyActiveRiverGestureEdges,
-      onRiverGestureStart: startRiverGesture,
-      onHoveredHexChange: setHoveredHex,
-      onGmTokenPlace,
-      onGmTokenRemove,
-      onNoteHexSelect,
-      onPlayerTokenPlace,
-      onToolStep,
-      onRenderWorldPatchApplied,
-      onVisualZoomChange: changeVisualZoom,
-      previewOperations,
-      tokenPlacements,
-      renderWorldPatch,
-      hoveredHex,
-      selectedHex,
-      showCoordinates,
-      visualZoom,
-      world,
-    }),
+    () => {
+      const fogEditingActive = shouldShowFogVisibilityOverlay(activeMode, role);
+      const noteLabels = resolveNoteLabelsForCanvas(
+        visibleDocument.notes,
+        level,
+        role,
+        fogEditingActive,
+      );
+
+      return {
+        activeTokenUserId,
+        center,
+        canEdit,
+        playerMode: role === "player",
+        editMode: activeMode,
+        featureVisibilityMode,
+        fogEditingActive,
+        interactionLabel,
+        level,
+        noteLabels,
+        onCenterChange: setCenter,
+        onEditGestureEnd: finishEditGesture,
+        onEditGestureMove: applyActiveGestureCells,
+        onEditGestureStart: startEditGesture,
+        onRiverGestureEnd: finishEditGesture,
+        onRiverGestureMove: applyActiveRiverGestureEdges,
+        onRiverGestureStart: startRiverGesture,
+        onHoveredHexChange: setHoveredHex,
+        onGmTokenPlace,
+        onGmTokenRemove,
+        onNoteHexSelect,
+        onPlayerTokenPlace,
+        onToolStep,
+        onRenderWorldPatchApplied,
+        onVisualZoomChange: changeVisualZoom,
+        previewOperations,
+        tokenPlacements,
+        renderWorldPatch,
+        hoveredHex,
+        selectedHex,
+        showCoordinates,
+        visualZoom,
+        world,
+      };
+    },
     [
       activeMode,
       activeTokenUserId,
@@ -135,6 +172,7 @@ export function useEditorCanvasProps({
       onToolStep,
       previewOperations,
       tokenPlacements,
+      visibleDocument.notes,
       role,
       renderWorldPatch,
       selectedHex,

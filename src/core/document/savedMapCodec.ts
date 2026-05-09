@@ -217,11 +217,29 @@ export function parseMapDocument(raw: unknown): MapDocument {
 
   const notes = (Array.isArray(raw.notes) ? raw.notes : []).map(
     (note, index) => {
+      const gmTitle = isObject(note) && typeof note.gmTitle === "string"
+        ? note.gmTitle
+        : note?.gmTitle === null || note?.gmTitle === undefined
+          ? null
+          : undefined;
+      const playerTitle = isObject(note) && typeof note.playerTitle === "string"
+        ? note.playerTitle
+        : note?.playerTitle === null || note?.playerTitle === undefined
+          ? null
+          : undefined;
+      const markdown = isObject(note) && typeof note.markdown === "string"
+        ? note.markdown
+        : note?.markdown === null
+          ? null
+          : undefined;
+
       if (
         !isObject(note) ||
         !isInteger(note.q) ||
         !isInteger(note.r) ||
-        typeof note.markdown !== "string"
+        gmTitle === undefined ||
+        playerTitle === undefined ||
+        markdown === undefined
       ) {
         throw new Error(`Invalid note entry at index ${index}.`);
       }
@@ -229,7 +247,9 @@ export function parseMapDocument(raw: unknown): MapDocument {
       return {
         q: note.q,
         r: note.r,
-        markdown: note.markdown,
+        gmTitle,
+        playerTitle,
+        markdown,
       };
     },
   );

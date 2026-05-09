@@ -12,6 +12,7 @@ export function createPixiStage(app: Application): PixiStageLayers {
   const faction = new Graphics();
   const road = new Container();
   const feature = new Container();
+  const note = new Container();
   const fog = new Graphics();
   const preview = new Container();
   const overlay = new Graphics();
@@ -24,6 +25,7 @@ export function createPixiStage(app: Application): PixiStageLayers {
   road.zIndex = 45;
   faction.zIndex = 50;
   feature.zIndex = 60;
+  note.zIndex = 65;
   preview.zIndex = 70;
   overlay.zIndex = 80;
   token.zIndex = 90;
@@ -37,6 +39,7 @@ export function createPixiStage(app: Application): PixiStageLayers {
   camera.addChild(road);
   camera.addChild(faction);
   camera.addChild(feature);
+  camera.addChild(note);
   camera.addChild(preview);
   camera.addChild(overlay);
   camera.addChild(token);
@@ -48,6 +51,7 @@ export function createPixiStage(app: Application): PixiStageLayers {
     faction,
     feature,
     fog,
+    note,
     overlay,
     preview,
     river,

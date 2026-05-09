@@ -19,7 +19,8 @@ export function consumeSessionOperationAllowance(
 
 export function sendRateLimitedOperationError(
   client: WebSocket,
-  type: "map_token_error" | "sync_error",
+  type: "map_operation_error" | "map_token_error",
+  retryAfterMs: number,
 ): void {
   if (client.readyState !== WebSocket.OPEN) {
     return;
@@ -28,5 +29,6 @@ export function sendRateLimitedOperationError(
   client.send(JSON.stringify({
     type,
     error: "Too many operations.",
+    retryAfterMs,
   }));
 }

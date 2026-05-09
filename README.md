@@ -163,12 +163,13 @@ Fields:
 - `roads`
 - `factions` — map-local records identified by `(mapId, id)` in persistence
 - `factionTerritories`
-- `notes` — per-hex GM markdown notes keyed by `(q, r)`
+- `notes` — per-hex note records keyed by `(q, r)` with `gmTitle`, `playerTitle`, and `markdown`
 
 Important rules:
 
 - feature labels do not exist anywhere in the canonical model
-- notes are GM-only content and are absent from player snapshots and player realtime updates
+- GM snapshots and GM realtime updates carry full note records
+- player snapshots carry only `playerTitle` for visible note cells; `gmTitle` and `markdown` are never sent to players
 - source features are placed only on level 3; level 2 shows feature levels 2–3; level 1 shows feature level 3 only
 - terrain override is derived from visible feature kind; there is no persisted per-feature `overrideTerrainTile` boolean
 
@@ -205,7 +206,7 @@ Canonical document operations:
 - features: `add_feature`, `update_feature`, `remove_feature`
 - rivers: `add_river_data`, `remove_river_data`
 - roads: `set_road_edges`
-- notes: `set_note`
+- notes: `set_note` with `gmTitle`, `playerTitle`, and `markdown` as explicit nullable fields
 
 Canonical token operations:
 
@@ -290,6 +291,7 @@ Messages:
 - `sync_snapshot` — contains `lastSequence`, `updatedAt`, `workspaceMembers`, `document`, `tokenPlacements`
 - `map_operation`
 - `map_operation_applied`
+- `map_operation_error`
 - `map_token_update`
 - `map_token_updated`
 - `map_token_error`
@@ -305,7 +307,7 @@ The default server profile is intentionally conservative for low-resource single
 | `HEXMAP_MAX_WS_PAYLOAD_BYTES` | `262144` (256 KiB) |
 | `HEXMAP_MAX_WS_CONNECTIONS` | `100` |
 | `HEXMAP_MAX_WS_CONNECTIONS_PER_MAP` | `24` |
-| `HEXMAP_WS_OPERATION_RATE_LIMIT_MAX_ATTEMPTS` | `120` |
+| `HEXMAP_WS_OPERATION_RATE_LIMIT_MAX_ATTEMPTS` | `1000` |
 | `HEXMAP_WS_OPERATION_RATE_LIMIT_WINDOW_MS` | `1000` |
 | `HEXMAP_REQUEST_TIMEOUT_MS` | `15000` |
 | `HEXMAP_HEADERS_TIMEOUT_MS` | `20000` |
@@ -326,6 +328,7 @@ Persistence is PostgreSQL-first with generated Drizzle migrations.
 - `workspace_invites` stores hashed invite tokens, expiry, revocation, and usage counters
 - `maps.workspace_id` is required
 - `map_tokens` stores token placement only
+- `map_notes` stores explicit `gm_title`, `player_title`, and nullable `markdown` keyed by `(map_id, q, r)`
 - `hex_cells.hidden`, `features.hidden`, and `features.label_revealed` are booleans
 - `features` and `factions` use composite primary keys `(map_id, id)`
 - `faction_territories` references factions through `(map_id, faction_id)`

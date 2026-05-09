@@ -14,6 +14,7 @@ export {
 } from "./operationRateLimit.js";
 export {
   mapSocketPattern,
+  resolveWebSocketAccessRejection,
   rejectUpgrade,
   resolveWebSocketUpgradeRejection,
 } from "./upgradePolicy.js";

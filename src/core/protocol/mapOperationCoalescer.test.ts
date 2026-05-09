@@ -109,9 +109,38 @@ describe("coalesceMapOperations", () => {
   it("coalesces adjacent note updates on the same cell", () => {
     expect(
       coalesceMapOperations([
-        { type: "set_note", note: { q: 1, r: 2, markdown: "One" } },
-        { type: "set_note", note: { q: 1, r: 2, markdown: "Two" } },
+        {
+          type: "set_note",
+          note: {
+            q: 1,
+            r: 2,
+            gmTitle: "One",
+            playerTitle: "Uno",
+            markdown: "First",
+          },
+        },
+        {
+          type: "set_note",
+          note: {
+            q: 1,
+            r: 2,
+            gmTitle: "Two",
+            playerTitle: "Dos",
+            markdown: "Second",
+          },
+        },
       ]),
-    ).toEqual([{ type: "set_note", note: { q: 1, r: 2, markdown: "Two" } }]);
+    ).toEqual([
+      {
+        type: "set_note",
+        note: {
+          q: 1,
+          r: 2,
+          gmTitle: "Two",
+          playerTitle: "Dos",
+          markdown: "Second",
+        },
+      },
+    ]);
   });
 });

@@ -4,6 +4,7 @@ import type { MapSocketTransport } from "@/app/sync/mapSocketTransport";
 import type { ParsedMapSyncMessage } from "@/app/sync/mapSyncMessages";
 import {
   markSessionError,
+  markSessionPendingOperationsUnsent,
   resetSessionAfterSyncError,
   resetSessionFromSnapshot,
   type MapSyncSession,
@@ -32,6 +33,7 @@ type HandleParsedMapSocketMessageOptions = {
   onAuthoritativeResync?: () => void;
   publishRenderWorldPatch: (patch: RenderWorldPatchInput) => void;
   publishSessionState: () => void;
+  scheduleOperationRetry: (retryAfterMs: number) => void;
   sessionRef: MutableRefObject<MapSyncSession>;
   setTokenPlacements: Dispatch<SetStateAction<MapTokenPlacement[]>>;
   setWorkspaceMembers: Dispatch<SetStateAction<WorkspaceMember[]>>;
@@ -52,12 +54,21 @@ export function handleParsedMapSocketMessage(
     onAuthoritativeResync,
     publishRenderWorldPatch,
     publishSessionState,
+    scheduleOperationRetry,
     sessionRef,
     setTokenPlacements,
     setWorkspaceMembers,
     transport,
   }: HandleParsedMapSocketMessageOptions,
 ): void {
+  if (parsed.type === "map_operation_error") {
+    console.warn("[MapSync] operation_error", parsed.payload);
+    markSessionPendingOperationsUnsent(sessionRef.current);
+    publishSessionState();
+    scheduleOperationRetry(parsed.payload.retryAfterMs ?? 0);
+    return;
+  }
+
   if (parsed.type === "sync_error") {
     console.error("[MapSync] sync_error", parsed.payload);
     resetSessionAfterSyncError(sessionRef.current);

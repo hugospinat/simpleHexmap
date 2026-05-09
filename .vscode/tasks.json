@@ -1,0 +1,93 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev:postgres",
+      "type": "shell",
+      "command": "sudo",
+      "args": [
+        "docker",
+        "compose",
+        "-f",
+        "docker-compose.dev.yml",
+        "up",
+        "-d",
+        "postgres"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "dev:server",
+      "type": "shell",
+      "command": "npm",
+      "args": [
+        "run",
+        "server"
+      ],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "custom",
+        "pattern": {
+          "regexp": ".+"
+        },
+        "background": {
+          "activeOnStart": true,
+          "endsPattern": "Map server listening on http://localhost:\\d+"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "dev:frontend",
+      "type": "shell",
+      "command": "npm",
+      "args": [
+        "run",
+        "dev"
+      ],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "custom",
+        "pattern": {
+          "regexp": ".+"
+        },
+        "background": {
+          "activeOnStart": true,
+          "endsPattern": "Local:\\s+http://localhost:\\d+/"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "dev:apps",
+      "dependsOn": [
+        "dev:server",
+        "dev:frontend"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "dev:start",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "dev:postgres",
+        "dev:apps"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}

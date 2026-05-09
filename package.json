@@ -15,9 +15,13 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@codemirror/lang-markdown": "^6.3.0",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.38.6",
     "drizzle-orm": "^0.45.2",
     "pixi.js": "^8.18.1",
     "postgres": "^3.4.9",
+    "codemirror": "^6.0.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "ws": "^8.20.0",

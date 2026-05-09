@@ -7,6 +7,7 @@ import {
   attachClientHandlers,
   getSession,
   mapSocketPattern,
+  resolveWebSocketAccessRejection,
   rejectUpgrade,
   resolveWebSocketUpgradeRejection,
 } from "./services/realtime/index.js";
@@ -14,7 +15,10 @@ import { getClientIp, isOriginAllowed } from "./security/requestSecurity.js";
 
 const wsUpgradeRateLimiter = createServerRateLimiter();
 
-export { resolveWebSocketUpgradeRejection } from "./services/realtime/index.js";
+export {
+  resolveWebSocketAccessRejection,
+  resolveWebSocketUpgradeRejection,
+} from "./services/realtime/index.js";
 
 export function attachWebSocketRoutes(server) {
   const webSocketServer = new WebSocketServer({
@@ -67,7 +71,7 @@ export function attachWebSocketRoutes(server) {
       const auth = await getAuthContext(request);
 
       if (!auth) {
-        socket.destroy();
+        rejectUpgrade(socket, 401, "Authentication required.");
         return;
       }
 
@@ -87,7 +91,7 @@ export function attachWebSocketRoutes(server) {
       const map = await getMapRecordForUser(mapId, auth.user.id);
 
       if (!map) {
-        socket.destroy();
+        rejectUpgrade(socket, 404, "Map not found.");
         return;
       }
 
@@ -100,7 +104,7 @@ export function attachWebSocketRoutes(server) {
         );
       });
     } catch {
-      socket.destroy();
+      rejectUpgrade(socket, 500, "Internal server error.");
     }
   });
 

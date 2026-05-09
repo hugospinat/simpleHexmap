@@ -27,6 +27,7 @@ export default function MapCanvas({
   renderWorldPatch,
   previewOperations,
   tokenPlacements,
+  noteLabels,
   activeTokenUserId,
   canEdit,
   playerMode,
@@ -222,6 +223,16 @@ export default function MapCanvas({
 
     renderer.setTokens(tokenPlacements);
   }, [rendererReady, tokenPlacements]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+
+    if (!renderer || !rendererReady) {
+      return;
+    }
+
+    renderer.setNoteLabels(noteLabels);
+  }, [noteLabels, rendererReady]);
 
   useEffect(() => {
     const renderer = rendererRef.current;

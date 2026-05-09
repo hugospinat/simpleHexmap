@@ -36,6 +36,7 @@ export {
   updateWorkspaceMemberRoleById,
 } from "./workspaceApi";
 export type {
+  MapOperationErrorMessage,
   MapOperationMessage,
   MapOperationRequest,
   MapTokenErrorMessage,

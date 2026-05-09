@@ -1,3 +1,7 @@
 export { createPixiMapRenderer } from "./pixiMapRenderer";
 export type { PixiMapRenderer } from "./pixiMapRenderer";
-export type { MapInteractionOverlay, PixiRenderStats } from "./pixiTypes";
+export type {
+	MapInteractionOverlay,
+	MapNoteRenderable,
+	PixiRenderStats,
+} from "./pixiTypes";

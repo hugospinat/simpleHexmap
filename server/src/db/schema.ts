@@ -157,7 +157,9 @@ export const mapNotes = pgTable(
       .references(() => maps.id, { onDelete: "cascade" }),
     q: integer("q").notNull(),
     r: integer("r").notNull(),
-    markdown: text("markdown").notNull(),
+    gmTitle: text("gm_title"),
+    playerTitle: text("player_title"),
+    markdown: text("markdown"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },
   (table) => ({

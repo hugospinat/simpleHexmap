@@ -124,6 +124,8 @@ export async function materializeMapDocument(
       (note): MapNoteRecord => ({
         q: note.q,
         r: note.r,
+        gmTitle: note.gmTitle,
+        playerTitle: note.playerTitle,
         markdown: note.markdown,
       }),
     ),
@@ -259,8 +261,10 @@ export async function replaceMapDocument(
   if (document.notes.length > 0) {
     await insertInBatches(
       document.notes.map((note) => ({
+        gmTitle: note.gmTitle,
         markdown: note.markdown,
         mapId,
+        playerTitle: note.playerTitle,
         q: note.q,
         r: note.r,
         updatedAt: now,

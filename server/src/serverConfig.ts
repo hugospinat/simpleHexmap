@@ -60,7 +60,7 @@ const defaultServerLimits: ServerLimits = {
   workspaceInviteDefaultMaxUses: 1,
   workspaceInviteMaxExpiresDays: 30,
   workspaceInviteMaxUses: 100,
-  wsOperationRateLimitMaxAttempts: 120,
+  wsOperationRateLimitMaxAttempts: 1000,
   wsOperationRateLimitWindowMs: 1_000,
   wsUpgradeRateLimitMaxAttempts: 60,
   wsUpgradeRateLimitWindowMs: 60_000,

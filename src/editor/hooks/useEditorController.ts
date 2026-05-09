@@ -67,6 +67,18 @@ export function useEditorController({
     setToolPreviewOperations([]);
   }, []);
 
+  const clearSyncPreview = useCallback(() => {
+    clearPreviewHandlerRef.current();
+  }, []);
+
+  const handleAuthoritativeResync = useCallback(() => {
+    authoritativeResyncHandlerRef.current();
+  }, []);
+
+  const handleRemoteOperationsApplied = useCallback((count: number) => {
+    remoteOperationsAppliedHandlerRef.current(count);
+  }, []);
+
   const handleToolPreviewOperations = useCallback((operations: MapOperation[]) => {
     if (operations.length === 0) {
       return;
@@ -76,13 +88,12 @@ export function useEditorController({
   }, []);
 
   const syncState = useMapSocketSync({
-    clearPreview: () => clearPreviewHandlerRef.current(),
+    clearPreview: clearSyncPreview,
     initialDocument,
     initialWorld,
     mapId,
-    onAuthoritativeResync: () => authoritativeResyncHandlerRef.current(),
-    onRemoteOperationsApplied: (count) =>
-      remoteOperationsAppliedHandlerRef.current(count),
+    onAuthoritativeResync: handleAuthoritativeResync,
+    onRemoteOperationsApplied: handleRemoteOperationsApplied,
     userId: profile.id,
     initialWorkspaceMembers,
   });
@@ -247,6 +258,7 @@ export function useEditorController({
     selectedHex:
       toolState.activeMode === "notes" ? noteControls.selectedNoteHex : null,
     tokenPlacements: activeTokenPlacements,
+    visibleDocument,
     onToolStep: canEdit ? toolState.changeToolByDelta : undefined,
     role,
     renderWorldPatch: activeRenderWorldPatch,
@@ -287,7 +299,7 @@ export function useEditorController({
     recolorFaction,
     selectFaction: toolState.setActiveFactionId,
     clearMapTokenSelection: tokenControls.clearMapTokenSelection,
-    selectedNoteMarkdown: noteControls.selectedNoteMarkdown,
+    selectedNote: noteControls.selectedNote,
     saveSelectedNote: noteControls.saveSelectedNote,
     selectWorkspaceMember: tokenControls.selectWorkspaceMember,
     setPlayerTokenColor: tokenControls.setPlayerTokenColor,

@@ -87,6 +87,7 @@ export function useMapSocketSync({
   const sessionRef = useRef(
     createMapSyncSession(clientIdRef.current, initialWorld),
   );
+  const retryFlushTimerRef = useRef<number | null>(null);
   const transportRef = useRef<MapSocketTransport | null>(null);
   const confirmedDocumentRef = useRef(initialDocument);
   const [confirmedWorld, setConfirmedWorld] = useState(initialWorld);
@@ -131,6 +132,13 @@ export function useMapSocketSync({
       acknowledgedRenderWorldPatchRevisionRef.current,
       revision,
     );
+  }, []);
+
+  const clearRetryFlushTimer = useCallback(() => {
+    if (retryFlushTimerRef.current !== null) {
+      window.clearTimeout(retryFlushTimerRef.current);
+      retryFlushTimerRef.current = null;
+    }
   }, []);
 
   const publishSessionState = useCallback(() => {
@@ -303,6 +311,18 @@ export function useMapSocketSync({
     publishSessionState,
   ]);
 
+  const scheduleOperationRetry = useCallback(
+    (retryAfterMs: number) => {
+      clearRetryFlushTimer();
+      const delayMs = Math.max(retryAfterMs, 50);
+      retryFlushTimerRef.current = window.setTimeout(() => {
+        retryFlushTimerRef.current = null;
+        flushOperations();
+      }, delayMs);
+    },
+    [clearRetryFlushTimer, flushOperations],
+  );
+
   const enqueueAppliedOperation = useCallback(
     (payload: MapOperationMessage) => {
       const result = enqueueSessionOperation(sessionRef.current, payload);
@@ -362,6 +382,7 @@ export function useMapSocketSync({
           onAuthoritativeResync,
           publishRenderWorldPatch,
           publishSessionState,
+          scheduleOperationRetry,
           sessionRef,
           setTokenPlacements,
           setWorkspaceMembers,
@@ -378,18 +399,21 @@ export function useMapSocketSync({
     });
 
     return () => {
+      clearRetryFlushTimer();
       clearMapSyncSession(sessionRef.current);
       stopSocketLifecycle();
     };
   }, [
     applyQueuedReceivedOperations,
     clearPreview,
+    clearRetryFlushTimer,
     enqueueAppliedOperation,
     flushOperations,
     mapId,
     onAuthoritativeResync,
     publishRenderWorldPatch,
     publishSessionState,
+    scheduleOperationRetry,
     userId,
   ]);
 

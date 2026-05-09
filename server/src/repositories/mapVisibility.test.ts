@@ -45,8 +45,27 @@ describe("mapVisibility", () => {
         { q: 1, r: 0, edges: [2] },
       ],
       notes: [
-        { q: 0, r: 0, markdown: "Visible for GM only" },
-        { q: 1, r: 0, markdown: "Still hidden" },
+        {
+          q: 0,
+          r: 0,
+          gmTitle: "Visible for GM only",
+          playerTitle: "Visible for players",
+          markdown: "Visible for GM only",
+        },
+        {
+          q: 1,
+          r: 0,
+          gmTitle: "Still hidden for GM",
+          playerTitle: "Still hidden for players",
+          markdown: "Still hidden",
+        },
+        {
+          q: 0,
+          r: 1,
+          gmTitle: "GM only title",
+          playerTitle: null,
+          markdown: "GM only body",
+        },
       ],
       factions: [
         { id: "visible-faction", name: "North", color: "#112233" },
@@ -84,6 +103,14 @@ describe("mapVisibility", () => {
     expect(filtered.factionTerritories).toEqual([
       { q: 0, r: 0, factionId: "visible-faction" },
     ]);
-    expect(filtered.notes).toEqual([]);
+    expect(filtered.notes).toEqual([
+      {
+        q: 0,
+        r: 0,
+        gmTitle: null,
+        playerTitle: "Visible for players",
+        markdown: null,
+      },
+    ]);
   });
 });

@@ -41,6 +41,13 @@ export type MapTokenUpdatedMessage = {
 export type MapTokenErrorMessage = {
   type: "map_token_error";
   error: string;
+  retryAfterMs?: number;
+};
+
+export type MapOperationErrorMessage = {
+  type: "map_operation_error";
+  error: string;
+  retryAfterMs?: number;
 };
 
 export type MapOperationRequest = {
