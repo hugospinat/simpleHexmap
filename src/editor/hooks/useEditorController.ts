@@ -300,6 +300,7 @@ export function useEditorController({
     selectFaction: toolState.setActiveFactionId,
     clearMapTokenSelection: tokenControls.clearMapTokenSelection,
     selectedNote: noteControls.selectedNote,
+    saveNoteAtHex: noteControls.saveNoteAtHex,
     saveSelectedNote: noteControls.saveSelectedNote,
     selectWorkspaceMember: tokenControls.selectWorkspaceMember,
     setPlayerTokenColor: tokenControls.setPlayerTokenColor,

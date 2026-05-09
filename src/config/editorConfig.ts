@@ -8,6 +8,7 @@ export const editorConfig = {
   boundaryLineWidth: 0.85,
   keyboardPanPixelsPerSecond: 520,
   maxLevels: 3,
+  noteAutosaveDebounceMs: 1000,
   performanceDebugLogs: false,
   renderViewportMarginCells: 3,
   visualZoomMax: MAX_VISUAL_ZOOM,

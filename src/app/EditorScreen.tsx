@@ -88,7 +88,7 @@ export function EditorScreen({
             selectedHex={editor.selectedNoteHex}
             onClear={editor.clearSelectedNote}
             onClose={editor.closeSelectedNote}
-            onSave={editor.saveSelectedNote}
+            onSave={editor.saveNoteAtHex}
           />
         ) : null}
         <BottomBar

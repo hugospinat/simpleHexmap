@@ -4,7 +4,7 @@ import { SOURCE_LEVEL } from "@/core/map/mapRules";
 import type { MapState } from "@/core/map/world";
 import type { MapDocument, MapOperation } from "@/core/protocol";
 
-type NoteDraft = {
+export type NoteDraft = {
   gmTitle: string;
   playerTitle: string;
   markdown: string;
@@ -49,19 +49,15 @@ export function useNoteControls({
     };
   }, [activeNoteHex, visibleDocument.notes]);
 
-  const saveSelectedNote = useCallback(
-    (noteDraft: NoteDraft) => {
-      if (!activeNoteHex) {
-        return;
-      }
-
+  const saveNoteAtHex = useCallback(
+    (noteHex: Axial, noteDraft: NoteDraft) => {
       const nextGmTitle = noteDraft.gmTitle.trim() ? noteDraft.gmTitle.trim() : null;
       const nextPlayerTitle = noteDraft.playerTitle.trim()
         ? noteDraft.playerTitle.trim()
         : null;
       const nextMarkdown = noteDraft.markdown.trim() ? noteDraft.markdown : null;
       const currentNote = visibleDocument.notes.find(
-        (note) => note.q === activeNoteHex.q && note.r === activeNoteHex.r,
+        (note) => note.q === noteHex.q && note.r === noteHex.r,
       );
 
       if (
@@ -76,8 +72,8 @@ export function useNoteControls({
         {
           type: "set_note",
           note: {
-            q: activeNoteHex.q,
-            r: activeNoteHex.r,
+            q: noteHex.q,
+            r: noteHex.r,
             gmTitle: nextGmTitle,
             playerTitle: nextPlayerTitle,
             markdown: nextMarkdown,
@@ -85,7 +81,18 @@ export function useNoteControls({
         },
       ]);
     },
-    [activeNoteHex, submitLocalOperations, visibleDocument.notes],
+    [submitLocalOperations, visibleDocument.notes],
+  );
+
+  const saveSelectedNote = useCallback(
+    (noteDraft: NoteDraft) => {
+      if (!activeNoteHex) {
+        return;
+      }
+
+      saveNoteAtHex(activeNoteHex, noteDraft);
+    },
+    [activeNoteHex, saveNoteAtHex],
   );
 
   const clearSelectedNote = useCallback(() => {
@@ -115,6 +122,7 @@ export function useNoteControls({
   return {
     clearSelectedNote,
     closeSelectedNote: () => setActiveNoteHex(null),
+    saveNoteAtHex,
     saveSelectedNote,
     selectedNoteHex: activeNoteHex,
     selectedNote,
