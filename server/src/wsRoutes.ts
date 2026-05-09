@@ -96,14 +96,23 @@ export function attachWebSocketRoutes(server) {
       }
 
       webSocketServer.handleUpgrade(request, socket, head, (client) => {
-        void attachClientHandlers(
+        attachClientHandlers(
           mapId,
           client,
           auth.user.id,
           getVisibilityModeForMapRole(map),
-        );
+        ).catch((error) => {
+          console.error("[ws] attach_client_failed", { mapId, error });
+
+          try {
+            client.close(1011, "Internal server error.");
+          } catch {
+            // Client may already be closing; ignore.
+          }
+        });
       });
-    } catch {
+    } catch (error) {
+      console.error("[ws] upgrade_failed", { error });
       rejectUpgrade(socket, 500, "Internal server error.");
     }
   });

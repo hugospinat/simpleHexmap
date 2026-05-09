@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { editorConfig } from "@/config/editorConfig";
 import type { Axial } from "@/core/geometry/hex";
-import type { NoteDraft } from "@/editor/hooks/useNoteControls";
+import type { NoteDraft } from "@/editor/hooks";
 import { MarkdownCodeEditor } from "./MarkdownCodeEditor";
 
 function areDraftsEqual(left: NoteDraft, right: NoteDraft): boolean {

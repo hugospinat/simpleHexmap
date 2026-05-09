@@ -59,10 +59,22 @@ export async function handleClientMessage(
   const opResult = wsMapOperationMessageSchema.safeParse(message);
 
   if (!opResult.success) {
+    const rawPreview = raw.toString("utf8").slice(0, 200);
     console.warn("[MapSyncServer] invalid_operation_message", {
       mapId,
-      raw: raw.toString("utf8"),
+      userId,
+      rawPreview,
     });
+
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(
+        JSON.stringify({
+          error: "Invalid map operation message.",
+          type: "map_operation_error",
+        }),
+      );
+    }
+
     return;
   }
 
