@@ -1,0 +1,9 @@
+{
+  "id": "simplehex-notes",
+  "name": "SimpleHex Notes",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Open and synchronize SimpleHex GM notes inside Obsidian.",
+  "author": "GitHub Copilot",
+  "isDesktopOnly": false
+}

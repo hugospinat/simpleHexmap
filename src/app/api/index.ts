@@ -1,5 +1,9 @@
 export { buildApiUrl, buildInviteUrl, buildWebSocketUrl } from "./apiBase";
 export {
+  openObsidianProtocolUrl,
+  requestObsidianNoteLaunch,
+} from "./obsidianApi";
+export {
   getCurrentUser,
   login,
   logout,

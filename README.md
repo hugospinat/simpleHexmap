@@ -129,7 +129,7 @@ HTTP or WebSocket request
 - feature left click places the selected feature kind and never opens a popup editor
 - road add and road remove both work by dragging between neighboring hexes; removal clears only the traversed connections
 - visible feature kinds that support terrain override always replace terrain art; hidden features never do
-- note editing is a separate GM-only tool; left click selects a hex and opens the right-side markdown editor panel
+- note editing is a separate GM-only tool; left click selects a hex and launches or focuses the synchronized Obsidian note for that cell
 
 ### Contribution boundaries
 
@@ -272,6 +272,12 @@ Design rules:
 - `PATCH /api/maps/:mapId`
 - `DELETE /api/maps/:mapId`
 - `GET /api/maps/:mapId/export` — returns `{ name, document }`
+- `POST /api/maps/:mapId/obsidian/launch` — cookie-authenticated GM launch handshake that returns `{ protocolUrl, noteUrl, tokenExpiresAt, snapshot }`
+
+**Obsidian note bridge**
+
+- `GET /api/obsidian/maps/:mapId/notes/:q/:r` — bearer-authenticated GM note snapshot for the Obsidian plugin
+- `PUT /api/obsidian/maps/:mapId/notes/:q/:r` — bearer-authenticated GM note write using the canonical `set_note` operation plus optimistic revision checks
 
 ### WebSocket contract
 
@@ -297,6 +303,27 @@ Messages:
 - `map_token_error`
 - `sync_error`
 
+### Obsidian note bridge contract
+
+The Obsidian integration keeps `map_notes` and the canonical `set_note` operation as the only server authority for note content.
+
+Flow:
+
+1. browser GM selects a hex in note mode
+2. browser calls `POST /api/maps/:mapId/obsidian/launch`
+3. server returns a short dedicated Obsidian bearer token scoped to that map plus an `obsidian://simplehex-note?...` launch URL
+4. the Obsidian plugin opens or focuses the file for `(mapId, q, r)`
+5. plugin reads the current note snapshot over HTTP and writes local edits back through `PUT /api/obsidian/maps/:mapId/notes/:q/:r`
+6. browser realtime edits still flow through WebSocket `set_note`; plugin refreshes remote state through the dedicated HTTP note channel
+
+Design rules:
+
+- one Obsidian file per `(mapId, q, r)`
+- stable file path is map-scoped and ID-based; human labels live in frontmatter, not in the durable identity
+- plugin writes must emit the same canonical `set_note` mutation as the browser editor
+- note writes carry optimistic revision metadata so the plugin can detect divergence instead of silently overwriting remote edits
+- conflict handling is explicit: the plugin preserves a visible local conflict copy before applying newer remote content
+
 ### Operational hardening knobs
 
 The default server profile is intentionally conservative for low-resource single-instance deployments:
@@ -313,6 +340,8 @@ The default server profile is intentionally conservative for low-resource single
 | `HEXMAP_HEADERS_TIMEOUT_MS` | `20000` |
 | `HEXMAP_KEEP_ALIVE_TIMEOUT_MS` | `5000` |
 | `HEXMAP_PERF_SLOW_OPERATION_MS` | `16` |
+| `HEXMAP_OBSIDIAN_TOKEN_SECRET` | random per process startup when unset |
+| `HEXMAP_OBSIDIAN_TOKEN_LIFETIME_MS` | `604800000` (7 days) |
 | `DB_POOL_SIZE` | `10` |
 
 ---
@@ -358,6 +387,7 @@ Authentication is cookie/session-based.
 
 - cookie-authenticated browser access is same-origin; `HEXMAP_ALLOWED_ORIGINS` gates explicit origin validation and non-credentialed CORS responses only
 - mutating HTTP requests and WebSocket upgrades require an allowed `Origin` or same-origin `Referer`
+- the Obsidian plugin uses a dedicated bearer token minted from a GM browser session and scoped to one map; bearer-authenticated `/api/obsidian/...` writes are the only mutating requests exempt from browser-origin checks
 - every HTTP and WebSocket request is role-checked on the server
 - player payloads are filtered before serialization — hidden tiles, features, roads, rivers, faction territories, GM notes, and hidden-cell tokens never reach player clients
 - GM-only labels are stripped from player-facing feature records
@@ -413,6 +443,9 @@ server/
 
 scripts/
   authenticated smoke scripts for sync behavior
+
+obsidian-plugin/
+  simplehex-notes/ source-only Obsidian plugin for synchronized GM notes
 ```
 
 ### Dependency direction

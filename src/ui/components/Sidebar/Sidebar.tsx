@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { Axial } from "@/core/geometry/hex";
 import type { FeatureKind } from "@/core/map/features";
 import type { Faction, TerrainType } from "@/core/map/world";
 import type { EditorMode } from "@/editor/tools";
@@ -18,11 +19,14 @@ type SidebarProps = {
   tokenPlacements: MapTokenPlacement[];
   workspaceMembers: WorkspaceMember[];
   mapName: string;
+  noteLaunchInFlight: boolean;
+  noteLaunchStatus: string;
   onBackToMaps: () => void;
   onCreateFaction: () => void;
   onDeleteFaction: (factionId: string) => void;
   onFeatureKindChange: (type: FeatureKind) => void;
   onModeChange: (mode: EditorMode) => void;
+  onOpenSelectedNoteInObsidian: () => void;
   onRecolorFaction: (factionId: string, color: string) => void;
   onRedo: () => void;
   onRenameFaction: (factionId: string, name: string) => void;
@@ -32,6 +36,7 @@ type SidebarProps = {
   onSelectMapToken: (member: WorkspaceMember) => void;
   onTileTypeChange: (type: TerrainType) => void;
   onUndo: () => void;
+  selectedNoteHex: Axial | null;
 };
 
 export function Sidebar({
@@ -44,11 +49,14 @@ export function Sidebar({
   tokenPlacements,
   workspaceMembers,
   mapName,
+  noteLaunchInFlight,
+  noteLaunchStatus,
   onBackToMaps,
   onCreateFaction,
   onDeleteFaction,
   onFeatureKindChange,
   onModeChange,
+  onOpenSelectedNoteInObsidian,
   onRecolorFaction,
   onRedo,
   onRenameFaction,
@@ -57,7 +65,8 @@ export function Sidebar({
   onSelectFaction,
   onSelectMapToken,
   onTileTypeChange,
-  onUndo
+  onUndo,
+  selectedNoteHex,
 }: SidebarProps) {
   const [editingFactionId, setEditingFactionId] = useState<string | null>(null);
   const [editingFactionName, setEditingFactionName] = useState("");
@@ -207,7 +216,28 @@ export function Sidebar({
             <span>Mode</span>
             <strong>GM markdown notes</strong>
           </div>
-          <p>Left click a hex to open its note in the right panel. Save or clear the note from that panel.</p>
+          <p>
+            Left click a hex to open or focus its synchronized note in Obsidian.
+          </p>
+          <div className="active-tile">
+            <span>Selected hex</span>
+            <strong>
+              {selectedNoteHex
+                ? `${selectedNoteHex.q}, ${selectedNoteHex.r}`
+                : "None"}
+            </strong>
+          </div>
+          <div className="faction-actions">
+            <button
+              type="button"
+              className="compact-button"
+              onClick={onOpenSelectedNoteInObsidian}
+              disabled={!selectedNoteHex || noteLaunchInFlight}
+            >
+              {noteLaunchInFlight ? "Opening…" : "Open in Obsidian"}
+            </button>
+          </div>
+          <p>{noteLaunchStatus}</p>
         </section>
       ) : (
         <section className="panel faction-panel">

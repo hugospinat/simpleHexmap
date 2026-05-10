@@ -4,4 +4,5 @@ export type {
 	MapInteractionOverlay,
 	MapNoteRenderable,
 	PixiRenderStats,
+	MapTokenRenderable,
 } from "./pixiTypes";
