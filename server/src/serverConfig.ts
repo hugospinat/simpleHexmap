@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { MemoryRateLimiter } from "./security/rateLimiter.js";
 
 export type ServerLimits = {
@@ -9,6 +10,7 @@ export type ServerLimits = {
   inviteJoinRateLimitWindowMs: number;
   keepAliveTimeoutMs: number;
   maxHttpBodySizeBytes: number;
+  obsidianTokenLifetimeMs: number;
   maxWebSocketConnections: number;
   maxWebSocketConnectionsPerMap: number;
   maxWebSocketPayloadBytes: number;
@@ -34,6 +36,7 @@ export type ServerDatabaseConfig = {
 
 export type ServerRuntimeConfig = {
   isProduction: boolean;
+  obsidianTokenSecret: string;
   perfDebug: boolean;
   perfSlowOperationThresholdMs: number;
   secureCookies: boolean;
@@ -48,6 +51,7 @@ const defaultServerLimits: ServerLimits = {
   inviteJoinRateLimitWindowMs: 10 * 60_000,
   keepAliveTimeoutMs: 5_000,
   maxHttpBodySizeBytes: 5 * 1024 * 1024,
+  obsidianTokenLifetimeMs: 7 * 24 * 60 * 60_000,
   maxWebSocketConnections: 100,
   maxWebSocketConnectionsPerMap: 24,
   maxWebSocketPayloadBytes: 256 * 1024,
@@ -73,6 +77,7 @@ const defaultDatabaseConfig: ServerDatabaseConfig = {
 
 const defaultRuntimeConfig: ServerRuntimeConfig = {
   isProduction: false,
+  obsidianTokenSecret: "",
   perfDebug: false,
   perfSlowOperationThresholdMs: 16,
   secureCookies: false,
@@ -193,6 +198,11 @@ export function resolveServerLimits(
       "HEXMAP_MAX_HTTP_BODY_BYTES",
       defaultServerLimits.maxHttpBodySizeBytes,
     ),
+    obsidianTokenLifetimeMs: readPositiveInteger(
+      env,
+      "HEXMAP_OBSIDIAN_TOKEN_LIFETIME_MS",
+      defaultServerLimits.obsidianTokenLifetimeMs,
+    ),
     maxWebSocketConnections: readPositiveInteger(
       env,
       "HEXMAP_MAX_WS_CONNECTIONS",
@@ -303,9 +313,13 @@ export function resolveServerRuntimeConfig(
     "HEXMAP_PERF_SLOW_OPERATION_MS",
     defaultRuntimeConfig.perfSlowOperationThresholdMs,
   );
+  const configuredObsidianTokenSecret = env.HEXMAP_OBSIDIAN_TOKEN_SECRET?.trim();
 
   return {
     isProduction,
+    obsidianTokenSecret:
+      configuredObsidianTokenSecret ||
+      randomBytes(32).toString("base64url"),
     perfDebug,
     perfSlowOperationThresholdMs,
     secureCookies: isProduction,

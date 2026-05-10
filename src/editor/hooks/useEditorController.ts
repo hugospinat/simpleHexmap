@@ -16,9 +16,10 @@ import { useEditorToolState } from "./useEditorToolState";
 import { useFactionControls } from "./useFactionControls";
 import { useKeyboardNavigation } from "./useKeyboardNavigation";
 import { useNoteControls } from "./useNoteControls";
+import { useRemoteSyncHandlers } from "./useRemoteSyncHandlers";
 import { useTokenControls } from "./useTokenControls";
 import { getInteractionLabel } from "@/editor/presentation/interactionLabels";
-import type { MapTokenRenderable } from "@/render/pixi/pixiTypes";
+import type { MapTokenRenderable } from "@/render/pixi";
 
 type UseEditorControllerOptions = {
   initialDocument: MapDocument;
@@ -45,13 +46,6 @@ export function useEditorController({
   const [toolPreviewOperations, setToolPreviewOperations] = useState<
     MapOperation[]
   >([]);
-  const clearPreviewHandlerRef = useRef<() => void>(() => {
-    setToolPreviewOperations([]);
-  });
-  const authoritativeResyncHandlerRef = useRef<() => void>(() => {});
-  const remoteOperationsAppliedHandlerRef = useRef<(count: number) => void>(
-    () => {},
-  );
   const canEdit = role === "gm";
   const toolState = useEditorToolState(canEdit);
 
@@ -66,18 +60,6 @@ export function useEditorController({
     }
 
     setToolPreviewOperations([]);
-  }, []);
-
-  const clearSyncPreview = useCallback(() => {
-    clearPreviewHandlerRef.current();
-  }, []);
-
-  const handleAuthoritativeResync = useCallback(() => {
-    authoritativeResyncHandlerRef.current();
-  }, []);
-
-  const handleRemoteOperationsApplied = useCallback((count: number) => {
-    remoteOperationsAppliedHandlerRef.current(count);
   }, []);
 
   const handleToolPreviewOperations = useCallback((operations: MapOperation[]) => {
@@ -134,24 +116,16 @@ export function useEditorController({
     startEditGesture,
     startRiverGesture,
   } = editorGestures;
-
-  useEffect(() => {
-    clearPreviewHandlerRef.current = () => {
-      if (hasActiveGesture()) {
-        return;
-      }
-
-      clearToolPreview(true);
-    };
-    authoritativeResyncHandlerRef.current = () => {
-      operationHistory.resetHistory();
-      resetGestureState();
-      clearToolPreview(true);
-    };
-    remoteOperationsAppliedHandlerRef.current = () => {
-      operationHistory.clearUndoRedoHistory();
-    };
-  }, [clearToolPreview, hasActiveGesture, operationHistory, resetGestureState]);
+  const {
+    clearSyncPreview,
+    handleAuthoritativeResync,
+    handleRemoteOperationsApplied,
+  } = useRemoteSyncHandlers({
+    clearToolPreview,
+    hasActiveGesture,
+    operationHistory,
+    resetGestureState,
+  });
 
   const tokenControls = useTokenControls({
     canEdit,

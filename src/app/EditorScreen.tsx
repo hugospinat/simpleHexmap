@@ -1,7 +1,8 @@
 import { AppShell } from "./AppShell";
 import { MapAssetsProvider } from "@/editor/context";
 import { useEditorController } from "@/editor/hooks";
-import { BottomBar, MapPane, NotePanel, PlayerControls, Sidebar } from "@/ui/components";
+import { useObsidianNoteLauncher } from "@/app/hooks/useObsidianNoteLauncher";
+import { BottomBar, MapPane, PlayerControls, Sidebar } from "@/ui/components";
 import type { MapState } from "@/core/map/world";
 import type { MapDocument } from "@/core/protocol";
 import type { MapOpenMode, UserRecord, WorkspaceMember } from "@/core/auth/authTypes";
@@ -51,12 +52,15 @@ export function EditorScreen({
     );
   }
 
-  const showNotePanel =
-    editor.activeMode === "notes" && editor.selectedNoteHex !== null;
+  const obsidianNotes = useObsidianNoteLauncher({
+    activeMode: editor.activeMode,
+    mapId,
+    selectedHex: editor.selectedNoteHex,
+  });
 
   return (
     <MapAssetsProvider>
-      <AppShell appRef={editor.appRef} rightPanelOpen={showNotePanel}>
+      <AppShell appRef={editor.appRef}>
         <Sidebar
           activeFactionId={editor.activeFactionId}
           activeFeatureKind={editor.activeFeatureKind}
@@ -72,6 +76,7 @@ export function EditorScreen({
           onDeleteFaction={editor.deleteFaction}
           onFeatureKindChange={editor.chooseFeatureKind}
           onModeChange={editor.setActiveMode}
+          onOpenSelectedNoteInObsidian={obsidianNotes.openSelectedNoteInObsidian}
           onRecolorFaction={editor.recolorFaction}
           onRedo={editor.redoLastOperationBatch}
           onRenameFaction={editor.renameFaction}
@@ -79,19 +84,13 @@ export function EditorScreen({
           onClearMapTokenSelection={editor.clearMapTokenSelection}
           onMapTokenColorChange={editor.setMapTokenColor}
           onSelectMapToken={editor.selectWorkspaceMember}
+          noteLaunchStatus={obsidianNotes.noteStatus}
+          noteLaunchInFlight={obsidianNotes.isLaunching}
+          selectedNoteHex={editor.selectedNoteHex}
           onTileTypeChange={editor.setActiveType}
           onUndo={editor.undoLastOperationBatch}
         />
         <MapPane {...editor.canvasProps} />
-        {showNotePanel && editor.selectedNoteHex ? (
-          <NotePanel
-            note={editor.selectedNote}
-            selectedHex={editor.selectedNoteHex}
-            onClear={editor.clearSelectedNote}
-            onClose={editor.closeSelectedNote}
-            onSave={editor.saveNoteAtHex}
-          />
-        ) : null}
         <BottomBar
           center={editor.view.center}
           hoveredHex={editor.hoveredHex}

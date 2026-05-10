@@ -20,6 +20,7 @@ describe("serverConfig", () => {
       inviteJoinRateLimitWindowMs: 10 * 60_000,
       keepAliveTimeoutMs: 5_000,
       maxHttpBodySizeBytes: 5 * 1024 * 1024,
+      obsidianTokenLifetimeMs: 7 * 24 * 60 * 60_000,
       maxWebSocketConnections: 100,
       maxWebSocketConnectionsPerMap: 24,
       maxWebSocketPayloadBytes: 256 * 1024,
@@ -49,6 +50,7 @@ describe("serverConfig", () => {
       HEXMAP_INVITE_JOIN_RATE_LIMIT_WINDOW_MS: "62000",
       HEXMAP_KEEP_ALIVE_TIMEOUT_MS: "7000",
       HEXMAP_MAX_HTTP_BODY_BYTES: "1234",
+      HEXMAP_OBSIDIAN_TOKEN_LIFETIME_MS: "65000",
       HEXMAP_MAX_WS_CONNECTIONS: "88",
       HEXMAP_MAX_WS_CONNECTIONS_PER_MAP: "12",
       HEXMAP_MAX_WS_PAYLOAD_BYTES: "4096",
@@ -76,6 +78,7 @@ describe("serverConfig", () => {
       inviteJoinRateLimitWindowMs: 62_000,
       keepAliveTimeoutMs: 7_000,
       maxHttpBodySizeBytes: 1234,
+      obsidianTokenLifetimeMs: 65_000,
       maxWebSocketConnections: 88,
       maxWebSocketConnectionsPerMap: 12,
       maxWebSocketPayloadBytes: 4096,
@@ -105,6 +108,7 @@ describe("serverConfig", () => {
       HEXMAP_INVITE_JOIN_RATE_LIMIT_WINDOW_MS: " ",
       HEXMAP_KEEP_ALIVE_TIMEOUT_MS: "-1",
       HEXMAP_MAX_HTTP_BODY_BYTES: "nope",
+      HEXMAP_OBSIDIAN_TOKEN_LIFETIME_MS: "0",
       HEXMAP_MAX_WS_CONNECTIONS: "1.5",
       HEXMAP_MAX_WS_CONNECTIONS_PER_MAP: "",
       HEXMAP_MAX_WS_PAYLOAD_BYTES: " ",
@@ -139,15 +143,17 @@ describe("serverConfig", () => {
 
     expect(
       resolveServerRuntimeConfig({
+        HEXMAP_OBSIDIAN_TOKEN_SECRET: "test-secret",
         HEXMAP_PERF_DEBUG: "1",
         HEXMAP_PERF_SLOW_OPERATION_MS: "24",
         NODE_ENV: "production",
       }),
-    ).toEqual({
-      isProduction: true,
-      perfDebug: true,
-      perfSlowOperationThresholdMs: 24,
-      secureCookies: true,
+      ).toEqual({
+        isProduction: true,
+        obsidianTokenSecret: "test-secret",
+        perfDebug: true,
+        perfSlowOperationThresholdMs: 24,
+        secureCookies: true,
     });
   });
 
@@ -160,12 +166,14 @@ describe("serverConfig", () => {
     });
     expect(shouldLogServerPerf(8, {
       isProduction: false,
+      obsidianTokenSecret: "secret",
       perfDebug: false,
       perfSlowOperationThresholdMs: 16,
       secureCookies: false,
     })).toBe(false);
     expect(shouldLogServerPerf(8, {
       isProduction: false,
+      obsidianTokenSecret: "secret",
       perfDebug: true,
       perfSlowOperationThresholdMs: 16,
       secureCookies: false,

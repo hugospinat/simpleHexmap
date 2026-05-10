@@ -17,6 +17,12 @@ export type {
   RoadEdgeIndex,
 } from "./types.js";
 export type {
+  ObsidianNoteLaunchPayload,
+  ObsidianNoteRevision,
+  ObsidianNoteSnapshot,
+  ObsidianNoteWriteRequest,
+} from "./obsidianNotes.js";
+export type {
   MapOperationEnvelope,
   OperationApplier,
 } from "./operationContracts.js";

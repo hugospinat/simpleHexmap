@@ -16,6 +16,12 @@ import {
   workspaceMapsImportPathPattern,
   workspaceMapsPathPattern,
 } from "./mapRoutes.js";
+import {
+  handleObsidianLaunchRequest,
+  handleObsidianNoteRequest,
+  obsidianLaunchPathPattern,
+  obsidianNotePathPattern,
+} from "./obsidianRoutes.js";
 import { handleStaticRequest } from "./httpHelpers.js";
 import {
   handleWorkspaceCollectionRequest,
@@ -91,6 +97,12 @@ const httpRouteHandlers: RouteHandler[] = [
   ),
   createRegexRoute(mapPathPattern, (request, response, match, url) =>
     handleMapResourceRequest(request, response, url, match),
+  ),
+  createRegexRoute(obsidianLaunchPathPattern, (request, response, match) =>
+    handleObsidianLaunchRequest(request, response, match),
+  ),
+  createRegexRoute(obsidianNotePathPattern, (request, response, match) =>
+    handleObsidianNoteRequest(request, response, match),
   ),
   createRegexRoute(workspacePathPattern, (request, response, match) =>
     handleWorkspaceResourceRequest(request, response, match),

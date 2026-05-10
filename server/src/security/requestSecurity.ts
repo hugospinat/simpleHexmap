@@ -58,6 +58,15 @@ function getOriginFromReferer(referer: string | undefined): string | null {
   }
 }
 
+function hasBearerAuthorization(request: IncomingMessage): boolean {
+  const header = getForwardedHeaderValue(request.headers.authorization);
+  return Boolean(header && header.startsWith("Bearer "));
+}
+
+function isObsidianApiRequest(request: IncomingMessage): boolean {
+  return request.url?.startsWith("/api/obsidian/") ?? false;
+}
+
 export function isOriginAllowed(
   request: IncomingMessage,
   origin: string,
@@ -116,6 +125,10 @@ export function assertRequestOriginAllowed(request: IncomingMessage): void {
   const requestMethod = request.method ?? "GET";
 
   if (requestMethod === "GET" || requestMethod === "HEAD" || requestMethod === "OPTIONS") {
+    return;
+  }
+
+  if (isObsidianApiRequest(request) && hasBearerAuthorization(request)) {
     return;
   }
 

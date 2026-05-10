@@ -50,6 +50,30 @@ export const renameMapBodySchema = z.object({
   name: nameSchema.optional(),
 });
 
+const mapCoordinateSchema = z.object({
+  q: z.number().int(),
+  r: z.number().int(),
+});
+
+const obsidianRevisionSchema = z.object({
+  operationId: z.string().min(1).nullable(),
+  sourceClientId: z.string().min(1).nullable(),
+  updatedAt: z.string().min(1).nullable(),
+});
+
+export const obsidianLaunchBodySchema = mapCoordinateSchema;
+
+export const obsidianNoteWriteBodySchema = z.object({
+  baseRevision: obsidianRevisionSchema.nullable(),
+  clientId: z.string().min(1),
+  note: z.object({
+    gmTitle: z.string().nullable(),
+    markdown: z.string().nullable(),
+    playerTitle: z.string().nullable(),
+  }),
+  operationId: z.string().min(1),
+});
+
 export const wsMapOperationMessageSchema = z.object({
   type: z.literal("map_operation"),
   clientId: z.string().min(1),

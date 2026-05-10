@@ -9,11 +9,13 @@ import {
 function createRequest(input: {
   headers?: Record<string, string>;
   method?: string;
+  url?: string;
 } = {}) {
   return {
     headers: input.headers ?? {},
     method: input.method ?? "GET",
     socket: { remoteAddress: "127.0.0.1" },
+    url: input.url ?? "/",
   };
 }
 
@@ -72,6 +74,16 @@ describe("requestSecurity", () => {
         referer: "http://localhost:8787/app",
       },
       method: "DELETE",
+    }))).not.toThrow();
+  });
+
+  it("accepts Obsidian bearer writes without a browser origin header", () => {
+    expect(() => assertRequestOriginAllowed(createRequest({
+      headers: {
+        authorization: "Bearer token",
+      },
+      method: "PUT",
+      url: "/api/obsidian/maps/map-1/notes/1/2",
     }))).not.toThrow();
   });
 });
