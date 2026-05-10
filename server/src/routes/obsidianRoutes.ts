@@ -1,4 +1,4 @@
-import { type IncomingMessage } from "node:http";
+import { type IncomingMessage, type ServerResponse } from "node:http";
 import { ConflictError } from "../errors.js";
 import { requireAuth } from "../services/authService.js";
 import { issueObsidianMapToken, requireObsidianMapAuth } from "../services/obsidianNoteAuth.js";
@@ -60,9 +60,9 @@ function buildObsidianProtocolUrl(input: {
 }
 
 export async function handleObsidianLaunchRequest(
-  request,
-  response,
-  match,
+  request: IncomingMessage,
+  response: ServerResponse,
+  match: RegExpMatchArray,
 ): Promise<boolean> {
   if (request.method !== "POST") {
     return false;
@@ -95,9 +95,9 @@ export async function handleObsidianLaunchRequest(
 }
 
 export async function handleObsidianNoteRequest(
-  request,
-  response,
-  match,
+  request: IncomingMessage,
+  response: ServerResponse,
+  match: RegExpMatchArray,
 ): Promise<boolean> {
   const mapId = match[1];
   const q = Number.parseInt(match[2] ?? "", 10);

@@ -114,9 +114,9 @@ function parseSnapshotDraft(text: string): {
 
   let endIndex = -1;
 
-  for (let index = 1; index < lines.length; index += 1) {
-    if (lines[index] === "---") {
-      endIndex = index;
+  for (let lineIndex = 1; lineIndex < lines.length; lineIndex += 1) {
+    if (lines[lineIndex] === "---") {
+      endIndex = lineIndex;
       break;
     }
   }
