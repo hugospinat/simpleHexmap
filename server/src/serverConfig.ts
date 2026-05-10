@@ -314,12 +314,18 @@ export function resolveServerRuntimeConfig(
     defaultRuntimeConfig.perfSlowOperationThresholdMs,
   );
   const configuredObsidianTokenSecret = env.HEXMAP_OBSIDIAN_TOKEN_SECRET?.trim();
+  const obsidianTokenSecret =
+    configuredObsidianTokenSecret || randomBytes(32).toString("base64url");
+
+  if (!configuredObsidianTokenSecret && env.NODE_ENV !== "test") {
+    console.warn(
+      "[Config] HEXMAP_OBSIDIAN_TOKEN_SECRET is unset; generated Obsidian note tokens will be invalidated on server restart.",
+    );
+  }
 
   return {
     isProduction,
-    obsidianTokenSecret:
-      configuredObsidianTokenSecret ||
-      randomBytes(32).toString("base64url"),
+    obsidianTokenSecret,
     perfDebug,
     perfSlowOperationThresholdMs,
     secureCookies: isProduction,
