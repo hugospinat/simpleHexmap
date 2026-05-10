@@ -1,6 +1,17 @@
-import { useCallback, useEffect, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  type MutableRefObject,
+} from "react";
 
-type UseRemoteSyncHandlersOptions = {
+type RemoteSyncHandlerRefs = {
+  authoritativeResyncHandlerRef: MutableRefObject<() => void>;
+  clearPreviewHandlerRef: MutableRefObject<() => void>;
+  remoteOperationsAppliedHandlerRef: MutableRefObject<(count: number) => void>;
+};
+
+type UseRemoteSyncLifecycleOptions = RemoteSyncHandlerRefs & {
   clearToolPreview: (force?: boolean) => void;
   hasActiveGesture: () => boolean;
   operationHistory: {
@@ -10,13 +21,14 @@ type UseRemoteSyncHandlersOptions = {
   resetGestureState: () => void;
 };
 
-export function useRemoteSyncHandlers({
-  clearToolPreview,
-  hasActiveGesture,
-  operationHistory,
-  resetGestureState,
-}: UseRemoteSyncHandlersOptions) {
-  const clearPreviewHandlerRef = useRef<() => void>(() => {});
+export function useRemoteSyncCallbacks(
+  clearPreviewFallback: () => void,
+): RemoteSyncHandlerRefs & {
+  clearSyncPreview: () => void;
+  handleAuthoritativeResync: () => void;
+  handleRemoteOperationsApplied: (count: number) => void;
+} {
+  const clearPreviewHandlerRef = useRef<() => void>(clearPreviewFallback);
   const authoritativeResyncHandlerRef = useRef<() => void>(() => {});
   const remoteOperationsAppliedHandlerRef = useRef<(count: number) => void>(
     () => {},
@@ -34,6 +46,25 @@ export function useRemoteSyncHandlers({
     remoteOperationsAppliedHandlerRef.current(count);
   }, []);
 
+  return {
+    authoritativeResyncHandlerRef,
+    clearPreviewHandlerRef,
+    clearSyncPreview,
+    handleAuthoritativeResync,
+    handleRemoteOperationsApplied,
+    remoteOperationsAppliedHandlerRef,
+  };
+}
+
+export function useRemoteSyncLifecycle({
+  authoritativeResyncHandlerRef,
+  clearPreviewHandlerRef,
+  clearToolPreview,
+  hasActiveGesture,
+  operationHistory,
+  remoteOperationsAppliedHandlerRef,
+  resetGestureState,
+}: UseRemoteSyncLifecycleOptions) {
   useEffect(() => {
     clearPreviewHandlerRef.current = () => {
       if (hasActiveGesture()) {
@@ -50,12 +81,13 @@ export function useRemoteSyncHandlers({
     remoteOperationsAppliedHandlerRef.current = () => {
       operationHistory.clearUndoRedoHistory();
     };
-  }, [clearToolPreview, hasActiveGesture, operationHistory, resetGestureState]);
-
-  return {
-    clearSyncPreview,
-    handleAuthoritativeResync,
-    handleRemoteOperationsApplied,
-  };
+  }, [
+    authoritativeResyncHandlerRef,
+    clearPreviewHandlerRef,
+    clearToolPreview,
+    hasActiveGesture,
+    operationHistory,
+    remoteOperationsAppliedHandlerRef,
+    resetGestureState,
+  ]);
 }
-

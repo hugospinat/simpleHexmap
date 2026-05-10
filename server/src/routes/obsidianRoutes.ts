@@ -117,10 +117,20 @@ export async function handleObsidianNoteRequest(
         response,
         200,
         await writeObsidianNote({
-          baseRevision: body.baseRevision,
+          baseRevision: body.baseRevision
+            ? {
+                operationId: body.baseRevision.operationId ?? null,
+                sourceClientId: body.baseRevision.sourceClientId ?? null,
+                updatedAt: body.baseRevision.updatedAt ?? null,
+              }
+            : null,
           clientId: body.clientId,
           mapId,
-          note: body.note,
+          note: {
+            gmTitle: body.note.gmTitle ?? null,
+            markdown: body.note.markdown ?? null,
+            playerTitle: body.note.playerTitle ?? null,
+          },
           operationId: body.operationId,
           q,
           r,

@@ -16,7 +16,10 @@ import { useEditorToolState } from "./useEditorToolState";
 import { useFactionControls } from "./useFactionControls";
 import { useKeyboardNavigation } from "./useKeyboardNavigation";
 import { useNoteControls } from "./useNoteControls";
-import { useRemoteSyncHandlers } from "./useRemoteSyncHandlers";
+import {
+  useRemoteSyncCallbacks,
+  useRemoteSyncLifecycle,
+} from "./useRemoteSyncHandlers";
 import { useTokenControls } from "./useTokenControls";
 import { getInteractionLabel } from "@/editor/presentation/interactionLabels";
 import type { MapTokenRenderable } from "@/render/pixi";
@@ -48,6 +51,9 @@ export function useEditorController({
   >([]);
   const canEdit = role === "gm";
   const toolState = useEditorToolState(canEdit);
+  const remoteSyncHandlers = useRemoteSyncCallbacks(() => {
+    setToolPreviewOperations([]);
+  });
 
   const createFeatureId = useCallback(() => {
     featureIdRef.current += 1;
@@ -71,12 +77,12 @@ export function useEditorController({
   }, []);
 
   const syncState = useMapSocketSync({
-    clearPreview: clearSyncPreview,
+    clearPreview: remoteSyncHandlers.clearSyncPreview,
     initialDocument,
     initialWorld,
     mapId,
-    onAuthoritativeResync: handleAuthoritativeResync,
-    onRemoteOperationsApplied: handleRemoteOperationsApplied,
+    onAuthoritativeResync: remoteSyncHandlers.handleAuthoritativeResync,
+    onRemoteOperationsApplied: remoteSyncHandlers.handleRemoteOperationsApplied,
     userId: profile.id,
     initialWorkspaceMembers,
   });
@@ -116,11 +122,8 @@ export function useEditorController({
     startEditGesture,
     startRiverGesture,
   } = editorGestures;
-  const {
-    clearSyncPreview,
-    handleAuthoritativeResync,
-    handleRemoteOperationsApplied,
-  } = useRemoteSyncHandlers({
+  useRemoteSyncLifecycle({
+    ...remoteSyncHandlers,
     clearToolPreview,
     hasActiveGesture,
     operationHistory,

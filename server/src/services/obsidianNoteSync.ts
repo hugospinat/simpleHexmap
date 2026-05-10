@@ -105,7 +105,7 @@ async function getLatestNoteRevision(
   q: number,
   r: number,
 ): Promise<ObsidianNoteRevision> {
-  const result = await db.execute<{
+  const rows = await db.execute<{
     createdAt: Date;
     operationId: string;
     sourceClientId: string;
@@ -122,7 +122,7 @@ async function getLatestNoteRevision(
     order by ${opLog.sequence} desc
     limit 1
   `);
-  const row = result.rows[0];
+  const row = rows[0];
 
   if (!row) {
     return {
