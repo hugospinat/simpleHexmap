@@ -27,6 +27,7 @@ type SidebarProps = {
   onRedo: () => void;
   onRenameFaction: (factionId: string, name: string) => void;
   onClearMapTokenSelection: () => void;
+  onMapTokenColorChange: (userId: string, color: string) => void;
   onSelectFaction: (factionId: string | null) => void;
   onSelectMapToken: (member: WorkspaceMember) => void;
   onTileTypeChange: (type: TerrainType) => void;
@@ -52,6 +53,7 @@ export function Sidebar({
   onRedo,
   onRenameFaction,
   onClearMapTokenSelection,
+  onMapTokenColorChange,
   onSelectFaction,
   onSelectMapToken,
   onTileTypeChange,
@@ -116,19 +118,31 @@ export function Sidebar({
               key={member.userId}
               className={activeTokenUserId === member.userId ? "token-item is-active" : "token-item"}
             >
-              <button
-                type="button"
-                className="token-select-button"
-                onClick={() => onSelectMapToken(member)}
-              >
-                <span
-                  className="token-color-swatch"
-                  aria-hidden="true"
-                  style={{ backgroundColor: member.tokenColor }}
+              <div className="token-item-row">
+                <button
+                  type="button"
+                  className="token-select-button"
+                  onClick={() => onSelectMapToken(member)}
+                >
+                  <span
+                    className="token-color-swatch"
+                    aria-hidden="true"
+                    style={{ backgroundColor: member.tokenColor }}
+                  />
+                  <span className="token-profile-id">{member.username}</span>
+                  <span className="token-status">{placedToken ? "Placed" : "Not placed"}</span>
+                </button>
+                <input
+                  type="color"
+                  className="token-color-input"
+                  aria-label={`Change ${member.username} token color`}
+                  value={member.tokenColor}
+                  onClick={(event) => event.stopPropagation()}
+                  onChange={(event) =>
+                    onMapTokenColorChange(member.userId, event.currentTarget.value)
+                  }
                 />
-                <span className="token-profile-id">{member.username}</span>
-                <span className="token-status">{placedToken ? "Placed" : "Not placed"}</span>
-              </button>
+              </div>
             </li>
             );
           })}

@@ -18,6 +18,7 @@ import { useKeyboardNavigation } from "./useKeyboardNavigation";
 import { useNoteControls } from "./useNoteControls";
 import { useTokenControls } from "./useTokenControls";
 import { getInteractionLabel } from "@/editor/presentation/interactionLabels";
+import type { MapTokenRenderable } from "@/render/pixi/pixiTypes";
 
 type UseEditorControllerOptions = {
   initialDocument: MapDocument;
@@ -124,10 +125,19 @@ export function useEditorController({
     viewLevel: view.level,
     visibleWorld: world,
   });
+  const {
+    applyActiveGestureCells,
+    applyActiveRiverGestureEdges,
+    finishEditGesture,
+    hasActiveGesture,
+    resetGestureState,
+    startEditGesture,
+    startRiverGesture,
+  } = editorGestures;
 
   useEffect(() => {
     clearPreviewHandlerRef.current = () => {
-      if (editorGestures.hasActiveGesture()) {
+      if (hasActiveGesture()) {
         return;
       }
 
@@ -135,13 +145,13 @@ export function useEditorController({
     };
     authoritativeResyncHandlerRef.current = () => {
       operationHistory.resetHistory();
-      editorGestures.resetGestureState();
+      resetGestureState();
       clearToolPreview(true);
     };
     remoteOperationsAppliedHandlerRef.current = () => {
       operationHistory.clearUndoRedoHistory();
     };
-  }, [clearToolPreview, editorGestures, operationHistory]);
+  }, [clearToolPreview, hasActiveGesture, operationHistory, resetGestureState]);
 
   const tokenControls = useTokenControls({
     canEdit,
@@ -152,9 +162,20 @@ export function useEditorController({
     sendTokenOperation: dispatchTokenOperation,
     viewLevel: view.level,
     visibleWorld: world,
+    workspaceMembers: currentWorkspaceMembers,
   });
 
   const factions = useMemo(() => getFactions(world), [world]);
+  const renderableTokenPlacements = useMemo<MapTokenRenderable[]>(() => {
+    const tokenColorsByUserId = new Map(
+      currentWorkspaceMembers.map((member) => [member.userId, member.tokenColor]),
+    );
+
+    return activeTokenPlacements.map((placement) => ({
+      ...placement,
+      color: tokenColorsByUserId.get(placement.userId),
+    }));
+  }, [activeTokenPlacements, currentWorkspaceMembers]);
   const selectedFaction = useMemo(
     () =>
       toolState.activeFactionId ? getFactionById(world, toolState.activeFactionId) : null,
@@ -163,9 +184,9 @@ export function useEditorController({
 
   useEffect(() => {
     operationHistory.resetHistory();
-    editorGestures.resetGestureState();
+    resetGestureState();
     clearToolPreview(true);
-  }, [clearToolPreview, editorGestures, mapId, operationHistory]);
+  }, [clearToolPreview, mapId, operationHistory, resetGestureState]);
 
   useEffect(() => {
     if (toolState.activeFactionId && !selectedFaction) {
@@ -247,7 +268,7 @@ export function useEditorController({
     changeVisualZoom,
     featureVisibilityMode,
     finishEditGesture: () => {
-      editorGestures.finishEditGesture();
+      finishEditGesture();
       clearToolPreview(true);
     },
     hoveredHex: toolState.hoveredHex,
@@ -257,7 +278,7 @@ export function useEditorController({
     previewOperations: toolPreviewOperations,
     selectedHex:
       toolState.activeMode === "notes" ? noteControls.selectedNoteHex : null,
-    tokenPlacements: activeTokenPlacements,
+    tokenPlacements: renderableTokenPlacements,
     visibleDocument,
     onToolStep: canEdit ? toolState.changeToolByDelta : undefined,
     role,
@@ -269,8 +290,8 @@ export function useEditorController({
     onNoteHexSelect: noteControls.setSelectedNoteHex,
     onPlayerTokenPlace: tokenControls.placePlayerToken,
     showCoordinates: toolState.showCoordinates,
-    startEditGesture: editorGestures.startEditGesture,
-    startRiverGesture: editorGestures.startRiverGesture,
+    startEditGesture,
+    startRiverGesture,
     visualZoom,
     world,
   });
@@ -303,6 +324,7 @@ export function useEditorController({
     saveNoteAtHex: noteControls.saveNoteAtHex,
     saveSelectedNote: noteControls.saveSelectedNote,
     selectWorkspaceMember: tokenControls.selectWorkspaceMember,
+    setMapTokenColor: tokenControls.setMapTokenColor,
     setPlayerTokenColor: tokenControls.setPlayerTokenColor,
     setActiveMode: toolState.setActiveMode,
     setActiveType: toolState.setActiveType,

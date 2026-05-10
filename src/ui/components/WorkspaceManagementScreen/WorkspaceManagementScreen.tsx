@@ -1,4 +1,11 @@
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { canOpenWorkspaceAsGM, type MapOpenMode, type UserRecord, type WorkspaceInviteSummary, type WorkspaceMember } from "@/core/auth/authTypes";
 import type { WorkspaceMapSummary, WorkspaceSummary } from "@/app/api";
 
@@ -11,7 +18,11 @@ type WorkspaceManagementScreenProps = {
   members: WorkspaceMember[];
   onAddMember: (workspaceId: string, username: string, role: "gm" | "player") => Promise<void>;
   onBackToWorkspaces: () => void;
-  onCreateInvite: (workspaceId: string, expiresInDays: number, maxUses: number) => Promise<string>;
+  onCreateInvite: (
+    workspaceId: string,
+    expiresInDays: number,
+    maxUses: number,
+  ) => Promise<{ inviteId: string; inviteUrl: string }>;
   onCreateMap: (workspaceId: string, name: string) => Promise<void>;
   onDeleteMap: (workspaceId: string, mapId: string) => Promise<void>;
   onExportMap: (mapId: string) => Promise<void>;
@@ -32,6 +43,41 @@ function formatUpdatedAt(value: string): string {
   }
 
   return date.toLocaleString();
+}
+
+function stepInviteNumber(
+  value: string,
+  delta: -1 | 1,
+  minimum = 1,
+): string {
+  const parsed = Number.parseInt(value.trim(), 10);
+  const safeValue = Number.isInteger(parsed) ? parsed : minimum;
+  return String(Math.max(minimum, safeValue + delta));
+}
+
+function normalizeInviteNumber(value: string, fallback: string): string {
+  return value.trim().length > 0 ? value : fallback;
+}
+
+async function copyTextToClipboard(value: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return true;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+
+  try {
+    return document.execCommand("copy");
+  } finally {
+    document.body.removeChild(textarea);
+  }
 }
 
 export function WorkspaceManagementScreen({
@@ -60,8 +106,38 @@ export function WorkspaceManagementScreen({
   const [newMapName, setNewMapName] = useState("");
   const [inviteExpiresInDays, setInviteExpiresInDays] = useState("7");
   const [inviteMaxUses, setInviteMaxUses] = useState("1");
-  const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
+  const [inviteUrlsById, setInviteUrlsById] = useState<Record<string, string>>({});
+  const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
+  const [showRevokedInvites, setShowRevokedInvites] = useState(false);
+  const copiedInviteResetTimerRef = useRef<number | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    setInviteUrlsById((current) => {
+      const activeInviteIds = new Set(invites.map((invite) => invite.id));
+      const nextEntries = Object.entries(current).filter(([inviteId]) =>
+        activeInviteIds.has(inviteId),
+      );
+
+      return nextEntries.length === Object.keys(current).length
+        ? current
+        : Object.fromEntries(nextEntries);
+    });
+  }, [invites, workspace.id]);
+
+  useEffect(() => {
+    setInviteExpiresInDays((current) => normalizeInviteNumber(current, "7"));
+    setInviteMaxUses((current) => normalizeInviteNumber(current, "1"));
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (copiedInviteResetTimerRef.current !== null) {
+        window.clearTimeout(copiedInviteResetTimerRef.current);
+      }
+    };
+  }, []);
+
   const canManageMembers = workspace.currentUserRole === "owner";
   const canManageInvites = workspace.currentUserRole === "owner";
   const canManageMapsAsGm = canOpenWorkspaceAsGM(workspace);
@@ -136,7 +212,22 @@ export function WorkspaceManagementScreen({
 
   const mapCountLabel = sortedMaps.length === 1 ? "1 map" : `${sortedMaps.length} maps`;
   const memberCountLabel = sortedMembers.length === 1 ? "1 member" : `${sortedMembers.length} members`;
-  const inviteCountLabel = invites.length === 1 ? "1 invite" : `${invites.length} invites`;
+  const activeInviteCount = useMemo(
+    () => invites.filter((invite) => invite.revokedAt === null).length,
+    [invites],
+  );
+  const revokedInviteCount = invites.length - activeInviteCount;
+  const visibleInvites = useMemo(
+    () => (showRevokedInvites ? invites : invites.filter((invite) => invite.revokedAt === null)),
+    [invites, showRevokedInvites],
+  );
+  const inviteCountLabel = showRevokedInvites
+    ? invites.length === 1
+      ? "1 invite"
+      : `${invites.length} invites`
+    : activeInviteCount === 1
+      ? "1 active"
+      : `${activeInviteCount} active`;
   const isInviteExpiresInDaysValid = /^[0-9]+$/.test(inviteExpiresInDays.trim());
   const isInviteMaxUsesValid = /^[0-9]+$/.test(inviteMaxUses.trim());
 
@@ -158,11 +249,33 @@ export function WorkspaceManagementScreen({
       return;
     }
 
-    const inviteUrl = await onCreateInvite(workspace.id, expiresInDays, maxUses);
+    const createdInvite = await onCreateInvite(workspace.id, expiresInDays, maxUses);
     setInviteExpiresInDays("7");
     setInviteMaxUses("1");
-    setLastInviteUrl(inviteUrl);
+    setInviteUrlsById((current) => ({
+      ...current,
+      [createdInvite.inviteId]: createdInvite.inviteUrl,
+    }));
   };
+
+  const copyInviteUrl = useCallback(async (inviteId: string, inviteUrl: string) => {
+    const copied = await copyTextToClipboard(inviteUrl);
+
+    if (!copied) {
+      return;
+    }
+
+    setCopiedInviteId(inviteId);
+
+    if (copiedInviteResetTimerRef.current !== null) {
+      window.clearTimeout(copiedInviteResetTimerRef.current);
+    }
+
+    copiedInviteResetTimerRef.current = window.setTimeout(() => {
+      setCopiedInviteId((current) => (current === inviteId ? null : current));
+      copiedInviteResetTimerRef.current = null;
+    }, 1600);
+  }, []);
 
   return (
     <main className="map-menu" aria-label="Workspace management">
@@ -413,27 +526,90 @@ export function WorkspaceManagementScreen({
             </div>
 
             <form className="map-create-form workspace-inline-form" onSubmit={submitCreateInvite}>
-              <label htmlFor="workspace-invite-expiration">Create player invite link</label>
-              <div className="map-create-row workspace-inline-row workspace-members-row workspace-invite-create-row">
-                <input
-                  id="workspace-invite-expiration"
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  value={inviteExpiresInDays}
-                  placeholder="Days before expiration (recommended: 7)"
-                  onChange={(event) => setInviteExpiresInDays(event.currentTarget.value)}
-                  disabled={isBusy}
-                />
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  value={inviteMaxUses}
-                  placeholder="Number of uses (recommended: 1)"
-                  onChange={(event) => setInviteMaxUses(event.currentTarget.value)}
-                  disabled={isBusy}
-                />
+              <label>Create player invite link</label>
+              <div className="map-create-row workspace-invite-create-row">
+                <div className="workspace-invite-inline-field">
+                  <label htmlFor="workspace-invite-expiration">Days before expiration:</label>
+                  <div className="workspace-invite-stepper">
+                    <input
+                      id="workspace-invite-expiration"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={inviteExpiresInDays}
+                      onChange={(event) => setInviteExpiresInDays(event.currentTarget.value)}
+                      onBlur={() => {
+                        setInviteExpiresInDays((current) =>
+                          normalizeInviteNumber(current, "7"),
+                        );
+                      }}
+                      disabled={isBusy}
+                    />
+                    <div className="workspace-invite-stepper-buttons" aria-hidden="true">
+                      <button
+                        type="button"
+                        className="workspace-invite-stepper-button"
+                        onClick={() => setInviteExpiresInDays((current) => stepInviteNumber(current, 1))}
+                        disabled={isBusy}
+                        tabIndex={-1}
+                        aria-label="Increase days before expiration"
+                      >
+                        <span className="workspace-invite-stepper-arrow workspace-invite-stepper-arrow-up" />
+                      </button>
+                      <button
+                        type="button"
+                        className="workspace-invite-stepper-button"
+                        onClick={() => setInviteExpiresInDays((current) => stepInviteNumber(current, -1))}
+                        disabled={isBusy}
+                        tabIndex={-1}
+                        aria-label="Decrease days before expiration"
+                      >
+                        <span className="workspace-invite-stepper-arrow workspace-invite-stepper-arrow-down" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="workspace-invite-inline-field">
+                  <label htmlFor="workspace-invite-max-uses">Number of uses:</label>
+                  <div className="workspace-invite-stepper">
+                    <input
+                      id="workspace-invite-max-uses"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={inviteMaxUses}
+                      onChange={(event) => setInviteMaxUses(event.currentTarget.value)}
+                      onBlur={() => {
+                        setInviteMaxUses((current) =>
+                          normalizeInviteNumber(current, "1"),
+                        );
+                      }}
+                      disabled={isBusy}
+                    />
+                    <div className="workspace-invite-stepper-buttons" aria-hidden="true">
+                      <button
+                        type="button"
+                        className="workspace-invite-stepper-button"
+                        onClick={() => setInviteMaxUses((current) => stepInviteNumber(current, 1))}
+                        disabled={isBusy}
+                        tabIndex={-1}
+                        aria-label="Increase number of uses"
+                      >
+                        <span className="workspace-invite-stepper-arrow workspace-invite-stepper-arrow-up" />
+                      </button>
+                      <button
+                        type="button"
+                        className="workspace-invite-stepper-button"
+                        onClick={() => setInviteMaxUses((current) => stepInviteNumber(current, -1))}
+                        disabled={isBusy}
+                        tabIndex={-1}
+                        aria-label="Decrease number of uses"
+                      >
+                        <span className="workspace-invite-stepper-arrow workspace-invite-stepper-arrow-down" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 <button
                   type="submit"
                   className="compact-button"
@@ -444,30 +620,53 @@ export function WorkspaceManagementScreen({
               </div>
             </form>
 
-            {lastInviteUrl ? (
-              <div className="map-create-form workspace-inline-form workspace-invite-link-block">
-                <label htmlFor="workspace-invite-link">Last created link</label>
+            <p className="workspace-invite-hint">
+              Copy invite links after creating them. Existing links stay active,
+              but their full URL is only shown when you create them in this session.
+            </p>
+
+            {revokedInviteCount > 0 ? (
+              <label className="check-field workspace-invite-toggle">
                 <input
-                  id="workspace-invite-link"
-                  type="text"
-                  readOnly
-                  value={lastInviteUrl}
+                  type="checkbox"
+                  checked={showRevokedInvites}
+                  onChange={(event) => setShowRevokedInvites(event.currentTarget.checked)}
                 />
-              </div>
+                <span>Show revoked links</span>
+              </label>
             ) : null}
 
-            {invites.length === 0 ? (
-              <p>No invite link yet.</p>
+            {visibleInvites.length === 0 ? (
+              <p>{invites.length === 0 ? "No invite link yet." : "No active invite link."}</p>
             ) : (
-              <ul className="map-list">
-                {invites.map((invite) => (
-                  <li key={invite.id} className="map-list-item workspace-row-item">
+              <ul className="map-list workspace-invite-list">
+                {visibleInvites.map((invite) => (
+                  <li key={invite.id} className="map-list-item workspace-row-item workspace-invite-item">
                     <div className="workspace-row-primary">
                       <strong className="workspace-row-title">
                         Player invite · {invite.usedCount}/{invite.maxUses} uses
                       </strong>
                       <span className="map-list-date">Expires {formatUpdatedAt(invite.expiresAt)}</span>
                     </div>
+                    {inviteUrlsById[invite.id] ? (
+                      <button
+                        type="button"
+                        className={
+                          copiedInviteId === invite.id
+                            ? "workspace-invite-link-copy is-copied"
+                            : "workspace-invite-link-copy"
+                        }
+                        onClick={() => void copyInviteUrl(invite.id, inviteUrlsById[invite.id])}
+                        aria-label="Copy invite link"
+                        title={inviteUrlsById[invite.id]}
+                      >
+                        <span className="workspace-invite-link-copy-value">
+                          {inviteUrlsById[invite.id]}
+                        </span>
+                      </button>
+                    ) : (
+                      <div className="workspace-invite-link-spacer" aria-hidden="true" />
+                    )}
                     <div className="workspace-row-actions">
                       {invite.revokedAt ? (
                         <span className="workspace-inline-note">Revoked</span>

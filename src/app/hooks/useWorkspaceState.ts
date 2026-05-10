@@ -46,7 +46,7 @@ type UseWorkspaceStateResult = {
     workspaceId: string,
     expiresInDays: number,
     maxUses: number,
-  ) => Promise<string>;
+  ) => Promise<{ inviteId: string; inviteUrl: string }>;
   createWorkspaceMap: (workspaceId: string, name: string) => Promise<void>;
   deleteWorkspace: (workspaceId: string) => Promise<void>;
   deleteWorkspaceMap: (workspaceId: string, mapId: string) => Promise<void>;
@@ -294,6 +294,7 @@ export function useWorkspaceState({
 
   const createWorkspaceInvite = useCallback(
     async (workspaceId: string, expiresInDays: number, maxUses: number) => {
+      let createdInviteId = "";
       let inviteUrl = "";
 
       await withBusyState("Creating invite link...", async () => {
@@ -301,11 +302,15 @@ export function useWorkspaceState({
           expiresInDays,
           maxUses,
         });
+        createdInviteId = created.invite.id;
         inviteUrl = buildInviteUrl(created.token);
         await refreshWorkspaceInvites(workspaceId);
       });
 
-      return inviteUrl;
+      return {
+        inviteId: createdInviteId,
+        inviteUrl,
+      };
     },
     [refreshWorkspaceInvites, withBusyState],
   );

@@ -77,6 +77,7 @@ export function EditorScreen({
           onRenameFaction={editor.renameFaction}
           onSelectFaction={editor.selectFaction}
           onClearMapTokenSelection={editor.clearMapTokenSelection}
+          onMapTokenColorChange={editor.setMapTokenColor}
           onSelectMapToken={editor.selectWorkspaceMember}
           onTileTypeChange={editor.setActiveType}
           onUndo={editor.undoLastOperationBatch}

@@ -16,6 +16,7 @@ type UseTokenControlsOptions = {
   sendTokenOperation: (operation: MapTokenOperation) => void;
   viewLevel: number;
   visibleWorld: MapState;
+  workspaceMembers: readonly WorkspaceMember[];
 };
 
 type UseTokenControlsResult = {
@@ -26,6 +27,7 @@ type UseTokenControlsResult = {
   playerTokenColor: string;
   removeMapToken: (userId: string) => void;
   selectWorkspaceMember: (member: WorkspaceMember) => void;
+  setMapTokenColor: (tokenUserId: string, color: string) => void;
   setPlayerTokenColor: (color: string) => void;
 };
 
@@ -38,6 +40,7 @@ export function useTokenControls({
   sendTokenOperation,
   viewLevel,
   visibleWorld,
+  workspaceMembers,
 }: UseTokenControlsOptions): UseTokenControlsResult {
   const [activeTokenUserId, setActiveTokenUserId] = useState<string | null>(
     null,
@@ -56,9 +59,19 @@ export function useTokenControls({
     }
   });
 
-  const setPlayerTokenColor = useCallback(
-    (color: string) => {
-      setPlayerTokenColorState(color);
+  const setMapTokenColor = useCallback(
+    (tokenUserId: string, color: string) => {
+      if (tokenUserId !== userId && !canEdit) {
+        return;
+      }
+
+      if (tokenUserId === userId) {
+        setPlayerTokenColorState(color);
+      }
+
+      if (activeTokenUserId === tokenUserId) {
+        setActiveTokenColor(color);
+      }
 
       try {
         window.localStorage.setItem("simplehex:token-color", color);
@@ -68,11 +81,18 @@ export function useTokenControls({
 
       sendTokenOperation({
         type: "set_map_token_color",
-        userId,
+        userId: tokenUserId,
         color,
       });
     },
-    [sendTokenOperation, userId],
+    [activeTokenUserId, canEdit, sendTokenOperation, userId],
+  );
+
+  const setPlayerTokenColor = useCallback(
+    (color: string) => {
+      setMapTokenColor(userId, color);
+    },
+    [setMapTokenColor, userId],
   );
 
   const placePlayerToken = useCallback(
@@ -101,7 +121,6 @@ export function useTokenControls({
       });
     },
     [
-      playerTokenColor,
       role,
       sendTokenOperation,
       userId,
@@ -161,7 +180,6 @@ export function useTokenControls({
       });
     },
     [
-      activeTokenColor,
       activeTokenUserId,
       canEdit,
       sendTokenOperation,
@@ -197,6 +215,41 @@ export function useTokenControls({
     setActiveTokenColor(defaultWorkspaceTokenColor);
   }, [mapId]);
 
+  useEffect(() => {
+    const currentUserMember = workspaceMembers.find(
+      (member) => member.userId === userId,
+    );
+
+    if (!currentUserMember || currentUserMember.tokenColor === playerTokenColor) {
+      return;
+    }
+
+    setPlayerTokenColorState(currentUserMember.tokenColor);
+
+    try {
+      window.localStorage.setItem(
+        "simplehex:token-color",
+        currentUserMember.tokenColor,
+      );
+    } catch {
+      // Ignore storage failures; the server-backed color remains in memory.
+    }
+  }, [playerTokenColor, userId, workspaceMembers]);
+
+  useEffect(() => {
+    if (!activeTokenUserId) {
+      return;
+    }
+
+    const activeMember = workspaceMembers.find(
+      (member) => member.userId === activeTokenUserId,
+    );
+
+    if (activeMember && activeMember.tokenColor !== activeTokenColor) {
+      setActiveTokenColor(activeMember.tokenColor);
+    }
+  }, [activeTokenColor, activeTokenUserId, workspaceMembers]);
+
   return {
     activeTokenUserId,
     clearMapTokenSelection,
@@ -205,6 +258,7 @@ export function useTokenControls({
     playerTokenColor,
     removeMapToken,
     selectWorkspaceMember,
+    setMapTokenColor,
     setPlayerTokenColor,
   };
 }
